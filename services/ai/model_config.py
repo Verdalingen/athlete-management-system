@@ -105,30 +105,46 @@ class ModelSelector:
             openrouter_name="openai/gpt-5.2-pro",
         ),
         # Anthropic Models
-        "claude-4": ModelConfiguration(
-            name="claude-sonnet-4-5-20250929",
+        "claude-sonnet": ModelConfiguration(
+            name="claude-sonnet-4-6",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-sonnet-4.5",
+            openrouter_name="anthropic/claude-sonnet-4-6",
         ),
-        "claude-4-thinking": ModelConfiguration(
-            name="claude-sonnet-4-5-20250929",
+        "claude-sonnet-thinking": ModelConfiguration(
+            name="claude-sonnet-4-6",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-sonnet-4.5",
+            openrouter_name="anthropic/claude-sonnet-4-6",
+        ),
+        "claude-haiku": ModelConfiguration(
+            name="claude-haiku-4-5-20251001",
+            base_url="https://api.anthropic.com",
+            openrouter_name="anthropic/claude-haiku-4-5-20251001",
         ),
         "claude-opus": ModelConfiguration(
-            name="claude-opus-4-1-20250805",
+            name="claude-opus-4-8",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-opus-4.1",
+            openrouter_name="anthropic/claude-opus-4-8",
         ),
         "claude-opus-thinking": ModelConfiguration(
-            name="claude-opus-4-1-20250805",
+            name="claude-opus-4-8",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-opus-4.1",
+            openrouter_name="anthropic/claude-opus-4-8",
+        ),
+        # Legacy aliases kept for backwards compatibility
+        "claude-4": ModelConfiguration(
+            name="claude-sonnet-4-6",
+            base_url="https://api.anthropic.com",
+            openrouter_name="anthropic/claude-sonnet-4-6",
+        ),
+        "claude-4-thinking": ModelConfiguration(
+            name="claude-sonnet-4-6",
+            base_url="https://api.anthropic.com",
+            openrouter_name="anthropic/claude-sonnet-4-6",
         ),
         "claude-3-haiku": ModelConfiguration(
-            name="claude-3-haiku-20240307",
+            name="claude-haiku-4-5-20251001",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-3-haiku",
+            openrouter_name="anthropic/claude-haiku-4-5-20251001",
         ),
         # DeepSeek Models
         "deepseek-chat": ModelConfiguration(
@@ -156,10 +172,19 @@ class ModelSelector:
             "thinking": {"type": "enabled", "budget_tokens": 16000},
             "log": "Using extended thinking mode for {role} (max_tokens: 32000, budget_tokens: 16000)",
         },
+        "claude-sonnet-thinking": {
+            "max_tokens": 64000,
+            "thinking": {"type": "enabled", "budget_tokens": 16000},
+            "log": "Using extended thinking mode for {role} (max_tokens: 64000, budget_tokens: 16000)",
+        },
         "claude-4-thinking": {
             "max_tokens": 64000,
             "thinking": {"type": "enabled", "budget_tokens": 16000},
             "log": "Using extended thinking mode for {role} (max_tokens: 64000, budget_tokens: 16000)",
+        },
+        "claude-sonnet": {
+            "max_tokens": 64000,
+            "log": "Using extended output tokens for {role} (max_tokens: 64000)",
         },
         "claude-4": {
             "max_tokens": 64000,

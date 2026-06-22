@@ -21,36 +21,41 @@ class AISettings:
 
     model_assignments: dict[AIMode, dict[AgentRole, str]] = field(
         default_factory=lambda: {
-            AIMode.STANDARD: {
-                AgentRole.SUMMARIZER: "gpt-5",
-                AgentRole.FORMATTER: "gpt-5",
-                AgentRole.METRICS_EXPERT: "gpt-5-search",
-                AgentRole.PHYSIOLOGY_EXPERT: "gpt-5-search",
-                AgentRole.ACTIVITY_EXPERT: "gpt-5-search",
-                AgentRole.SYNTHESIS: "gpt-5",
-                AgentRole.WORKOUT: "gpt-5-search",
-                AgentRole.SEASON_PLANNER: "gpt-5-search",
-            },
-            AIMode.COST_EFFECTIVE: {
-                AgentRole.SUMMARIZER: "claude-3-haiku",
-                AgentRole.FORMATTER: "claude-3-haiku",
-                AgentRole.METRICS_EXPERT: "claude-3-haiku",
-                AgentRole.PHYSIOLOGY_EXPERT: "claude-3-haiku",
-                AgentRole.ACTIVITY_EXPERT: "claude-3-haiku",
-                AgentRole.SYNTHESIS: "claude-3-haiku",
-                AgentRole.WORKOUT: "claude-3-haiku",
-                AgentRole.SEASON_PLANNER: "claude-3-haiku",
-            },
+            # Tiered Claude-only setup. Haiku for cheap nodes, Sonnet for reasoning.
+            # Requires ANTHROPIC_API_KEY; falls back to OpenRouter if not set.
             AIMode.DEVELOPMENT: {
-                AgentRole.SUMMARIZER: "claude-4",
-                AgentRole.FORMATTER: "claude-4",
-                AgentRole.METRICS_EXPERT: "claude-4",
-                AgentRole.PHYSIOLOGY_EXPERT: "claude-4",
-                AgentRole.ACTIVITY_EXPERT: "claude-4",
-                AgentRole.SYNTHESIS: "claude-4",
-                AgentRole.WORKOUT: "claude-4",
-                AgentRole.SEASON_PLANNER: "claude-4",
+                AgentRole.SUMMARIZER: "claude-haiku",    # just reformatting data
+                AgentRole.FORMATTER: "claude-haiku",     # just reformatting data
+                AgentRole.METRICS_EXPERT: "claude-sonnet",
+                AgentRole.PHYSIOLOGY_EXPERT: "claude-sonnet",
+                AgentRole.ACTIVITY_EXPERT: "claude-sonnet",
+                AgentRole.SYNTHESIS: "claude-sonnet",
+                AgentRole.WORKOUT: "claude-sonnet",
+                AgentRole.SEASON_PLANNER: "claude-sonnet",
             },
+            # All Haiku — very cheap, lower quality. Good for testing pipelines.
+            AIMode.COST_EFFECTIVE: {
+                AgentRole.SUMMARIZER: "claude-haiku",
+                AgentRole.FORMATTER: "claude-haiku",
+                AgentRole.METRICS_EXPERT: "claude-haiku",
+                AgentRole.PHYSIOLOGY_EXPERT: "claude-haiku",
+                AgentRole.ACTIVITY_EXPERT: "claude-haiku",
+                AgentRole.SYNTHESIS: "claude-haiku",
+                AgentRole.WORKOUT: "claude-haiku",
+                AgentRole.SEASON_PLANNER: "claude-haiku",
+            },
+            # Opus for planning, Sonnet for analysis, Haiku for formatting.
+            AIMode.STANDARD: {
+                AgentRole.SUMMARIZER: "claude-haiku",
+                AgentRole.FORMATTER: "claude-haiku",
+                AgentRole.METRICS_EXPERT: "claude-sonnet",
+                AgentRole.PHYSIOLOGY_EXPERT: "claude-sonnet",
+                AgentRole.ACTIVITY_EXPERT: "claude-sonnet",
+                AgentRole.SYNTHESIS: "claude-sonnet",
+                AgentRole.WORKOUT: "claude-sonnet",
+                AgentRole.SEASON_PLANNER: "claude-opus",
+            },
+            # GPT-5 Pro for everything — maximum quality, high cost.
             AIMode.PRO: {
                 AgentRole.SUMMARIZER: "gpt-5",
                 AgentRole.FORMATTER: "gpt-5",
