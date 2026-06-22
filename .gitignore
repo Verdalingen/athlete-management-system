@@ -1,0 +1,46 @@
+# === SECRETS & CREDENTIALS ===
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# === PERSONAL TRAINING DATA & AI OUTPUTS ===
+# These are generated at runtime and contain personal health data.
+# Use `data/storage/` to persist plans between sessions — it is also excluded.
+data/
+
+# === PERSONAL CONFIG (contains email, personal goals) ===
+# Copy cli/coach_config_template.yaml and rename it to create your own.
+my_training_config.yaml
+
+# === PYTHON ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# === PIXI ENVIRONMENTS ===
+.pixi/*
+!.pixi/config.toml
+
+# === MACOS ===
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# === EDITORS ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === CLAUDE CODE ===
+.claude/

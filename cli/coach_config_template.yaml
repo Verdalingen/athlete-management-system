@@ -1,0 +1,65 @@
+# Garmin AI CLI Configuration Template
+# Copy this file and customize for your analysis
+
+# Athlete Information
+athlete:
+  name: "John Doe"
+  email: "john.doe@example.com"  # Garmin Connect email
+
+# Analysis Context
+context:
+  analysis: |
+    Coming back from a minor injury. Focusing on base building and
+    avoiding high-intensity work for the next 2 weeks.
+
+  planning: |
+    Preparing for Olympic distance triathlon in 12 weeks.
+    Priority is building aerobic base and improving run endurance.
+
+# Data Extraction Settings
+extraction:
+  activities_days: 28      # How many days of activities to extract
+  metrics_days: 56         # How many days of metrics to extract
+  ai_mode: "standard"      # Overrides .env AI_MODE for coach-cli runs; one of: "development", "standard", "cost_effective", "pro"
+                           # ⚠️  WARNING: "pro" mode can incur high costs (>$10 per run depending on data volume)
+  enable_plotting: false   # Enable AI-generated plots (default: false to save costs). Set to true for visual insights.
+  hitl_enabled: true       # Enable Human-in-the-Loop interactions - agents can ask questions during analysis (default: true)
+  skip_synthesis: false    # Skip synthesis and formatter nodes (default: false). Set to true to save tokens when you only need the weekly plan.
+  
+  # Long-term trends (optional - provides historical context for VO2 max and training load)
+  include_long_term_trends: true  # Include long-term trends in analysis (default: true)
+  long_term_range: 360     # How many days to look back for long-term trends (default: 360)
+  long_term_interval: 7    # Interval in days between trend data points (default: 7)
+
+# Upcoming Competitions
+competitions:
+  - name: "Local Olympic Triathlon"
+    date: "2026-04-15"         # YYYY-MM-DD or free-text format (e.g. 'September 2026')
+    race_type: "Olympic"
+    priority: "A"              # A (highest), B, C priorities
+    target_time: "02:30:00"    # HH:MM:SS format
+
+  - name: "Sprint Series Race 1"
+    date: "2026-03-20"
+    race_type: "Sprint"
+    priority: "B"
+    target_time: "01:15:00"
+
+outside:
+  bikereg:
+    - id: 71252               # BikeReg event ID (integer)
+      priority: "A"           # Optional; defaults to "B" if omitted
+      target_time: "3:00:00"  # Optional; HH:MM:SS
+
+  runreg:
+  - url: "https://www.runreg.com/sunflower-relay-half-marathon-and-marathon"
+    priority: "B"
+    target_time: "3:30:00"
+
+# Output Settings
+output:
+  directory: "./data"
+
+# Optional: Garmin Credentials (leave empty to use interactive login)
+credentials:
+  password: ""  # Leave empty for secure interactive input
