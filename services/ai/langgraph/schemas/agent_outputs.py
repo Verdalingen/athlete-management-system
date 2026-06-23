@@ -25,7 +25,7 @@ class StrengthExercise(BaseModel):
     sets: int = Field(..., description="Number of sets")
     reps: int = Field(..., description="Reps per set; use midpoint if a range is given")
     weight_kg: float | None = Field(None, description="Weight in kg; null if RPE-based or unspecified")
-    rest_seconds: int = Field(120, description="Rest between sets in seconds; use 180 for heavy compound lifts")
+    rest_seconds: int = Field(180, description="Rest between sets in seconds. 180 (3 min) for ALL exercises — this is the floor, never go lower.")
 
 
 class StrengthSessionData(BaseModel):

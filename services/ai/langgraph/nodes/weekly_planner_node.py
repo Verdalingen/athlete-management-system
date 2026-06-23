@@ -106,7 +106,7 @@ SHRUG, FACE_PULL, CHEST_FLY, DIP, PUSH_UP
 Rules:
 - Include only set×rep exercises. Skip time-based elements (mobility, core circuits, cardio warm-ups).
 - weight_kg: set only if explicitly specified; otherwise null (athlete selects on watch).
-- rest_seconds: 180 for heavy compound lifts (bench, squat, deadlift, row, pull-up); 90-120 for accessories.
+- rest_seconds: 180 (3 minutes) for ALL exercises without exception — accessories included. Never use a lower value.
 - reps: use midpoint if a range is given (e.g. "8-10" → 9).
 
 ## Day-by-Day Schedule (scheduled_days field)
