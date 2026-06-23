@@ -10,12 +10,14 @@ platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 python = ">=3.13.0,<3.14"
 pip = ">=25.2,<26"
 pre-commit = ">=4.3.0,<5"
+typing_extensions = ">=4.13.0"
 
 [pypi-dependencies]
 # Install the project itself in editable mode
 garmin-ai-coach = { path = ".", editable = true }
 garminconnect = ">=0.2.30, <0.3"
 anthropic = ">=0.71.0, <0.72"
+typing-extensions = ">=4.13.0"  # pydantic-core 2.33+ requires Sentinel which landed in 4.13
 pydantic = ">=2.12, <3"
 pydantic-settings = ">=2.0, <3"
 langchain = ">=1.0.0, <2"
