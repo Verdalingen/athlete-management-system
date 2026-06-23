@@ -79,17 +79,10 @@ _REPEAT_STEP_TYPE = {
     "displayOrder": 6,
 }
 
-_ITERATIONS_CONDITION = {
-    "conditionTypeId": 7,
-    "conditionTypeKey": "iterations",
-    "displayOrder": 7,
-    "displayable": False,
-}
-
-_TIME_CONDITION = {
-    "conditionTypeId": 2,
-    "conditionTypeKey": "time",
-    "displayOrder": 2,
+_LAP_BUTTON_CONDITION = {
+    "conditionTypeId": 1,
+    "conditionTypeKey": "lap.button",
+    "displayOrder": 1,
     "displayable": True,
 }
 
@@ -105,7 +98,7 @@ class PlannedExercise:
     garmin_category: str         # Garmin category key, e.g. "BENCH_PRESS"
     display_name: str            # Human-readable name used in the workout title
     sets: list[PlannedSet] = field(default_factory=list)
-    rest_seconds: int = 120      # Rest between sets
+    rest_seconds: int = 180      # Rest between sets (informational; watch uses lap-button)
 
 
 @dataclass
@@ -120,7 +113,7 @@ class PlannedStrengthSession:
 # Workout JSON builders
 # ---------------------------------------------------------------------------
 
-def _active_step(garmin_category: str, reps: int, weight_kg: float | None, step_order: int) -> dict:
+def _active_step(garmin_category: str, weight_kg: float | None, step_order: int) -> dict:
     normalized = _CATEGORY_FALLBACK.get(garmin_category, garmin_category)
     if normalized != garmin_category:
         logger.debug("Normalized category %s → %s", garmin_category, normalized)
@@ -128,8 +121,7 @@ def _active_step(garmin_category: str, reps: int, weight_kg: float | None, step_
         "type": "ExecutableStepDTO",
         "stepOrder": step_order,
         "stepType": _INTERVAL_STEP_TYPE,
-        "endCondition": _ITERATIONS_CONDITION,
-        "endConditionValue": float(reps),
+        "endCondition": _LAP_BUTTON_CONDITION,
         "targetType": _NO_TARGET,
         "category": normalized,
     }
@@ -139,13 +131,12 @@ def _active_step(garmin_category: str, reps: int, weight_kg: float | None, step_
     return step
 
 
-def _rest_step(rest_seconds: int, step_order: int) -> dict:
+def _rest_step(step_order: int) -> dict:
     return {
         "type": "ExecutableStepDTO",
         "stepOrder": step_order,
         "stepType": _REST_STEP_TYPE,
-        "endCondition": _TIME_CONDITION,
-        "endConditionValue": float(rest_seconds),
+        "endCondition": _LAP_BUTTON_CONDITION,
         "targetType": _NO_TARGET,
     }
 
@@ -164,8 +155,8 @@ def _exercise_group(exercise: PlannedExercise, group_order: int) -> dict:
 
     if use_repeat_group:
         inner_steps = [
-            _active_step(exercise.garmin_category, s0.reps, s0.weight_kg, 1),
-            _rest_step(exercise.rest_seconds, 2),
+            _active_step(exercise.garmin_category, s0.weight_kg, 1),
+            _rest_step(2),
         ]
         return {
             "type": "RepeatGroupDTO",
@@ -182,8 +173,8 @@ def _exercise_group(exercise: PlannedExercise, group_order: int) -> dict:
     # Varying sets — flatten into individual steps
     steps = []
     for i, s in enumerate(exercise.sets, start=1):
-        steps.append(_active_step(exercise.garmin_category, s.reps, s.weight_kg, i * 2 - 1))
-        steps.append(_rest_step(exercise.rest_seconds, i * 2))
+        steps.append(_active_step(exercise.garmin_category, s.weight_kg, i * 2 - 1))
+        steps.append(_rest_step(i * 2))
     return {
         "type": "RepeatGroupDTO",
         "stepOrder": group_order,
