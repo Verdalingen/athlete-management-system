@@ -48,11 +48,11 @@ _CATEGORY_FALLBACK: dict[str, str] = {
     "CONCENTRATION_CURL": "CURL",
 }
 
-# Garmin sport type for strength / gym activities
+# Garmin sport type for strength / gym activities (sportTypeId 5 = strength_training in workout API)
 _STRENGTH_SPORT_TYPE = {
-    "sportTypeId": 6,
-    "sportTypeKey": "fitness_equipment",
-    "displayOrder": 6,
+    "sportTypeId": 5,
+    "sportTypeKey": "strength_training",
+    "displayOrder": 5,
 }
 
 _NO_TARGET = {
