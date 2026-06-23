@@ -105,7 +105,9 @@ SHRUG, FACE_PULL, CHEST_FLY, DIP, PUSH_UP
 
 Rules:
 - Include only set×rep exercises. Skip time-based elements (mobility, core circuits, cardio warm-ups).
-- weight_kg: set only if explicitly specified; otherwise null (athlete selects on watch).
+- display_name: MUST specify equipment — e.g. "Barbell Bench Press", "DB OHP", "DB Chest-Supported Row",
+  "Cable Lat Pulldown", "Barbell RDL". Never just "Bench Press" or "Row".
+- weight_kg: always null — the athlete sets weight on the day. Do not guess or prescribe a weight.
 - rest_seconds: 180 (3 minutes) for ALL exercises without exception — accessories included. Never use a lower value.
 - reps: use midpoint if a range is given (e.g. "8-10" → 9).
 

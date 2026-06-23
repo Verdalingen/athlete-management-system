@@ -86,6 +86,15 @@ _LAP_BUTTON_CONDITION = {
     "displayable": True,
 }
 
+# Used only on RepeatGroupDTO to tell Garmin how many sets to loop through.
+# Individual set/rest steps use _LAP_BUTTON_CONDITION for manual athlete control.
+_ITERATIONS_CONDITION = {
+    "conditionTypeId": 7,
+    "conditionTypeKey": "iterations",
+    "displayOrder": 7,
+    "displayable": False,
+}
+
 
 @dataclass
 class PlannedSet:
@@ -125,9 +134,6 @@ def _active_step(garmin_category: str, weight_kg: float | None, step_order: int)
         "targetType": _NO_TARGET,
         "category": normalized,
     }
-    if weight_kg is not None:
-        step["weightValue"] = weight_kg * 1000  # Garmin stores grams
-        step["weightDisplayUnit"] = "kilogram"
     return step
 
 

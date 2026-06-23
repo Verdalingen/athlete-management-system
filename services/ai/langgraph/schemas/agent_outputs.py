@@ -21,10 +21,10 @@ class AgentOutput(BaseModel):
 
 class StrengthExercise(BaseModel):
     garmin_category: str = Field(..., description="Garmin category key e.g. BENCH_PRESS")
-    display_name: str = Field(..., description="Human-readable exercise name")
+    display_name: str = Field(..., description="Human-readable name including equipment — e.g. 'Barbell Bench Press', 'DB OHP', 'DB Chest-Supported Row'. Never generic like 'Bench Press' or 'Row'.")
     sets: int = Field(..., description="Number of sets")
     reps: int = Field(..., description="Reps per set; use midpoint if a range is given")
-    weight_kg: float | None = Field(None, description="Weight in kg; null if RPE-based or unspecified")
+    weight_kg: float | None = Field(None, description="Always null — Garmin's API does not support pre-setting weight via structured workout upload.")
     rest_seconds: int = Field(180, description="Rest between sets in seconds. 180 (3 min) for ALL exercises — this is the floor, never go lower.")
 
 
