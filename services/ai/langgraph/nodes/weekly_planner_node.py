@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
@@ -29,6 +31,28 @@ def _safe_expert(output: Any, field: str) -> str:
     return extract_expert_output(output, field)
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Garmin exercise catalog — loaded once at import, embedded in the prompt.
+# ---------------------------------------------------------------------------
+_CATALOG_PATH = os.path.join(os.path.dirname(__file__), "../../../garmin/exercise_catalog.json")
+_SKIP_CATEGORIES = {"BATTLE_ROPE", "BIKE", "CARRY", "CHOP", "ELLIPTICAL", "INDOOR_BIKE",
+                    "INDOOR_ROW", "POSE", "RUN_INDOOR", "STAIR_STEPPER", "TOTAL_BODY"}
+
+def _build_catalog_block() -> str:
+    try:
+        with open(_CATALOG_PATH) as f:
+            entries = json.load(f)
+    except Exception:
+        return "(catalog unavailable)"
+    by_cat: dict[str, list[str]] = defaultdict(list)
+    for e in entries:
+        if e["category"] not in _SKIP_CATEGORIES:
+            by_cat[e["category"]].append(e["key"])
+    lines = [f'{cat}: {", ".join(sorted(keys))}' for cat, keys in sorted(by_cat.items())]
+    return "\n".join(lines)
+
+_GARMIN_EXERCISE_CATALOG = _build_catalog_block()
 
 WEEKLY_PLANNER_SYSTEM_PROMPT = """## Goal
 Create detailed, practical training plans that balance stress and recovery.
@@ -89,24 +113,21 @@ WEEKLY_PLANNER_FINAL_CHECKLIST = """
 When outputting the final markdown plan (not HITL questions), also populate the
 `strength_sessions` field with every strength session in the plan.
 
-Valid garmin_category values:
-BENCH_PRESS, INCLINE_BENCH_PRESS, DECLINE_BENCH_PRESS,
-BARBELL_ROW, SEATED_CABLE_ROW, ROW,
-PULL_UP, LAT_PULLDOWN,
-SHOULDER_PRESS, OVERHEAD_PRESS,
-TRICEPS_EXTENSION, TRICEPS_PUSHDOWN,
-CURL, HAMMER_CURL,
-DEADLIFT, ROMANIAN_DEADLIFT,
-SQUAT, FRONT_SQUAT, GOBLET_SQUAT,
-LUNGE, SPLIT_SQUAT, BULGARIAN_SPLIT_SQUAT,
-LATERAL_RAISE, FRONT_RAISE,
-PLANK, HIP_THRUST, CALF_RAISE,
-SHRUG, FACE_PULL, CHEST_FLY, DIP, PUSH_UP
+### Garmin Exercise Catalog
+Use the catalog below to set garmin_category and garmin_exercise_key for each exercise.
+- garmin_category: the category prefix (e.g. BENCH_PRESS, ROW, LATERAL_RAISE)
+- garmin_exercise_key: the exact key from the catalog line for that category
+  (e.g. BARBELL_BENCH_PRESS, CHEST_SUPPORTED_DUMBBELL_ROW, LEANING_DUMBBELL_LATERAL_RAISE)
+  Set to null only if no catalog entry fits.
+
+{catalog}
 
 Rules:
 - Include only set×rep exercises. Skip time-based elements (mobility, core circuits, cardio warm-ups).
-- display_name: MUST specify equipment — e.g. "Barbell Bench Press", "DB OHP", "DB Chest-Supported Row",
-  "Cable Lat Pulldown", "Barbell RDL". Never just "Bench Press" or "Row".
+- garmin_exercise_key: MUST be picked from the catalog above. Always prefer the most specific match
+  (e.g. CHEST_SUPPORTED_DUMBBELL_ROW over DUMBBELL_ROW, BARBELL_STRAIGHT_LEG_DEADLIFT over BARBELL_DEADLIFT).
+- display_name: human-readable label including equipment — e.g. "Barbell Bench Press", "DB OHP",
+  "DB Chest-Supported Row". Never generic like "Bench Press" or "Row".
 - weight_kg: always null — the athlete sets weight on the day. Do not guess or prescribe a weight.
 - rest_seconds: 180 (3 minutes) for ALL exercises without exception — accessories included. Never use a lower value.
 - reps: use midpoint if a range is given (e.g. "8-10" → 9).
@@ -144,7 +165,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
         get_workflow_context("weekly_planner")
         + WEEKLY_PLANNER_SYSTEM_PROMPT
         + (get_hitl_instructions("weekly_planner") if hitl_enabled else "")
-        + WEEKLY_PLANNER_FINAL_CHECKLIST
+        + WEEKLY_PLANNER_FINAL_CHECKLIST.format(catalog=_GARMIN_EXERCISE_CATALOG)
     )
 
     qa_messages = normalize_langchain_messages(state.get("weekly_planner_messages", []))

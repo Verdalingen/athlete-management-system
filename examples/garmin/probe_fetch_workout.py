@@ -1,4 +1,4 @@
-"""Upload a minimal test workout then fetch it back — reveals the exerciseName field structure."""
+"""Fetch a manually-created Garmin workout to extract exerciseName IDs."""
 import getpass
 import json
 import os
@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from services.garmin.client import GarminConnectClient
-from services.garmin.strength_uploader import delete_strength_workout
 
 
 def main() -> None:
@@ -23,43 +22,33 @@ def main() -> None:
     gc.connect(email=email, password=password)
     client = gc.client
 
-    from services.garmin.strength_uploader import (
-        PlannedExercise, PlannedSet, PlannedStrengthSession, build_strength_workout_json,
-    )
+    workouts = client.get_workouts(start=0, limit=50)
+    print("Workouts in library:")
+    for w in workouts:
+        print(f"  {w['workoutId']}  {w['workoutName']}")
 
-    session = PlannedStrengthSession(
-        name="[PROBE] Delete me",
-        date="2026-06-24",
-        exercises=[
-            PlannedExercise(
-                garmin_category="BENCH_PRESS",
-                display_name="Barbell Bench Press",
-                sets=[PlannedSet(reps=5, weight_kg=100.0)] * 3,
-            ),
-        ],
-        estimated_duration_secs=1800,
-    )
+    # Find the manually-created probe workout
+    target = next((w for w in workouts if "PROBE" in w["workoutName"].upper()), None)
+    if target is None:
+        print("\nNo 'PROBE' workout found — create one manually in Garmin Connect first.")
+        gc.disconnect()
+        return
+    print(f"\nFetching: {target['workoutName']} (id={target['workoutId']})\n")
+    stored = client.get_workout_by_id(target["workoutId"])
 
-    workout_json = build_strength_workout_json(session)
-    active_step = workout_json["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"][0]
-    print("Upload JSON active step:", json.dumps(active_step, indent=2))
-
-    response = client.upload_workout(workout_json)
-    workout_id = response.get("workoutId") or response.get("workout_id")
-    print(f"\nUploaded → workoutId={workout_id}")
-
-    stored = client.get_workout_by_id(workout_id)
-    step = stored["workoutSegments"][0]["workoutSteps"][0]["workoutSteps"][0]
-    print(f"\nweightValue stored: {step.get('weightValue')!r}")
-    print(f"weightUnit stored:  {step.get('weightUnit')!r}")
-    print(f"exerciseName field: {step.get('exerciseName')!r}")
-
-    delete_strength_workout(client, int(workout_id))
-    print(f"\nDeleted workoutId={workout_id}")
+    print(f"{'Exercise':<35} {'category':<20} {'exerciseName'}")
+    print("-" * 80)
+    for segment in stored.get("workoutSegments", []):
+        for step in segment.get("workoutSteps", []):
+            for inner in step.get("workoutSteps", [step]):
+                cat = inner.get("category")
+                if not cat:
+                    continue
+                en = inner.get("exerciseName")
+                print(f"{str(en):<35} {cat:<20} {json.dumps(en)}")
 
     gc.disconnect()
 
 
 if __name__ == "__main__":
     main()
-

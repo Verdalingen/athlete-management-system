@@ -9,6 +9,114 @@ from garminconnect import Garmin
 
 logger = logging.getLogger(__name__)
 
+# Maps display_name keywords (longest/most-specific first) to (exerciseNameId, exerciseNameKey).
+# Checked via substring match on normalized (lowercase) display_name.
+# IDs sourced from hevy2garmin reverse-engineered Garmin FIT SDK catalog.
+_EXERCISE_NAME_LOOKUP: list[tuple[str, int, str]] = [
+    # BENCH_PRESS (category 0)
+    ("close grip barbell bench", 4, "close_grip_barbell_bench_press"),
+    ("close grip bench", 4, "close_grip_barbell_bench_press"),
+    ("incline barbell bench", 8, "incline_barbell_bench_press"),
+    ("incline barbell press", 8, "incline_barbell_bench_press"),
+    ("incline dumbbell bench", 9, "incline_dumbbell_bench_press"),
+    ("incline dumbbell press", 9, "incline_dumbbell_bench_press"),
+    ("incline db bench", 9, "incline_dumbbell_bench_press"),
+    ("incline db press", 9, "incline_dumbbell_bench_press"),
+    ("dumbbell bench press", 6, "dumbbell_bench_press"),
+    ("db bench press", 6, "dumbbell_bench_press"),
+    ("db bench", 6, "dumbbell_bench_press"),
+    ("barbell bench press", 1, "barbell_bench_press"),
+    ("barbell bench", 1, "barbell_bench_press"),
+    # ROW (category 23)
+    ("chest supported dumbbell row", 40, "chest_supported_dumbbell_row"),
+    ("chest-supported dumbbell row", 40, "chest_supported_dumbbell_row"),
+    ("chest supported db row", 40, "chest_supported_dumbbell_row"),
+    ("chest-supported db row", 40, "chest_supported_dumbbell_row"),
+    ("chest supported row", 40, "chest_supported_dumbbell_row"),
+    ("chest-supported row", 40, "chest_supported_dumbbell_row"),
+    ("face pull", 5, "face_pull"),
+    ("bent over barbell row", 46, "bent_over_barbell_row"),
+    ("barbell row", 46, "bent_over_barbell_row"),
+    ("dumbbell row", 2, "dumbbell_row"),
+    ("db row", 2, "dumbbell_row"),
+    # PULL_UP (category 21)
+    ("cable lat pulldown", 13, "lat_pulldown"),
+    ("lat pulldown", 13, "lat_pulldown"),
+    ("pull up", 38, "pull_up"),
+    ("pullup", 38, "pull_up"),
+    # SHOULDER_PRESS (category 24)
+    ("dumbbell shoulder press", 15, "overhead_dumbbell_press"),
+    ("db shoulder press", 15, "overhead_dumbbell_press"),
+    ("overhead dumbbell press", 15, "overhead_dumbbell_press"),
+    ("overhead db press", 15, "overhead_dumbbell_press"),
+    ("dumbbell ohp", 15, "overhead_dumbbell_press"),
+    ("db ohp", 15, "overhead_dumbbell_press"),
+    ("overhead barbell press", 14, "overhead_barbell_press"),
+    ("barbell ohp", 14, "overhead_barbell_press"),
+    # LATERAL_RAISE (category 14)
+    ("dumbbell lateral raise", 11, "leaning_dumbbell_lateral_raise"),
+    ("db lateral raise", 11, "leaning_dumbbell_lateral_raise"),
+    ("lateral raise", 11, "leaning_dumbbell_lateral_raise"),
+    # FLYE (category 9) — rear delts
+    ("rear delt reverse fly", 5, "kneeling_rear_flye"),
+    ("rear delt fly", 5, "kneeling_rear_flye"),
+    ("rear delt flye", 5, "kneeling_rear_flye"),
+    ("rear delt", 5, "kneeling_rear_flye"),
+    # CURL (category 7)
+    ("dumbbell bicep curl", 37, "standing_dumbbell_biceps_curl"),
+    ("dumbbell curl", 37, "standing_dumbbell_biceps_curl"),
+    ("db bicep curl", 37, "standing_dumbbell_biceps_curl"),
+    ("db curl", 37, "standing_dumbbell_biceps_curl"),
+    ("barbell bicep curl", 3, "barbell_biceps_curl"),
+    ("barbell curl", 3, "barbell_biceps_curl"),
+    # TRICEPS_EXTENSION (category 30)
+    ("overhead cable tricep", 5, "cable_overhead_triceps_extension"),
+    ("cable overhead tricep", 5, "cable_overhead_triceps_extension"),
+    ("rope pushdown", 19, "rope_pressdown"),
+    ("cable tricep pushdown", 39, "triceps_pressdown"),
+    ("tricep pushdown", 39, "triceps_pressdown"),
+    ("cable tricep extension", 5, "cable_overhead_triceps_extension"),
+    ("dumbbell tricep extension", 15, "overhead_dumbbell_triceps_extension"),
+    ("db tricep extension", 15, "overhead_dumbbell_triceps_extension"),
+    ("dumbbell skullcrusher", 7, "dumbbell_lying_triceps_extension"),
+    ("barbell skullcrusher", 13, "lying_ez_bar_triceps_extension"),
+    ("skullcrusher", 13, "lying_ez_bar_triceps_extension"),
+    ("tricep extension", 5, "cable_overhead_triceps_extension"),
+    ("triceps extension", 5, "cable_overhead_triceps_extension"),
+    # DEADLIFT (category 8)
+    ("barbell romanian deadlift", 1, "barbell_straight_leg_deadlift"),
+    ("barbell rdl", 1, "barbell_straight_leg_deadlift"),
+    ("romanian deadlift", 1, "barbell_straight_leg_deadlift"),
+    ("dumbbell rdl", 4, "dumbbell_straight_leg_deadlift"),
+    ("db rdl", 4, "dumbbell_straight_leg_deadlift"),
+    # LUNGE (category 17)
+    ("bulgarian split squat", 7, "barbell_bulgarian_split_squat"),
+    # SQUAT (category 28)
+    ("barbell back squat", 6, "barbell_back_squat"),
+    ("barbell squat", 6, "barbell_back_squat"),
+    ("back squat", 6, "barbell_back_squat"),
+    # CALF_RAISE (category 1)
+    ("standing calf raise", 18, "standing_calf_raise"),
+    ("calf raise", 18, "standing_calf_raise"),
+]
+
+
+def _lookup_exercise_name(display_name: str) -> str | None:
+    """Return Garmin's uppercase FIT SDK exerciseName key, or None if no match.
+
+    Garmin's workout API accepts exerciseName as an uppercase FIT SDK enum string,
+    e.g. "BARBELL_BENCH_PRESS". Keys in _EXERCISE_NAME_LOOKUP are lowercase — we
+    uppercase them here. Hyphens in display_name are normalised to spaces so
+    "chest-supported" matches keyword "chest supported".
+    """
+    normalized = display_name.lower().strip().replace("-", " ")
+    for keyword, _name_id, name_key in _EXERCISE_NAME_LOOKUP:
+        if keyword in normalized:
+            return name_key.upper()
+    logger.debug("No exerciseName match for display_name=%r", display_name)
+    return None
+
+
 # Maps AI-generated exercise names that aren't valid Garmin category keys to their
 # closest base category. The Garmin API only accepts top-level category names.
 _CATEGORY_FALLBACK: dict[str, str] = {
@@ -36,14 +144,14 @@ _CATEGORY_FALLBACK: dict[str, str] = {
     "TRICEPS_PUSHDOWN": "TRICEPS_EXTENSION",
     "OVERHEAD_TRICEPS_EXTENSION": "TRICEPS_EXTENSION",
     "SKULLCRUSHER": "TRICEPS_EXTENSION",
-    "LATERAL_RAISE": "SHOULDER_PRESS",
-    "FRONT_RAISE": "SHOULDER_PRESS",
+    "FRONT_RAISE": "LATERAL_RAISE",
     "FACE_PULL": "ROW",
     "CABLE_FACE_PULL": "ROW",
     "HIP_THRUST": "DEADLIFT",
     "GLUTE_BRIDGE": "DEADLIFT",
-    "CHEST_FLY": "BENCH_PRESS",
-    "CABLE_FLY": "BENCH_PRESS",
+    "CHEST_FLY": "FLYE",
+    "CABLE_FLY": "FLYE",
+    "REAR_DELT_FLY": "FLYE",
     "INCLINE_CURL": "CURL",
     "CONCENTRATION_CURL": "CURL",
 }
@@ -104,10 +212,11 @@ class PlannedSet:
 
 @dataclass
 class PlannedExercise:
-    garmin_category: str         # Garmin category key, e.g. "BENCH_PRESS"
-    display_name: str            # Human-readable name used in the workout title
+    garmin_category: str                    # Garmin category key, e.g. "BENCH_PRESS"
+    display_name: str                       # Human-readable name used in the workout title
+    garmin_exercise_key: str | None = None  # Exact FIT SDK key e.g. "BARBELL_BENCH_PRESS"
     sets: list[PlannedSet] = field(default_factory=list)
-    rest_seconds: int = 180      # Rest between sets (informational; watch uses lap-button)
+    rest_seconds: int = 180                 # Informational; watch uses lap-button
 
 
 @dataclass
@@ -122,7 +231,13 @@ class PlannedStrengthSession:
 # Workout JSON builders
 # ---------------------------------------------------------------------------
 
-def _active_step(garmin_category: str, weight_kg: float | None, step_order: int) -> dict:
+def _active_step(
+    garmin_category: str,
+    weight_kg: float | None,
+    step_order: int,
+    display_name: str = "",
+    garmin_exercise_key: str | None = None,
+) -> dict:
     normalized = _CATEGORY_FALLBACK.get(garmin_category, garmin_category)
     if normalized != garmin_category:
         logger.debug("Normalized category %s → %s", garmin_category, normalized)
@@ -134,6 +249,10 @@ def _active_step(garmin_category: str, weight_kg: float | None, step_order: int)
         "targetType": _NO_TARGET,
         "category": normalized,
     }
+    # Prefer AI-provided key (exact catalog match); fall back to keyword lookup.
+    exercise_name = garmin_exercise_key or _lookup_exercise_name(display_name)
+    if exercise_name:
+        step["exerciseName"] = exercise_name
     return step
 
 
@@ -161,7 +280,7 @@ def _exercise_group(exercise: PlannedExercise, group_order: int) -> dict:
 
     if use_repeat_group:
         inner_steps = [
-            _active_step(exercise.garmin_category, s0.weight_kg, 1),
+            _active_step(exercise.garmin_category, s0.weight_kg, 1, exercise.display_name, exercise.garmin_exercise_key),
             _rest_step(2),
         ]
         return {
@@ -179,7 +298,7 @@ def _exercise_group(exercise: PlannedExercise, group_order: int) -> dict:
     # Varying sets — flatten into individual steps
     steps = []
     for i, s in enumerate(exercise.sets, start=1):
-        steps.append(_active_step(exercise.garmin_category, s.weight_kg, i * 2 - 1))
+        steps.append(_active_step(exercise.garmin_category, s.weight_kg, i * 2 - 1, exercise.display_name, exercise.garmin_exercise_key))
         steps.append(_rest_step(i * 2))
     return {
         "type": "RepeatGroupDTO",

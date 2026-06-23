@@ -21,6 +21,7 @@ class AgentOutput(BaseModel):
 
 class StrengthExercise(BaseModel):
     garmin_category: str = Field(..., description="Garmin category key e.g. BENCH_PRESS")
+    garmin_exercise_key: str | None = Field(None, description="Exact Garmin FIT SDK exercise key from the catalog, e.g. 'BARBELL_BENCH_PRESS'. Must match an entry in the catalog provided in the prompt. Leave null only if no catalog entry fits.")
     display_name: str = Field(..., description="Human-readable name including equipment — e.g. 'Barbell Bench Press', 'DB OHP', 'DB Chest-Supported Row'. Never generic like 'Bench Press' or 'Row'.")
     sets: int = Field(..., description="Number of sets")
     reps: int = Field(..., description="Reps per set; use midpoint if a range is given")

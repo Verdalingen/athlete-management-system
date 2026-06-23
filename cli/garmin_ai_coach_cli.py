@@ -414,6 +414,7 @@ def _upload_strength_sessions(
                 PlannedExercise(
                     garmin_category=ex["garmin_category"],
                     display_name=ex["display_name"],
+                    garmin_exercise_key=ex.get("garmin_exercise_key"),
                     sets=[PlannedSet(
                         reps=ex["reps"],
                         weight_kg=ex.get("weight_kg"),
