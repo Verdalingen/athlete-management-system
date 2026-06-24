@@ -184,3 +184,4 @@ class GarminData:
     training_load_history: list[dict[str, Any]] | None = None
     long_term_vo2_max_trend: dict[str, list[dict[str, Any]]] | None = None
     long_term_training_load_trend: list[dict[str, Any]] | None = None
+    race_predictions: dict[str, Any] | None = None

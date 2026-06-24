@@ -18,6 +18,7 @@ garmin-ai-coach = { path = ".", editable = true }
 garminconnect = ">=0.2.30, <0.3"
 anthropic = ">=0.71.0, <0.72"
 typing-extensions = ">=4.13.0"  # pydantic-core 2.33+ requires Sentinel which landed in 4.13
+supabase = ">=2.15.0"
 pydantic = ">=2.12, <3"
 pydantic-settings = ">=2.0, <3"
 langchain = ">=1.0.0, <2"

@@ -353,6 +353,12 @@ class TriathlonCoachDataExtractor(DataExtractor):
                 }
             )
 
+        data["race_predictions"] = self._call_api(
+            self.garmin.client.get_race_predictions,
+            default=None,
+            what="get_race_predictions",
+        )
+
         return GarminData(**data)
 
     # --------- User / Daily ---------

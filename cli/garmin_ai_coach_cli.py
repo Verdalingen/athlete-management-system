@@ -25,6 +25,7 @@ from services.garmin import ExtractionConfig, TriathlonCoachDataExtractor
 from services.garmin.client import GarminConnectClient
 from services.garmin.strength_uploader import PlannedExercise, PlannedSet, PlannedStrengthSession, delete_strength_workout, upload_strength_session
 from services.outside.client import OutsideApiGraphQlClient
+from services.supabase.plan_writer import write_plan, write_report
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -302,6 +303,7 @@ async def run_analysis_from_config(config_path: Path) -> None:
         logger.info("📁 Results saved to: %s", output_dir)
         logger.info("💰 Total cost: $%.2f (%d tokens)", cost_total, total_tokens)
 
+        workout_ids: dict[str, Any] = {}
         if extraction_settings.get("upload_to_garmin", False):
             strength_sessions = result.get("strength_sessions") or []
             if strength_sessions:
@@ -309,12 +311,13 @@ async def run_analysis_from_config(config_path: Path) -> None:
                 storage = FilePlanStorage(base_dir=str(output_dir / "storage"))
                 workout_ids = _upload_strength_sessions(strength_sessions, email, password)
                 if workout_ids:
-                    # Merge with any previously stored IDs (keeps entries for sessions not re-uploaded)
                     existing = storage.load_json("cli_user", "garmin_workout_ids") or {}
                     existing.update(workout_ids)
                     storage.save_json("cli_user", "garmin_workout_ids", existing)
             else:
                 logger.info("📲 upload_to_garmin is enabled but no strength sessions found in plan.")
+
+        _write_to_supabase(result, workout_ids, garmin_data=asdict(garmin_data))
     except Exception as e:
         logger.error("❌ Analysis failed: %s", e)
         raise
@@ -384,6 +387,7 @@ async def run_replan_from_config(config_path: Path) -> None:
     files = _save_plan_outputs(output_dir, result)
     logger.info("✅ Re-plan complete! Updated: %s", files)
 
+    workout_ids: dict[str, Any] = {}
     if extraction_settings.get("upload_to_garmin", False):
         strength_sessions = result.get("strength_sessions") or []
         if strength_sessions:
@@ -396,6 +400,122 @@ async def run_replan_from_config(config_path: Path) -> None:
                 storage2.save_json("cli_user", "garmin_workout_ids", existing)
         else:
             logger.info("📲 upload_to_garmin is enabled but no strength sessions in re-plan.")
+
+    _write_to_supabase(result, workout_ids, garmin_data=asdict(garmin_data))
+    _write_report_to_supabase(output_dir, garmin_data=asdict(garmin_data))
+
+
+def _write_report_to_supabase(
+    output_dir: Path,
+    garmin_data: dict[str, Any] | None = None,
+) -> None:
+    """Upload analysis/planning HTML from disk to Supabase if they exist."""
+    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+        return
+    analysis_path = output_dir / "analysis.html"
+    planning_path = output_dir / "planning.html"
+    analysis_html = analysis_path.read_text(encoding="utf-8") if analysis_path.exists() else None
+    planning_html = planning_path.read_text(encoding="utf-8") if planning_path.exists() else None
+    if analysis_html or planning_html:
+        try:
+            bench_e1rm = _compute_bench_e1rm(garmin_data or {})
+            predicted_5k = _compute_predicted_5k_secs(garmin_data or {})
+            write_report(
+                analysis_html=analysis_html,
+                planning_html=planning_html,
+                bench_e1rm_kg=bench_e1rm,
+                predicted_5k_secs=predicted_5k,
+            )
+        except Exception as exc:
+            logger.warning("⚠️  Report write to Supabase failed: %s", exc)
+
+
+def _compute_bench_e1rm(garmin_data: dict[str, Any]) -> float | None:
+    """Epley e1RM from the heaviest barbell bench set across recent activities."""
+    best: float | None = None
+    for act in (garmin_data.get("recent_activities") or []):
+        for s in (act.get("exercise_sets") or []):
+            if s.get("set_type") == "REST":
+                continue
+            cat = (s.get("exercise_category") or "").upper()
+            if "BENCH_PRESS" not in cat:
+                continue
+            name = (s.get("exercise_name") or "").upper()
+            if any(x in name for x in ("MACHINE", "SMITH", "CABLE")):
+                continue
+            w = s.get("weight_kg")
+            r = s.get("reps")
+            if w and r and r > 1:
+                e1rm = w * (1 + r / 30)
+                if best is None or e1rm > best:
+                    best = e1rm
+    return round(best, 1) if best is not None else None
+
+
+def _compute_predicted_5k_secs(garmin_data: dict[str, Any]) -> int | None:
+    """Extract 5k prediction (seconds) from Garmin race predictions payload."""
+    preds = garmin_data.get("race_predictions")
+    if not preds or not isinstance(preds, dict):
+        return None
+    # Garmin returns the payload nested; walk common key variants defensively.
+    candidates = [
+        preds.get("fiveK"),
+        preds.get("5k"),
+        preds.get("raceTime5K"),
+        (preds.get("racePredictions") or {}).get("raceTime5K"),
+        (preds.get("racePredictions") or {}).get("fiveK"),
+    ]
+    for c in candidates:
+        if c is None:
+            continue
+        secs = c if isinstance(c, (int, float)) else c.get("time") or c.get("raceDuration")
+        if secs:
+            return int(secs)
+    # Log the raw payload once so we can refine the key on the next run.
+    logger.info("race_predictions payload (for key mapping): %s", json.dumps(preds)[:500])
+    return None
+
+
+def _write_to_supabase(
+    result: dict[str, Any],
+    workout_ids: dict[str, Any],
+    garmin_data: dict[str, Any] | None = None,
+) -> None:
+    """Write the completed plan to Supabase. Logs a warning and continues on failure."""
+    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_SERVICE_ROLE_KEY"):
+        logger.debug("Supabase not configured — skipping write.")
+        return
+    try:
+        weekly_plan = result.get("weekly_plan") or {}
+        markdown = weekly_plan.get("output", "") if isinstance(weekly_plan, dict) else str(weekly_plan)
+        plan_id = write_plan(
+            markdown=markdown,
+            scheduled_days=result.get("scheduled_days") or [],
+            strength_sessions=result.get("strength_sessions") or [],
+            garmin_workout_ids=workout_ids,
+        )
+        logger.info("📊 Plan saved to Supabase (id=%s)", plan_id)
+        analysis_html = result.get("analysis_html") or ""
+        planning_html = result.get("planning_html") or ""
+        if isinstance(analysis_html, dict):
+            analysis_html = analysis_html.get("content", "")
+        if isinstance(planning_html, dict):
+            planning_html = planning_html.get("content", "")
+        if analysis_html or planning_html:
+            bench_e1rm = _compute_bench_e1rm(garmin_data or {})
+            predicted_5k = _compute_predicted_5k_secs(garmin_data or {})
+            if bench_e1rm:
+                logger.info("📈 Bench e1RM: %.1f kg", bench_e1rm)
+            if predicted_5k:
+                logger.info("🏃 Predicted 5k: %d s (%d:%02d)", predicted_5k, predicted_5k // 60, predicted_5k % 60)
+            write_report(
+                analysis_html=analysis_html,
+                planning_html=planning_html,
+                bench_e1rm_kg=bench_e1rm,
+                predicted_5k_secs=predicted_5k,
+            )
+    except Exception as exc:
+        logger.warning("⚠️  Supabase write failed (plan still saved locally): %s", exc)
 
 
 def _upload_strength_sessions(
