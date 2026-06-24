@@ -139,7 +139,16 @@ one per day, using the exact dates from the Upcoming Weeks list provided in the 
 Rules:
 - session_type: "run" for any running session, "strength" for gym work, "rest" for off/recovery
   days, "cross" for other cardio (bike, swim, hike), "race" for competitions.
-- focus: 1-2 words matching the plan (e.g. "VO2max", "Tempo", "Easy", "Strength A", "Rest").
+- focus: 1-3 words that immediately convey what the session IS. Be specific — a reader should
+  understand the session type at a glance without reading the description.
+  Run focus examples (pick the most accurate):
+    "Recovery Run", "Easy Aerobic", "Long Run", "Progression Run",
+    "Tempo Run", "Threshold Run", "2k Tempo", "Cruise Intervals",
+    "Short Intervals", "Track Intervals", "VO₂max Intervals", "Hill Reps",
+    "Fartlek", "Race Pace", "Time Trial", "Strides"
+  Strength focus examples: "Upper A – Bench", "Upper B – Shoulders", "Legs – Functional"
+  Other: "Rest", "Active Recovery", "Cross-Train"
+  Never use bare "Easy", "Moderate", "Hard", or "Run" alone.
 - description: compact notation as written in the plan (e.g. "4x(800m @ 3:50/km, 2min r)").
   Empty string for rest days.
 - is_key_session: true for hard interval sessions, long runs >75min, and heavy strength days.
