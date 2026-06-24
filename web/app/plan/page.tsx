@@ -1,4 +1,4 @@
-import { createServerClient, userId } from "@/lib/supabase-server";
+import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, formatShort } from "@/lib/dates";
 import { parseWeekGoals } from "@/lib/plan-parser";
 import type { Plan, ScheduledDay } from "@/lib/types";
@@ -102,7 +102,7 @@ const SESSION_COLOR: Record<string, string> = {
 export default async function PlanPage() {
   const today = todayISO();
   const sb = createServerClient();
-  const uid = userId();
+  const uid = await getUserId();
 
   const [planRes, daysRes] = await Promise.all([
     sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1),

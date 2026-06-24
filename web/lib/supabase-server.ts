@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient as createSSRClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
-// Server-only client — uses service_role key, never sent to the browser.
+// Service-role client for data queries — bypasses RLS, never sent to browser.
 export function createServerClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,6 +10,22 @@ export function createServerClient() {
   );
 }
 
-export function userId(): string {
-  return process.env.SUPABASE_USER_ID!;
+// Returns the authenticated user's ID from the current session.
+// Middleware guarantees a valid session exists before any page renders,
+// so this will always resolve in practice.
+export async function getUserId(): Promise<string> {
+  const cookieStore = await cookies();
+  const supabase = createSSRClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {}, // no-op: middleware handles token refresh
+      },
+    }
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  return user.id;
 }

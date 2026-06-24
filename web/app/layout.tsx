@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { signOut } from "@/app/login/actions";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -33,7 +34,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/plan" className="nav-link">Plan</Link>
               <Link href="/report" className="nav-link">Report</Link>
             </nav>
-            <HeaderDate />
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <HeaderDate />
+              <form action={signOut}>
+                <button type="submit" className="nav-link" style={{ background: "none", border: "none", cursor: "pointer" }}>
+                  Sign out
+                </button>
+              </form>
+            </div>
           </div>
         </header>
         {children}

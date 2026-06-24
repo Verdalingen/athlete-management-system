@@ -1,4 +1,4 @@
-import { createServerClient, userId } from "@/lib/supabase-server";
+import { createServerClient, getUserId } from "@/lib/supabase-server";
 import ReportTabs from "./ReportTabs";
 
 interface Analysis {
@@ -19,7 +19,7 @@ function extractMain(html: string): string {
 
 export default async function ReportPage() {
   const sb = createServerClient();
-  const uid = userId();
+  const uid = await getUserId();
 
   const { data } = await sb
     .from("analyses")

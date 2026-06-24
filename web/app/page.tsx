@@ -1,4 +1,4 @@
-import { createServerClient, userId } from "@/lib/supabase-server";
+import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, weekBounds, formatLong, formatShort, formatWeekday, formatDuration, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
 import type { Plan, ScheduledDay, StrengthSession } from "@/lib/types";
 
@@ -36,7 +36,7 @@ export default async function DashboardPage() {
   const today = todayISO();
   const { start: weekStart, end: weekEnd } = weekBounds(today);
   const sb = createServerClient();
-  const uid = userId();
+  const uid = await getUserId();
 
   const [planRes, dayRes, sessRes, weekRes, nextKeyRes, metricsRes] = await Promise.all([
     sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1),
