@@ -5,6 +5,8 @@ import { formatShort } from "@/lib/dates";
 import type { Plan } from "@/lib/types";
 import { signOut } from "@/app/login/actions";
 import { MaxHRInput } from "./MaxHRInput";
+import { getAthleteProfile } from "@/app/actions/athlete-profile";
+import Link from "next/link";
 
 interface Zone {
   zone: string;
@@ -56,10 +58,11 @@ export default async function ProfilePage() {
     ? new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
 
-  const [planRes, garminHrRes, settingsRes] = await Promise.all([
+  const [planRes, garminHrRes, settingsRes, athleteProfile] = await Promise.all([
     sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1),
     sb.from("analyses").select("max_heart_rate_bpm").eq("user_id", uid).not("max_heart_rate_bpm", "is", null).order("report_date", { ascending: false }).limit(1),
     sb.from("user_settings").select("max_heart_rate_bpm").eq("user_id", uid).limit(1),
+    getAthleteProfile(),
   ]);
 
   const plan: Plan | null = planRes.data?.[0] ?? null;
@@ -107,6 +110,53 @@ export default async function ProfilePage() {
       <section className="section">
         <h2 className="section-title">Training Stats</h2>
         <MaxHRInput manualValue={manualMaxHR} garminEstimate={garminMaxHR} />
+      </section>
+
+      {/* ── Coaching Profile ── */}
+      <section className="section">
+        <h2 className="section-title">Coaching Profile</h2>
+        {athleteProfile?.setup_completed ? (
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+                  Coaching context is active
+                </div>
+                <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                  {athleteProfile.primary_goal_detail
+                    ? athleteProfile.primary_goal_detail.slice(0, 120) + (athleteProfile.primary_goal_detail.length > 120 ? "…" : "")
+                    : "Your AI coach has a full briefing on your goals and preferences."}
+                </div>
+              </div>
+              <Link href="/setup" className="btn-secondary" style={{ flexShrink: 0 }}>
+                <i className="ti ti-pencil" style={{ marginRight: 6 }} />Edit profile
+              </Link>
+            </div>
+            {athleteProfile.available_days?.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {athleteProfile.available_days.map(d => (
+                  <span key={d} style={{ background: "rgba(124,92,255,.12)", color: "var(--accent)", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>
+                    {d}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+                Set up your coaching profile
+              </div>
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                Tell your AI coach about your goals, background, and preferences to unlock personalised plans.
+              </div>
+            </div>
+            <Link href="/setup" className="btn-primary" style={{ flexShrink: 0 }}>
+              <i className="ti ti-sparkles" style={{ marginRight: 8 }} />Start setup
+            </Link>
+          </div>
+        )}
       </section>
 
       {/* ── Intensity Zones ── */}

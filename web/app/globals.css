@@ -405,6 +405,60 @@ tr:hover td { background: rgba(255,255,255,.04); }
   opacity: .40; cursor: not-allowed;
 }
 
+/* ── Form inputs ── */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); }
+.field-hint  { font-size: 12px; color: var(--dim); margin-top: 2px; }
+.input, .textarea, .select-input {
+  background: rgba(255,255,255,.05); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); font-family: inherit;
+  font-size: 14px; transition: border-color .12s, background .12s;
+  outline: none; width: 100%;
+}
+.input    { padding: 9px 12px; }
+.textarea { padding: 10px 12px; resize: vertical; min-height: 80px; line-height: 1.5; }
+.select-input { padding: 9px 12px; appearance: none; cursor: pointer; }
+.input:focus, .textarea:focus, .select-input:focus {
+  border-color: var(--accent); background: rgba(255,255,255,.07);
+}
+.input::placeholder, .textarea::placeholder { color: var(--dim); }
+.radio-group, .check-group { display: flex; flex-direction: column; gap: 8px; }
+.radio-opt, .check-opt {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: rgba(255,255,255,.03);
+  transition: border-color .12s, background .12s;
+}
+.radio-opt:hover, .check-opt:hover { background: rgba(255,255,255,.06); }
+.radio-opt.selected, .check-opt.selected { border-color: var(--accent); background: rgba(124,92,255,.08); }
+.radio-opt input, .check-opt input { margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+.radio-opt-label { font-size: 14px; font-weight: 600; color: var(--text); }
+.radio-opt-desc  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.day-btn {
+  padding: 8px 4px; border-radius: 8px; border: 1px solid var(--border);
+  background: rgba(255,255,255,.03); color: var(--muted); font-size: 12px;
+  font-weight: 600; text-align: center; cursor: pointer; font-family: inherit;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.day-btn:hover { background: rgba(255,255,255,.07); }
+.day-btn.selected { border-color: var(--accent); background: rgba(124,92,255,.12); color: var(--accent); }
+
+/* ── Setup wizard ── */
+.wizard-steps { display: flex; gap: 0; margin-bottom: 32px; }
+.wizard-step  { display: flex; align-items: center; gap: 8px; flex: 1; }
+.wizard-step:last-child { flex: 0; }
+.step-dot {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
+  font-weight: 700; color: var(--dim); background: var(--surface); flex-shrink: 0;
+  transition: border-color .2s, background .2s, color .2s;
+}
+.step-dot.done  { border-color: var(--accent); background: var(--accent); color: #fff; }
+.step-dot.active { border-color: var(--accent); color: var(--accent); }
+.step-line { flex: 1; height: 2px; background: var(--border); margin: 0 4px; }
+.step-line.done { background: var(--accent); }
+
 /* ── Prose (plan page) ── */
 .prose { font-size: 14px; line-height: 1.7; }
 .prose p { margin-bottom: 14px; }
@@ -417,3 +471,5 @@ tr:hover td { background: rgba(255,255,255,.04); }
 .prose h4 { font-size: 13px; font-weight: 700; margin: 12px 0 5px; color: var(--muted); }
 .prose pre { background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 12px; }
 .prose code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 4px; font-size: 12px; font-family: var(--mono); }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

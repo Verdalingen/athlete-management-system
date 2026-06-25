@@ -1,0 +1,87 @@
+"use server";
+
+import { createServerClient as createSSRClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
+
+export interface AthleteProfile {
+  // Goals
+  primary_goal_type: string;
+  primary_goal_detail: string;
+  secondary_goals: string;
+  goal_timeline: string;
+  events: Array<{ name: string; date: string; priority: string; target_time: string }>;
+  // Background
+  training_years_strength: string;
+  training_years_cardio: string;
+  sport_background: string;
+  sessions_per_week: number | null;
+  hours_per_week: number | null;
+  bench_1rm_kg: number | null;
+  squat_1rm_kg: number | null;
+  deadlift_1rm_kg: number | null;
+  run_5k_time: string;
+  run_10k_time: string;
+  other_benchmarks: string;
+  // Schedule & Equipment
+  available_days: string[];
+  session_duration_mins: number | null;
+  gym_access: boolean | null;
+  equipment_notes: string;
+  schedule_notes: string;
+  // Health
+  current_injuries: string;
+  injury_history: string;
+  exercises_to_avoid: string;
+  health_notes: string;
+  // Preferences
+  preferred_style: string;
+  training_enjoyments: string;
+  training_dislikes: string;
+  indoor_outdoor: string;
+  additional_notes: string;
+  // Generated context
+  generated_analysis_context: string;
+  generated_planning_context: string;
+  setup_completed: boolean;
+}
+
+async function getUid(): Promise<string> {
+  const cookieStore = await cookies();
+  const supabase = createSSRClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+  return user.id;
+}
+
+function sb() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
+
+export async function saveProfileStep(
+  partial: Partial<AthleteProfile>
+): Promise<{ error?: string }> {
+  const uid = await getUid();
+  const { error } = await sb().from("athlete_profile").upsert(
+    { user_id: uid, ...partial, updated_at: new Date().toISOString() },
+    { onConflict: "user_id" }
+  );
+  if (error) return { error: error.message };
+  revalidatePath("/profile");
+  revalidatePath("/setup");
+  return {};
+}
+
+export async function getAthleteProfile(): Promise<AthleteProfile | null> {
+  const uid = await getUid();
+  const { data } = await sb().from("athlete_profile").select("*").eq("user_id", uid).limit(1);
+  return data?.[0] ?? null;
+}
