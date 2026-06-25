@@ -2,6 +2,7 @@ import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, weekBounds, formatShort, formatDuration, daysBetween } from "@/lib/dates";
 import { parseWeekGoals, parseDayMeta, currentWeekGoal } from "@/lib/plan-parser";
 import type { ScheduledDay, StrengthSession, Plan } from "@/lib/types";
+import { WorkoutStructure } from "@/lib/workout-structure";
 
 const TYPE_COLOR: Record<string, string> = {
   strength: "var(--accent)",
@@ -128,19 +129,17 @@ export default async function WeekPage() {
                 borderColor: isToday ? "var(--cyan)" : undefined,
               }}
             >
-              {/* Card header row */}
+              {/* ── Header ── */}
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: d.is_rest ? 0 : 14, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", textTransform: "uppercase", color: isToday ? "var(--cyan)" : "var(--dim)", marginBottom: 3 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".8px", textTransform: "uppercase", color: isToday ? "var(--cyan)" : "var(--dim)", marginBottom: 4 }}>
                     {fullDate(d.date, isToday)} · {formatShort(d.date)}
                   </div>
-                  <h2 style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2 }}>
-                    {d.is_rest ? "Rest" : (d.focus ?? d.session_type)}
+                  <h2 style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, margin: 0 }}>
+                    {d.is_rest ? "Rest Day" : (d.focus ?? d.session_type)}
                   </h2>
-                  {d.description && !d.is_rest && (
-                    <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
-                      {d.description}
-                    </p>
+                  {session?.name && (
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>{session.name}</div>
                   )}
                 </div>
 
@@ -148,33 +147,54 @@ export default async function WeekPage() {
                 {!d.is_rest && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
                     <span className={TYPE_BADGE[d.session_type] ?? "badge"}>{d.session_type}</span>
-                    {d.is_key && <span className="badge badge-accent">Key</span>}
+                    {d.is_key && <span className="badge badge-accent">Key session</span>}
                     {session && (
-                      <span className="badge badge-blue">{formatDuration(session.estimated_duration_secs)}</span>
+                      <span className="badge badge-blue">
+                        <i className="ti ti-clock" style={{ marginRight: 4 }} />
+                        {formatDuration(session.estimated_duration_secs)}
+                      </span>
+                    )}
+                    {session?.garmin_workout_id && (
+                      <span className="badge badge-green">
+                        <i className="ti ti-check" style={{ marginRight: 4 }} />
+                        Garmin
+                      </span>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Exercise table for strength sessions */}
+              {/* ── Workout structure ── */}
+              {!d.is_rest && d.description && (
+                <div style={{ marginBottom: 14 }}>
+                  <WorkoutStructure description={d.description} />
+                </div>
+              )}
+
+              {/* ── Exercise table ── */}
               {session && session.exercises.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
+                    Exercises · {session.exercises.length} movements
+                  </div>
                   <table>
                     <thead>
                       <tr>
                         <th>Exercise</th>
-                        <th style={{ width: 48 }}>Sets</th>
-                        <th style={{ width: 48 }}>Reps</th>
-                        <th style={{ width: 64 }}>Rest</th>
+                        <th style={{ width: 80, textAlign: "center" }}>Sets × Reps</th>
+                        <th style={{ width: 60, textAlign: "center" }}>Rest</th>
                       </tr>
                     </thead>
                     <tbody>
                       {session.exercises.map(ex => (
                         <tr key={ex.id}>
-                          <td style={{ fontWeight: 500 }}>{ex.display_name}</td>
-                          <td>{ex.sets}</td>
-                          <td>{ex.reps}</td>
-                          <td style={{ color: "var(--muted)" }}>{ex.rest_seconds / 60} min</td>
+                          <td style={{ fontWeight: 600 }}>{ex.display_name}</td>
+                          <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
+                            {ex.sets}×{ex.reps}
+                          </td>
+                          <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
+                            {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -182,19 +202,23 @@ export default async function WeekPage() {
                 </div>
               )}
 
-              {/* Purpose & Adaptation */}
+              {/* ── Purpose & Adaptation ── */}
               {!d.is_rest && (meta.purpose || meta.adaptation) && (
-                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                   {meta.purpose && (
-                    <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
-                      <span style={{ fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", whiteSpace: "nowrap", paddingTop: 1 }}>Purpose</span>
-                      <span style={{ color: "var(--muted)", lineHeight: 1.55 }}>{meta.purpose}</span>
+                    <div>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
+                        Purpose
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{meta.purpose}</div>
                     </div>
                   )}
                   {meta.adaptation && (
-                    <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
-                      <span style={{ fontWeight: 700, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".5px", whiteSpace: "nowrap", paddingTop: 1 }}>Adapt</span>
-                      <span style={{ color: "var(--muted)", lineHeight: 1.55 }}>{meta.adaptation}</span>
+                    <div style={{ background: "rgba(255,180,0,.06)", border: "1px solid rgba(255,180,0,.15)", borderRadius: 8, padding: "10px 14px" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>
+                        If you&apos;re tired
+                      </div>
+                      <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{meta.adaptation}</div>
                     </div>
                   )}
                 </div>

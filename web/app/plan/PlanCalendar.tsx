@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatShort, formatDuration } from "@/lib/dates";
 import type { ScheduledDay, StrengthSession } from "@/lib/types";
+import { WorkoutStructure } from "@/lib/workout-structure";
 
 export interface DayData extends ScheduledDay {
   purpose: string;
@@ -75,6 +76,7 @@ function monthsInRange(start: string, end: string): { year: number; month: numbe
 function getWeekday(iso: string): string {
   return FULL_WEEKDAY[new Date(iso + "T12:00:00Z").getUTCDay()];
 }
+
 
 export function PlanCalendar({
   startDate,
@@ -185,15 +187,10 @@ export function PlanCalendar({
         <div
           onClick={() => setSelectedDate(null)}
           style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 200,
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
             padding: "24px 16px",
           }}
         >
@@ -201,27 +198,31 @@ export function PlanCalendar({
             onClick={e => e.stopPropagation()}
             className="card"
             style={{
-              width: "100%",
-              maxWidth: 480,
-              maxHeight: "80vh",
-              overflowY: "auto",
+              width: "100%", maxWidth: 580,
+              maxHeight: "85vh", overflowY: "auto",
               borderLeft: `3px solid ${selected.is_rest ? "transparent" : (TYPE_COLOR[selected.session_type] ?? "var(--dim)")}`,
+              display: "flex", flexDirection: "column", gap: 0,
             }}
           >
-            {/* Header row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: selected.is_rest ? 0 : 14 }}>
+            {/* ── Header ── */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".6px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 3 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".8px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
                   {getWeekday(selected.date)} · {formatShort(selected.date)}
                 </div>
-                <h2 style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2 }}>
-                  {selected.is_rest ? "Rest" : (selected.focus ?? selected.session_type)}
+                <h2 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0 }}>
+                  {selected.is_rest ? "Rest Day" : (selected.focus ?? selected.session_type)}
                 </h2>
+                {selectedStrength?.name && (
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
+                    {selectedStrength.name}
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setSelectedDate(null)}
                 aria-label="Close"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 22, lineHeight: 1, padding: "0 0 0 12px", marginTop: -2 }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 24, lineHeight: 1, padding: "0 0 0 16px", marginTop: -2, flexShrink: 0 }}
               >
                 ×
               </button>
@@ -229,41 +230,59 @@ export function PlanCalendar({
 
             {!selected.is_rest && (
               <>
-                {/* Badges */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                  <span className={TYPE_BADGE[selected.session_type] ?? "badge"}>{selected.session_type}</span>
-                  {selected.is_key && <span className="badge badge-accent">Key</span>}
+                {/* ── Badges ── */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                  <span className={TYPE_BADGE[selected.session_type] ?? "badge"}>
+                    {SESSION_LABEL[selected.session_type] ?? selected.session_type}
+                  </span>
+                  {selected.is_key && <span className="badge badge-accent">Key session</span>}
                   {selectedStrength && (
-                    <span className="badge badge-blue">{formatDuration(selectedStrength.estimated_duration_secs)}</span>
+                    <span className="badge badge-blue">
+                      <i className="ti ti-clock" style={{ marginRight: 4 }} />
+                      {formatDuration(selectedStrength.estimated_duration_secs)}
+                    </span>
+                  )}
+                  {selectedStrength?.garmin_workout_id && (
+                    <span className="badge badge-green">
+                      <i className="ti ti-check" style={{ marginRight: 4 }} />
+                      Garmin
+                    </span>
                   )}
                 </div>
 
-                {/* Description */}
+                {/* ── Workout description ── */}
                 {selected.description && (
-                  <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 14, lineHeight: 1.5 }}>
-                    {selected.description}
-                  </p>
+                  <div style={{ marginBottom: 16 }}>
+                    <WorkoutStructure description={selected.description} />
+                  </div>
                 )}
 
-                {/* Exercise table */}
+                {/* ── Exercise table ── */}
                 {selectedStrength && selectedStrength.exercises.length > 0 && (
-                  <div style={{ marginBottom: 14 }}>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
+                      Exercises · {selectedStrength.exercises.length} movements
+                    </div>
                     <table>
                       <thead>
                         <tr>
                           <th>Exercise</th>
-                          <th style={{ width: 44 }}>Sets</th>
-                          <th style={{ width: 44 }}>Reps</th>
-                          <th style={{ width: 56 }}>Rest</th>
+                          <th style={{ width: 64, textAlign: "center" }}>Sets × Reps</th>
+                          <th style={{ width: 60, textAlign: "center" }}>Rest</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {selectedStrength.exercises.map(ex => (
+                        {selectedStrength.exercises.map((ex, i) => (
                           <tr key={ex.id}>
-                            <td style={{ fontWeight: 500 }}>{ex.display_name}</td>
-                            <td>{ex.sets}</td>
-                            <td>{ex.reps}</td>
-                            <td style={{ color: "var(--muted)" }}>{ex.rest_seconds / 60} min</td>
+                            <td>
+                              <span style={{ fontWeight: 600 }}>{ex.display_name}</span>
+                            </td>
+                            <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)" }}>
+                              {ex.sets}×{ex.reps}
+                            </td>
+                            <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
+                              {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -271,19 +290,23 @@ export function PlanCalendar({
                   </div>
                 )}
 
-                {/* Purpose & Adaptation */}
+                {/* ── Purpose & Adaptation ── */}
                 {(selected.purpose || selected.adaptation) && (
-                  <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                     {selected.purpose && (
-                      <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
-                        <span style={{ fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", whiteSpace: "nowrap", paddingTop: 1 }}>Purpose</span>
-                        <span style={{ color: "var(--muted)", lineHeight: 1.55 }}>{selected.purpose}</span>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
+                          Purpose
+                        </div>
+                        <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{selected.purpose}</div>
                       </div>
                     )}
                     {selected.adaptation && (
-                      <div style={{ display: "flex", gap: 10, fontSize: 12 }}>
-                        <span style={{ fontWeight: 700, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".5px", whiteSpace: "nowrap", paddingTop: 1 }}>Adapt</span>
-                        <span style={{ color: "var(--muted)", lineHeight: 1.55 }}>{selected.adaptation}</span>
+                      <div style={{ background: "rgba(255,180,0,.06)", border: "1px solid rgba(255,180,0,.15)", borderRadius: 8, padding: "10px 14px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>
+                          If you&apos;re tired
+                        </div>
+                        <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{selected.adaptation}</div>
                       </div>
                     )}
                   </div>
