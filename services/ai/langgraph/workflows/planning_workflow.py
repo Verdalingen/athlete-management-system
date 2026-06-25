@@ -301,8 +301,9 @@ async def run_replan(
         current_date=current_date or {},
         week_dates=week_dates or [],
         hitl_enabled=False,
+        checkin_mode=True,
     )
     state["season_plan"] = season_plan
 
-    logger.info("Running Tier-2 re-plan for %s (weekly planner only, HITL disabled)", athlete_name)
+    logger.info("Running Tier-2 check-in for %s (weekly planner only, HITL disabled)", athlete_name)
     return await weekly_planner_node(state)

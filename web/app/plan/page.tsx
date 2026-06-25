@@ -1,7 +1,11 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, formatShort } from "@/lib/dates";
-import { parseWeekGoals } from "@/lib/plan-parser";
-import type { Plan, ScheduledDay } from "@/lib/types";
+import { parseWeekGoals, parseDayMeta } from "@/lib/plan-parser";
+import type { Plan, ScheduledDay, StrengthSession } from "@/lib/types";
+import { PlanCalendar } from "./PlanCalendar";
+import type { DayData } from "./PlanCalendar";
+import { ReplanPanel } from "./ReplanPanel";
+import { getReplanJobs } from "@/app/actions/replan";
 
 // ── Markdown parsers ──────────────────────────────────────────────────────────
 
@@ -24,19 +28,19 @@ interface Zone {
 import type { WeekGoal } from "@/lib/plan-parser";
 
 function parseMeta(md: string, start: string, end: string): PlanMeta {
-  const titleMatch = md.match(/^#\s+(.+)$/m);
-  const phaseMatch = md.match(/\*\*Phase:\*\*\s*([^\n|]+)/);
+  const titleMatch   = md.match(/^#\s+(.+)$/m);
+  const phaseMatch   = md.match(/\*\*Phase:\*\*\s*([^\n|]+)/);
   const chronicMatch = md.match(/\*\*Chronic Load Entry:\*\*\s*([^\n|]+)/);
-  const targetMatch = md.match(/\*\*Target:\*\*\s*([^\n]+)/);
+  const targetMatch  = md.match(/\*\*Target:\*\*\s*([^\n]+)/);
 
-  const msPerDay = 86400000;
+  const msPerDay  = 86400000;
   const totalDays = Math.round((new Date(end).getTime() - new Date(start).getTime()) / msPerDay) + 1;
 
   return {
-    title: titleMatch?.[1]?.trim() ?? "Training Plan",
-    phase: phaseMatch?.[1]?.trim() ?? "",
+    title:       titleMatch?.[1]?.trim() ?? "Training Plan",
+    phase:       phaseMatch?.[1]?.trim() ?? "",
     chronicLoad: chronicMatch?.[1]?.trim() ?? "",
-    target: targetMatch?.[1]?.trim() ?? "",
+    target:      targetMatch?.[1]?.trim() ?? "",
     totalDays,
     totalWeeks: Math.ceil(totalDays / 7),
   };
@@ -52,65 +56,26 @@ function parseZones(md: string): Zone[] {
   }).filter(z => z.zone && z.name);
 }
 
-
-// ── Calendar builder ──────────────────────────────────────────────────────────
-
-interface CalDay {
-  iso: string | null;   // null = blank filler
-  day: number | null;
-}
-
-function buildMonthCells(year: number, month: number): CalDay[] {
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const leadBlanks = (first.getDay() + 6) % 7; // Mon = 0
-  const cells: CalDay[] = [];
-  for (let i = 0; i < leadBlanks; i++) cells.push({ iso: null, day: null });
-  for (let d = 1; d <= last.getDate(); d++) {
-    const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    cells.push({ iso, day: d });
-  }
-  while (cells.length % 7 !== 0) cells.push({ iso: null, day: null });
-  return cells;
-}
-
-function monthsInRange(start: string, end: string): { year: number; month: number }[] {
-  const s = new Date(start);
-  const e = new Date(end);
-  const months: { year: number; month: number }[] = [];
-  const cur = new Date(s.getFullYear(), s.getMonth(), 1);
-  while (cur <= e) {
-    months.push({ year: cur.getFullYear(), month: cur.getMonth() });
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return months;
-}
-
-const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DAY_HEADERS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-
-const SESSION_COLOR: Record<string, string> = {
-  strength: "var(--accent)",
-  run:      "var(--cyan)",
-  race:     "var(--red)",
-  cross:    "var(--amber)",
-  rest:     "var(--dim)",
-};
-
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function PlanPage() {
   const today = todayISO();
-  const sb = createServerClient();
-  const uid = await getUserId();
+  const sb    = createServerClient();
+  const uid   = await getUserId();
 
-  const [planRes, daysRes] = await Promise.all([
-    sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1),
-    // fetch scheduled_days for a wide range — will be filtered after we know plan dates
-    sb.from("scheduled_days").select("*").eq("user_id", uid).order("date"),
-  ]);
-
+  const planRes = await sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1);
   const plan: Plan | null = planRes.data?.[0] ?? null;
+  const planId = plan?.id ?? null;
+
+  const [daysRes, strengthRes, replanJobs] = await Promise.all([
+    planId
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).order("date")
+      : Promise.resolve({ data: [] }),
+    planId
+      ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId).order("date")
+      : Promise.resolve({ data: [] }),
+    getReplanJobs(),
+  ]);
 
   if (!plan) {
     return (
@@ -125,12 +90,33 @@ export default async function PlanPage() {
   const allDays: ScheduledDay[] = (daysRes.data ?? []).filter(
     d => d.date >= plan.start_date && d.date <= plan.end_date
   );
-  const dayMap = new Map(allDays.map(d => [d.date, d]));
 
-  const meta = parseMeta(plan.markdown, plan.start_date, plan.end_date);
-  const zones = parseZones(plan.markdown);
+  // Enrich each day with purpose/adaptation parsed from plan markdown
+  const dayMap: Record<string, DayData> = Object.fromEntries(
+    allDays.map(d => {
+      const meta = parseDayMeta(plan.markdown, d.date);
+      return [d.date, { ...d, purpose: meta.purpose, adaptation: meta.adaptation }];
+    })
+  );
+
+  // Strength sessions indexed by date, exercises sorted by display_order
+  const strengthMap: Record<string, StrengthSession> = Object.fromEntries(
+    (strengthRes.data ?? [])
+      .filter((s: { date: string }) => s.date >= plan.start_date && s.date <= plan.end_date)
+      .map((s: StrengthSession & { exercises: { display_order: number }[] }) => [
+        s.date,
+        {
+          ...s,
+          exercises: (s.exercises ?? []).sort(
+            (a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order
+          ),
+        },
+      ])
+  );
+
+  const meta      = parseMeta(plan.markdown, plan.start_date, plan.end_date);
+  const zones     = parseZones(plan.markdown);
   const weekGoals = parseWeekGoals(plan.markdown);
-  const calMonths = monthsInRange(plan.start_date, plan.end_date);
 
   const created = new Date(plan.created_at).toLocaleDateString("en-GB", {
     day: "numeric", month: "long", year: "numeric",
@@ -148,6 +134,12 @@ export default async function PlanPage() {
           &nbsp;·&nbsp;Generated {created}
         </p>
       </div>
+
+      {/* ── Replan actions ── */}
+      <section className="section" style={{ marginTop: 0, marginBottom: 24 }}>
+        <h2 className="section-title">Actions</h2>
+        <ReplanPanel initialJobs={replanJobs} />
+      </section>
 
       {/* ── Phase banner ── */}
       {meta.phase && (
@@ -177,67 +169,16 @@ export default async function PlanPage() {
         </div>
       )}
 
-      {/* ── Season calendar ── */}
+      {/* ── Season calendar (interactive) ── */}
       <section className="section">
         <h2 className="section-title">Season Calendar</h2>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-          {calMonths.map(({ year, month }) => {
-            const cells = buildMonthCells(year, month);
-            return (
-              <div key={`${year}-${month}`}>
-                <div className="cal-month-label">{MONTH_NAMES[month]} {year}</div>
-                <div className="cal-grid">
-                  {DAY_HEADERS.map(h => (
-                    <div key={h} className="cal-header">{h}</div>
-                  ))}
-                  {cells.map((cell, i) => {
-                    if (!cell.iso) {
-                      return <div key={i} className="cal-day is-blank" />;
-                    }
-                    const d = dayMap.get(cell.iso);
-                    const isToday = cell.iso === today;
-                    const isPast = cell.iso < today;
-                    const cls = [
-                      "cal-day",
-                      d ? "has-session" : "",
-                      d?.is_key ? "is-key" : "",
-                      d?.is_rest ? "is-rest" : "",
-                      isToday ? "is-today" : "",
-                      isPast && !isToday ? "is-past" : "",
-                    ].filter(Boolean).join(" ");
-
-                    return (
-                      <div key={cell.iso} className={cls}>
-                        <div className={`cal-num${isToday ? " today" : ""}`}>{cell.day}</div>
-                        {d && !d.is_rest && (
-                          <>
-                            <div className="cal-focus">{d.focus ?? d.session_type}</div>
-                            <div className="cal-dot" style={{ background: SESSION_COLOR[d.session_type] ?? "var(--dim)" }} />
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Legend */}
-        <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
-          {([ ["Strength", "var(--accent)"], ["Run", "var(--cyan)"], ["Race", "var(--red)"], ["Cross", "var(--amber)"] ] as [string, string][]).map(([label, color]) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
-              {label}
-            </div>
-          ))}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(124,92,255,.5)", background: "rgba(124,92,255,.1)" }} />
-            Key session
-          </div>
-        </div>
+        <PlanCalendar
+          startDate={plan.start_date}
+          endDate={plan.end_date}
+          dayMap={dayMap}
+          strengthMap={strengthMap}
+          today={today}
+        />
       </section>
 
       {/* ── Week-by-week strategy ── */}

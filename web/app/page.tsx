@@ -1,6 +1,7 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, weekBounds, formatLong, formatShort, formatWeekday, formatDuration, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
 import type { Plan, ScheduledDay, StrengthSession } from "@/lib/types";
+import { DashboardActions } from "./DashboardActions";
 
 const BENCH_TARGET_KG = 140;
 const RUN_3K_TARGET_SECS = 599; // 9:59
@@ -38,16 +39,28 @@ export default async function DashboardPage() {
   const sb = createServerClient();
   const uid = await getUserId();
 
-  const [planRes, dayRes, sessRes, weekRes, nextKeyRes, metricsRes] = await Promise.all([
-    sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1),
-    sb.from("scheduled_days").select("*").eq("user_id", uid).eq("date", today).order("created_at", { ascending: false }).limit(1),
-    sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("date", today).order("created_at", { ascending: false }).limit(1),
-    sb.from("scheduled_days").select("*").eq("user_id", uid).gte("date", weekStart).lte("date", weekEnd).order("date"),
-    sb.from("scheduled_days").select("*").eq("user_id", uid).eq("is_key", true).gt("date", today).order("date").limit(1),
-    sb.from("analyses").select("bench_e1rm_kg, predicted_5k_secs").eq("user_id", uid).not("bench_e1rm_kg", "is", null).order("report_date", { ascending: false }).limit(1),
-  ]);
-
+  // Fetch plan first so we can filter all session queries by plan_id,
+  // preventing stale rows from old plan runs from leaking through.
+  const planRes = await sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1);
   const plan: Plan | null = planRes.data?.[0] ?? null;
+  const planId = plan?.id ?? null;
+
+  const [dayRes, sessRes, weekRes, nextKeyRes, metricsRes, lastCheckinRes] = await Promise.all([
+    planId
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("date", today).limit(1)
+      : Promise.resolve({ data: [] }),
+    planId
+      ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId).eq("date", today).limit(1)
+      : Promise.resolve({ data: [] }),
+    planId
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).gte("date", weekStart).lte("date", weekEnd).order("date")
+      : Promise.resolve({ data: [] }),
+    planId
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("is_key", true).gt("date", today).order("date").limit(1)
+      : Promise.resolve({ data: [] }),
+    sb.from("analyses").select("bench_e1rm_kg, predicted_5k_secs").eq("user_id", uid).not("bench_e1rm_kg", "is", null).order("report_date", { ascending: false }).limit(1),
+    sb.from("replan_jobs").select("completed_at").eq("user_id", uid).eq("type", "replan").eq("status", "done").order("completed_at", { ascending: false }).limit(1),
+  ]);
   const today_day: ScheduledDay | null = dayRes.data?.[0] ?? null;
   const weekDays: ScheduledDay[] = weekRes.data ?? [];
   const nextKey: ScheduledDay | null = nextKeyRes.data?.[0] ?? null;
@@ -62,7 +75,7 @@ export default async function DashboardPage() {
     };
   }
 
-  // Mesocycle stats
+  // Season stats
   const meso = plan
     ? {
         week: mesocycleWeek(plan.start_date, today),
@@ -72,6 +85,22 @@ export default async function DashboardPage() {
         end: plan.end_date,
       }
     : null;
+
+  const seasonEnded = plan ? today > plan.end_date : false;
+
+  // Check-in timing: last completed replan job → due after 7 days
+  const lastCheckinDate: Date | null = lastCheckinRes.data?.[0]?.completed_at
+    ? new Date(lastCheckinRes.data[0].completed_at)
+    : plan ? new Date(plan.created_at) : null;
+  const nextCheckinDate = lastCheckinDate
+    ? new Date(lastCheckinDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+    : null;
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysUntilCheckin = nextCheckinDate
+    ? Math.ceil((nextCheckinDate.getTime() - Date.now()) / msPerDay)
+    : null;
+  const checkinOverdue = daysUntilCheckin !== null && daysUntilCheckin <= 0 && !seasonEnded;
+  const daysSinceCheckin = daysUntilCheckin !== null && daysUntilCheckin < 0 ? Math.abs(daysUntilCheckin) : 0;
 
   // Week session count (non-rest)
   const sessionCount = weekDays.filter(d => !d.is_rest).length;
@@ -98,21 +127,26 @@ export default async function DashboardPage() {
   return (
     <div className="page">
 
-      {/* ── Today's Session ─────────────────────────────────────────────── */}
+      {/* ── Hero: Today's session ───────────────────────────────────────── */}
       <section>
-        <p style={{ fontSize: 12, color: "var(--muted)", letterSpacing: ".3px", marginBottom: 8 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 10 }}>
           {formatLong(today)}
         </p>
 
         {today_day ? (
-          <div className={`card ${today_day.is_key ? "card-accent" : "card-cyan"}`}>
+          <div className={`card ${today_day.is_key ? "card-accent" : "card-cyan"}`} style={{ borderLeftWidth: 4 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <h1 style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.15, marginBottom: 6 }}>
-                  {today_day.focus ?? today_day.session_type}
+                {!today_day.is_rest && (
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: today_day.is_key ? "var(--accent)" : "var(--cyan)", marginBottom: 6 }}>
+                    {today_day.session_type}{today_day.is_key ? " · Key session" : ""}
+                  </div>
+                )}
+                <h1 style={{ fontSize: 34, fontWeight: 900, lineHeight: 1.1, marginBottom: 8, letterSpacing: "-.5px" }}>
+                  {today_day.focus ?? (today_day.is_rest ? "Rest Day" : today_day.session_type)}
                 </h1>
-                {today_day.description && (
-                  <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 8 }}>
+                {today_day.description && !today_day.is_rest && (
+                  <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12, lineHeight: 1.55 }}>
                     {today_day.description}
                   </p>
                 )}
@@ -120,17 +154,11 @@ export default async function DashboardPage() {
                   <span className={SESSION_TYPE_BADGE[today_day.session_type] ?? "badge"}>
                     {today_day.session_type}
                   </span>
-                  {today_day.is_key && <span className="badge badge-accent">Key session</span>}
                   {session && (
                     <span className="badge badge-blue">{formatDuration(session.estimated_duration_secs)}</span>
                   )}
                 </div>
               </div>
-              {today_day.is_rest && (
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 36 }}>🛌</div>
-                </div>
-              )}
             </div>
 
             {session && session.exercises.length > 0 && (
@@ -167,27 +195,63 @@ export default async function DashboardPage() {
         )}
       </section>
 
+      {/* ── Action prompts (check-in due / season ended) ────────────────── */}
+      <DashboardActions
+        checkinOverdue={checkinOverdue}
+        daysSinceCheckin={daysSinceCheckin}
+        seasonEnded={seasonEnded}
+        planEndDate={plan ? formatShort(plan.end_date) : ""}
+      />
+
       {/* ── Stats row ───────────────────────────────────────────────────── */}
       <section className="section">
         <h2 className="section-title">Training Status</h2>
-        <div className="stat-grid">
+        <div className="stat-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
 
-          {/* Mesocycle progress */}
+          {/* Season progress */}
           <div className="kpi">
-            <div className="kpi-label">Mesocycle</div>
+            <div className="kpi-label">Season</div>
             {meso ? (
               <>
                 <div className="kpi-value">
-                  Wk {meso.week}<span className="kpi-unit">/ {meso.totalWeeks}</span>
+                  Week {meso.week}<span className="kpi-unit">/ {meso.totalWeeks}</span>
                 </div>
                 <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${meso.pct}%`, background: "var(--accent)" }} />
+                  <div className="progress-fill" style={{ width: `${meso.pct}%`, background: "var(--cyan)" }} />
                 </div>
                 <div className="kpi-note">{meso.daysLeft} days remaining · ends {formatShort(meso.end)}</div>
               </>
             ) : (
               <div className="kpi-value" style={{ fontSize: 14, color: "var(--dim)" }}>No plan</div>
             )}
+          </div>
+
+          {/* Next check-in */}
+          <div className="kpi">
+            <div className="kpi-label">Next check-in</div>
+            {daysUntilCheckin === null ? (
+              <div className="kpi-value" style={{ fontSize: 14, color: "var(--dim)" }}>—</div>
+            ) : (() => {
+              const pct = Math.min(100, Math.max(0, Math.round(((7 - daysUntilCheckin) / 7) * 100)));
+              const overdue = daysUntilCheckin <= 0;
+              const barColor = overdue ? "var(--amber)" : pct >= 70 ? "var(--amber)" : "var(--cyan)";
+              return (
+                <>
+                  <div className="kpi-value" style={{ color: overdue ? "var(--amber)" : undefined }}>
+                    {overdue ? "Due" : daysUntilCheckin}
+                    {!overdue && <span className="kpi-unit">days</span>}
+                  </div>
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${pct}%`, background: barColor }} />
+                  </div>
+                  <div className="kpi-note" style={{ color: overdue ? "var(--amber)" : undefined }}>
+                    {overdue
+                      ? (daysSinceCheckin === 0 ? "Today" : `${daysSinceCheckin}d overdue`)
+                      : nextCheckinDate ? formatShort(nextCheckinDate.toISOString().slice(0, 10)) : ""}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* This week */}

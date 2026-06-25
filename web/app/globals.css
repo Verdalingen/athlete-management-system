@@ -41,38 +41,132 @@ body {
   min-height: 100vh;
 }
 
-/* ── Sticky header ── */
-.site-header {
-  position: sticky; top: 0; z-index: 10;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  background: rgba(8,14,26,.88);
-  border-bottom: 1px solid var(--border);
+/* ── App shell (sidebar + content) ── */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: 220px;
+  overflow-x: hidden; overflow-y: auto;
+  background: #060c18;
+  border-right: 1px solid rgba(255,255,255,.07);
+  display: flex; flex-direction: column;
+  z-index: 50;
+  transition: width .2s cubic-bezier(.4,0,.2,1);
 }
-.site-header-inner {
-  max-width: 1100px; margin: 0 auto;
-  padding: 12px 20px;
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+
+/* Collapsed desktop sidebar */
+.sb-collapsed { width: 60px; }
+.sb-collapsed .sb-brand-text { display: none; }
+.sb-collapsed .sb-brand { justify-content: center; }
+.sb-collapsed .sb-item { justify-content: center; gap: 0; padding: 9px; }
+.sb-collapsed .sb-label { opacity: 0; width: 0; overflow: hidden; pointer-events: none; }
+
+.sb-brand {
+  padding: 16px 14px; min-height: 60px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
 }
-.site-brand { font-size: 14px; font-weight: 700; letter-spacing: .3px; color: var(--text); }
-.site-nav { display: flex; gap: 4px; }
-.nav-link {
+.sb-brand-name { font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -.2px; display: block; }
+.sb-brand-sub  { font-size: 10px; color: var(--dim); margin-top: 3px; display: block; }
+
+.sb-collapse-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--dim); padding: 5px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: color .12s, background .12s;
+}
+.sb-collapse-btn:hover { color: var(--muted); background: rgba(255,255,255,.06); }
+.sb-collapse-btn i { font-size: 16px; }
+
+.sb-nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+
+.sb-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 8px;
   font-size: 13px; font-weight: 500; color: var(--muted);
-  padding: 5px 12px; border-radius: 8px;
-  text-decoration: none; transition: color .15s, background .15s;
+  text-decoration: none; transition: color .12s, background .12s;
+  border: none; background: none; cursor: pointer; width: 100%; text-align: left;
+  font-family: inherit; white-space: nowrap;
 }
-.nav-link:hover { color: var(--text); background: rgba(255,255,255,.06); }
-.nav-link.active { color: var(--text); background: rgba(255,255,255,.08); }
-.header-date { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.sb-item i { font-size: 17px; flex-shrink: 0; }
+.sb-label { transition: opacity .1s ease; }
+.sb-item:hover { color: var(--text); background: rgba(255,255,255,.05); }
+.sb-active { color: var(--text) !important; background: rgba(124,92,255,.13) !important; }
+.sb-active i { color: var(--accent); }
+
+.sb-bottom { padding: 10px; border-top: 1px solid rgba(255,255,255,.06); flex-shrink: 0; overflow: hidden; }
+
+/* ── Mobile header + drawer ── */
+.mobile-header { display: none; }
+
+.mobile-hamburger {
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); padding: 6px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .12s, background .12s;
+}
+.mobile-hamburger:hover { color: var(--text); background: rgba(255,255,255,.06); }
+.mobile-hamburger i { font-size: 22px; }
+
+.mobile-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(2px);
+  z-index: 98; opacity: 0; pointer-events: none;
+  transition: opacity .25s ease;
+}
+.mobile-overlay.mobile-overlay-open { opacity: 1; pointer-events: all; }
+
+.mobile-drawer {
+  display: none;
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: 260px; background: #060c18;
+  border-right: 1px solid rgba(255,255,255,.07);
+  flex-direction: column;
+  z-index: 99;
+  transform: translateX(-100%);
+  transition: transform .25s ease;
+}
+.mobile-drawer.mobile-drawer-open { transform: translateX(0); }
+
+.main-area {
+  flex: 1; min-width: 0;
+  margin-left: 220px;
+  transition: margin-left .2s cubic-bezier(.4,0,.2,1);
+}
+.app-shell:has(.sb-collapsed) .main-area { margin-left: 60px; }
+
+/* Mobile: swap sidebar for drawer */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main-area { margin-left: 0; transition: none; }
+  .mobile-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(8,14,26,.92);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+  }
+  .mobile-overlay { display: block; }
+  .mobile-drawer  { display: flex; }
+}
 
 /* ── Page layout ── */
-.page { max-width: 1100px; margin: 0 auto; padding: 28px 20px 60px; }
+.page { padding: 32px 32px 72px; }
 
 /* ── Section ── */
-.section { margin-top: 32px; }
+.section { margin-top: 28px; }
 .section-title {
-  font-size: 11px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
-  color: var(--dim); margin-bottom: 12px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--dim); margin-bottom: 10px;
+}
+/* In reports: restore the border for visual structure in dense AI content */
+.report-content .section-title {
+  margin-bottom: 16px;
   padding-bottom: 8px; border-bottom: 1px solid var(--border);
 }
 
@@ -104,27 +198,20 @@ body {
 .card h4 { font-size: 13px; font-weight: 700; margin: 12px 0 5px; color: var(--muted); }
 
 /* ── Report content wrapper ── */
-/* All heading and spacing overrides for rendered HTML reports go here,
-   avoiding conflicts with the rest of the design system. */
 .report-content h3 {
   font-size: 13px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase;
   color: var(--muted); margin: 32px 0 14px;
 }
-/* Badge used as a card label (e.g. phase pills) — needs gap before the title below it */
 .report-content .card > .badge { margin-bottom: 10px; }
 
-/* h3 directly inside a card should stay styled as a card sub-heading */
 .report-content .card h3 {
   font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none;
   color: var(--cyan); margin: 14px 0 6px;
 }
 .report-content .card h3:first-child { margin-top: 0; }
 
-/* Space after the section title before the first block */
 .report-content .section-title { margin-bottom: 16px; }
 
-/* Gap between sequential blocks inside a section — use adjacent sibling only,
-   so the FIRST child never gets extra top-margin (avoids double-spacing). */
 .report-content .card      + .kpi-grid   { margin-top: 16px; }
 .report-content .card      + .card-grid  { margin-top: 16px; }
 .report-content .card      + .prose      { margin-top: 12px; }
@@ -136,12 +223,9 @@ body {
 .report-content h3 + .card-grid          { margin-top: 0; }
 .report-content h3 + .card               { margin-top: 0; }
 .report-content .card + h3              { margin-top: 20px; }
-/* bare <p> tags in AI-generated report HTML get bottom spacing (Tailwind preflight resets them to 0) */
 .report-content p { margin-bottom: 10px; }
 
-/* ── Goals grid (dashboard) ──
-   auto-fill with a 260px minimum so cards sit side-by-side at normal widths,
-   wrap naturally as more goals are added or the viewport narrows. */
+/* ── Goals grid ── */
 .goal-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -165,9 +249,6 @@ body {
 .kpi-value { font-size: 26px; font-weight: 800; line-height: 1.1; }
 .kpi-unit  { font-size: 13px; color: var(--muted); margin-left: 3px; font-weight: 400; }
 .kpi-note  { font-size: 11px; color: var(--muted); margin-top: 6px; }
-/* Badges inside KPI notes: block + fit-content = pill stays left-aligned and
-   only as wide as its text (never expands to fill the card). More padding so
-   text never crowds the rounded edges when it wraps. */
 .kpi-note .badge {
   display: block;
   width: fit-content;
@@ -202,7 +283,7 @@ th {
 }
 td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255,255,255,.05); }
+tr:hover td { background: rgba(255,255,255,.04); }
 
 /* ── Week grid ── */
 .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -288,10 +369,14 @@ tr:hover td { background: rgba(255,255,255,.05); }
   border-radius: 6px; padding: 5px 5px 6px; min-height: 52px;
   background: rgba(255,255,255,.02); border: 1px solid transparent;
   position: relative; overflow: hidden;
+  transition: background .12s, border-color .12s;
 }
 .cal-day.has-session { background: var(--surface); border-color: var(--border); }
+.cal-day.has-session:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.20); }
 .cal-day.is-today    { border-color: rgba(45,226,230,.50) !important; background: rgba(45,226,230,.06); }
+.cal-day.is-today:hover { background: rgba(45,226,230,.12) !important; }
 .cal-day.is-key      { border-color: rgba(124,92,255,.40); background: rgba(124,92,255,.07); }
+.cal-day.is-key:hover { background: rgba(124,92,255,.14); }
 .cal-day.is-rest     { opacity: .30; }
 .cal-day.is-past     { opacity: .55; }
 .cal-day.is-blank    { background: transparent; border-color: transparent; min-height: 0; }
@@ -299,6 +384,26 @@ tr:hover td { background: rgba(255,255,255,.05); }
 .cal-num.today { color: var(--cyan); font-weight: 700; }
 .cal-focus { font-size: 9px; color: var(--text); line-height: 1.3; opacity: .75; }
 .cal-dot  { width: 5px; height: 5px; border-radius: 50%; margin-top: 4px; }
+
+/* ── Buttons ── */
+.btn-primary, .btn-secondary, .btn-danger, .btn-soft {
+  display: inline-flex; align-items: center;
+  padding: 8px 16px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px solid transparent; transition: opacity .12s, background .12s, border-color .12s;
+  font-family: inherit; white-space: nowrap;
+}
+.btn-primary  { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { opacity: .88; }
+.btn-secondary { background: rgba(255,255,255,.07); color: var(--text); border-color: var(--border); }
+.btn-secondary:hover { background: rgba(255,255,255,.11); }
+.btn-danger   { background: rgba(255,92,122,.18); color: var(--red); border-color: rgba(255,92,122,.35); }
+.btn-danger:hover { background: rgba(255,92,122,.28); }
+.btn-soft  { background: rgba(124,92,255,.12); color: var(--accent); border-color: rgba(124,92,255,.3); }
+.btn-soft:hover { background: rgba(124,92,255,.2); }
+.btn-primary:disabled, .btn-secondary:disabled, .btn-danger:disabled, .btn-soft:disabled {
+  opacity: .40; cursor: not-allowed;
+}
 
 /* ── Prose (plan page) ── */
 .prose { font-size: 14px; line-height: 1.7; }

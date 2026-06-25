@@ -18,6 +18,7 @@ class TrainingAnalysisState(MessagesState):
     plotting_enabled: bool
     hitl_enabled: bool
     skip_synthesis: bool
+    checkin_mode: bool
 
     metrics_summary: str | None
     physiology_summary: str | None
@@ -72,6 +73,7 @@ def create_initial_state(
     plotting_enabled: bool = False,
     hitl_enabled: bool = True,
     skip_synthesis: bool = False,
+    checkin_mode: bool = False,
 ) -> TrainingAnalysisState:
     return TrainingAnalysisState(
         user_id=user_id,
@@ -86,6 +88,7 @@ def create_initial_state(
         plotting_enabled=plotting_enabled,
         hitl_enabled=hitl_enabled,
         skip_synthesis=skip_synthesis,
+        checkin_mode=checkin_mode,
         execution_id=execution_id,
         metrics_summary=None,
         physiology_summary=None,

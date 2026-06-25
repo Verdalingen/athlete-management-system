@@ -79,9 +79,25 @@ class WeeklyPlanOutput(BaseModel):
     scheduled_days: list[ScheduledDay] | None = Field(
         None,
         description=(
-            "One entry per day across the full 28-day plan (28 entries). "
+            "One entry per day across the planning horizon. "
             "Populate only when output is the markdown plan. "
-            "Used by the daily check-in to detect missed sessions without parsing markdown."
+            "In check-in mode, leave empty if schedule_updated is False."
+        )
+    )
+    coach_feedback: str | None = Field(
+        None,
+        description=(
+            "Coach's written assessment for the athlete. Populate in check-in mode only. "
+            "3-4 bullet points covering: what the Garmin data shows, how it compares to the "
+            "season plan, anything to watch, and what (if anything) was adjusted and why."
+        )
+    )
+    schedule_updated: bool = Field(
+        True,
+        description=(
+            "True if the schedule was updated (scheduled_days populated). "
+            "In check-in mode: set to False and leave scheduled_days empty if the athlete "
+            "is on track and no changes are needed. Always True for full season replans."
         )
     )
 

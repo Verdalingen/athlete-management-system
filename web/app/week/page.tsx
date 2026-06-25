@@ -32,17 +32,23 @@ export default async function WeekPage() {
   const sb = createServerClient();
   const uid = await getUserId();
 
-  const [daysRes, sessionsRes, planRes] = await Promise.all([
-    sb.from("scheduled_days").select("*").eq("user_id", uid)
-      .gte("date", start).lte("date", end).order("date"),
-    sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid)
-      .gte("date", start).lte("date", end).order("date"),
-    sb.from("plans").select("*").eq("user_id", uid)
-      .order("created_at", { ascending: false }).limit(1),
+  const planRes = await sb.from("plans").select("*").eq("user_id", uid)
+    .order("created_at", { ascending: false }).limit(1);
+  const plan: Plan | null = planRes.data?.[0] ?? null;
+  const planId = plan?.id ?? null;
+
+  const [daysRes, sessionsRes] = await Promise.all([
+    planId
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId)
+          .gte("date", start).lte("date", end).order("date")
+      : Promise.resolve({ data: [] }),
+    planId
+      ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId)
+          .gte("date", start).lte("date", end).order("date")
+      : Promise.resolve({ data: [] }),
   ]);
 
   const days: ScheduledDay[] = daysRes.data ?? [];
-  const plan: Plan | null = planRes.data?.[0] ?? null;
 
   // Map date → strength session
   const sessionMap = new Map<string, StrengthSession>();

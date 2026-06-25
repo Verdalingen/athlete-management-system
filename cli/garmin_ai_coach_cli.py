@@ -26,6 +26,7 @@ from services.garmin.client import GarminConnectClient
 from services.garmin.strength_uploader import PlannedExercise, PlannedSet, PlannedStrengthSession, delete_strength_workout, upload_strength_session
 from services.outside.client import OutsideApiGraphQlClient
 from services.supabase.plan_writer import write_plan, write_report
+from daily_checkin_cli import run_daily_from_config
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -190,10 +191,13 @@ def _save_plan_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
     return files_generated
 
 
-async def run_analysis_from_config(config_path: Path) -> None:
+async def run_analysis_from_config(config_path: Path, user_comment: str | None = None) -> None:
     config_parser = ConfigParser(config_path)
     athlete_name, email = config_parser.get_athlete_info()
     analysis_context, planning_context = config_parser.get_contexts()
+    if user_comment:
+        logger.info("User note for new season: %s", user_comment[:120])
+        planning_context = f"{planning_context.rstrip()}\n\n## Athlete Note\n{user_comment.strip()}"
     extraction_settings = config_parser.get_extraction_config()
 
     competitions = config_parser.get_competitions()
@@ -323,8 +327,13 @@ async def run_analysis_from_config(config_path: Path) -> None:
         raise
 
 
-async def run_replan_from_config(config_path: Path) -> None:
-    """Tier-2 re-plan: fetch 14 days of Garmin data and re-run the weekly planner only."""
+async def run_replan_from_config(
+    config_path: Path,
+    user_comment: str | None = None,
+    outer_scheduled_days: list[dict] | None = None,
+) -> str | None:
+    """Tier-2 check-in: assess the last week, give feedback, and optionally update the 6-week schedule.
+    Returns coach_feedback text (or None) so the caller can save it to the job row."""
     config_parser = ConfigParser(config_path)
     athlete_name, email = config_parser.get_athlete_info()
     _, planning_context = config_parser.get_contexts()
@@ -349,15 +358,19 @@ async def run_replan_from_config(config_path: Path) -> None:
     reload_config()
     ai_settings.reload()
 
+    if user_comment:
+        logger.info("User note: %s", user_comment[:120])
+        planning_context = f"{planning_context.rstrip()}\n\n## Athlete Note\n{user_comment.strip()}"
+
     logger.info("Extracting recent Garmin data (14 days)…")
     extractor = TriathlonCoachDataExtractor(email, password)
     garmin_data = extractor.extract_data(
         ExtractionConfig(
             activities_range=14,
             metrics_range=14,
-            include_detailed_activities=True,   # needed to populate recent_activities
-            include_metrics=False,              # skip physiological markers — saves ~60% of API calls
-            include_long_term_trends=False,     # skip 360-day trend fetch
+            include_detailed_activities=True,
+            include_metrics=False,
+            include_long_term_trends=False,
         )
     )
 
@@ -368,10 +381,10 @@ async def run_replan_from_config(config_path: Path) -> None:
             "date": (now + timedelta(days=i)).strftime("%Y-%m-%d"),
             "day_name": (now + timedelta(days=i)).strftime("%A"),
         }
-        for i in range(28)
+        for i in range(42)  # 6-week rolling window
     ]
 
-    logger.info("Running Tier-2 re-plan…")
+    logger.info("Running Tier-2 re-plan (6-week rolling window)…")
     result = await run_replan(
         user_id=user_id,
         athlete_name=athlete_name,
@@ -383,9 +396,25 @@ async def run_replan_from_config(config_path: Path) -> None:
         week_dates=week_dates,
     )
 
+    coach_feedback: str | None = result.get("coach_feedback")
+    schedule_updated: bool = result.get("schedule_updated", True)
+
+    if not schedule_updated:
+        logger.info("✅ Check-in complete — coach assessed no schedule changes needed.")
+        return coach_feedback
+
+    # Merge AI-generated near-term days with preserved outer season days
+    if outer_scheduled_days and result.get("scheduled_days") is not None:
+        result["scheduled_days"] = result["scheduled_days"] + outer_scheduled_days
+        logger.info(
+            "Merged %d AI days + %d preserved outer days",
+            len(result["scheduled_days"]) - len(outer_scheduled_days),
+            len(outer_scheduled_days),
+        )
+
     output_dir.mkdir(parents=True, exist_ok=True)
     files = _save_plan_outputs(output_dir, result)
-    logger.info("✅ Re-plan complete! Updated: %s", files)
+    logger.info("✅ Check-in complete — schedule updated: %s", files)
 
     workout_ids: dict[str, Any] = {}
     if extraction_settings.get("upload_to_garmin", False):
@@ -399,10 +428,11 @@ async def run_replan_from_config(config_path: Path) -> None:
                 existing.update(workout_ids)
                 storage2.save_json("cli_user", "garmin_workout_ids", existing)
         else:
-            logger.info("📲 upload_to_garmin is enabled but no strength sessions in re-plan.")
+            logger.info("📲 upload_to_garmin is enabled but no strength sessions in check-in.")
 
     _write_to_supabase(result, workout_ids, garmin_data=asdict(garmin_data))
     _write_report_to_supabase(output_dir, garmin_data=asdict(garmin_data))
+    return coach_feedback
 
 
 def _write_report_to_supabase(
@@ -572,6 +602,90 @@ def _upload_strength_sessions(
 
 
 
+async def process_queue(config_path: Path) -> None:
+    """Process pending replan jobs queued via the web UI."""
+    from services.supabase.client import get_supabase
+
+    sb = get_supabase()
+    uid = os.environ.get("SUPABASE_USER_ID", "")
+    if not uid:
+        logger.error("❌ SUPABASE_USER_ID not set — cannot process queue")
+        sys.exit(1)
+
+    result = sb.table("replan_jobs").select("*").eq("user_id", uid).eq("status", "pending").order("created_at").execute()
+    jobs = result.data or []
+
+    if not jobs:
+        logger.info("✅ No pending replan jobs.")
+        return
+
+    logger.info("Found %d pending job(s).", len(jobs))
+
+    for job in jobs:
+        job_id      = job["id"]
+        job_type    = job["type"]
+        user_comment = job.get("user_comment") or None
+        logger.info("Processing job %s (type=%s)…", job_id, job_type)
+        if user_comment:
+            logger.info("  with user note: %s", user_comment[:80])
+
+        sb.table("replan_jobs").update({
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+        }).eq("id", job_id).execute()
+
+        try:
+            coach_feedback = None
+            if job_type == "daily":
+                if user_comment:
+                    logger.info("User note noted (Reschedule is mechanical — note not applied to AI).")
+                await run_daily_from_config(config_path)
+            elif job_type == "replan":
+                # Fetch scheduled days beyond the 6-week window to preserve them
+                cutoff = (datetime.now() + timedelta(days=42)).strftime("%Y-%m-%d")
+                plan_res = sb.table("plans").select("id").eq("user_id", uid).order("created_at", desc=True).limit(1).execute()
+                outer_days: list[dict] = []
+                if plan_res.data:
+                    outer_res = sb.table("scheduled_days").select(
+                        "date, session_type, focus, description, is_key, is_rest"
+                    ).eq("plan_id", plan_res.data[0]["id"]).gte("date", cutoff).execute()
+                    outer_days = [
+                        {
+                            "date": d["date"],
+                            "session_type": d.get("session_type", "rest"),
+                            "focus": d.get("focus", ""),
+                            "description": d.get("description", ""),
+                            "is_key_session": d.get("is_key", False),
+                            "is_rest": d.get("is_rest", False),
+                        }
+                        for d in (outer_res.data or [])
+                    ]
+                    logger.info("Fetched %d outer days (beyond day 42) to preserve", len(outer_days))
+                coach_feedback = await run_replan_from_config(config_path, user_comment=user_comment, outer_scheduled_days=outer_days)
+            elif job_type == "seasonal":
+                await run_analysis_from_config(config_path, user_comment=user_comment)
+                coach_feedback = None
+            else:
+                raise ValueError(f"Unknown job type: {job_type}")
+
+            done_payload: dict = {
+                "status": "done",
+                "completed_at": datetime.now().isoformat(),
+            }
+            if coach_feedback:
+                done_payload["coach_feedback"] = coach_feedback
+            sb.table("replan_jobs").update(done_payload).eq("id", job_id).execute()
+            logger.info("✅ Job %s done.", job_id)
+
+        except Exception as exc:
+            sb.table("replan_jobs").update({
+                "status": "error",
+                "error_message": str(exc)[:500],
+                "completed_at": datetime.now().isoformat(),
+            }).eq("id", job_id).execute()
+            logger.error("❌ Job %s failed: %s", job_id, exc)
+
+
 def create_config_template(output_path: Path) -> None:
     template_path = Path(__file__).parent / "coach_config_template.yaml"
 
@@ -594,6 +708,8 @@ def main():
     group.add_argument("--replan", type=Path, metavar="CONFIG",
                        help="Tier-2 weekly re-plan: fetch 14 days of Garmin data and re-run "
                             "only the weekly planner against the stored season plan (~$0.20-0.40)")
+    group.add_argument("--queue", type=Path, metavar="CONFIG",
+                       help="Process pending replan jobs queued via the web UI")
     group.add_argument("--init-config", type=Path, help="Create a configuration template file")
 
     parser.add_argument("--output-dir", type=Path, help="Override output directory from config")
@@ -620,6 +736,15 @@ def main():
             logger.info("❌ Re-plan cancelled by user")
         except Exception as e:
             logger.error("❌ Re-plan failed: %s", e)
+            sys.exit(1)
+
+    if args.queue:
+        try:
+            asyncio.run(process_queue(args.queue))
+        except KeyboardInterrupt:
+            logger.info("❌ Queue processing cancelled")
+        except Exception as e:
+            logger.error("❌ Queue processing failed: %s", e)
             sys.exit(1)
 
 

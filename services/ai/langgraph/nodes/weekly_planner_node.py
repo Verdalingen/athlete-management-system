@@ -62,7 +62,7 @@ Create detailed, practical training plans that balance stress and recovery.
 - Individualization: Adapt to the athlete's current state and history."""
 
 WEEKLY_PLANNER_USER_PROMPT = """## Task
-Create a detailed 28-day (4-week) training plan.
+Create a detailed training plan covering all {num_days} days listed in Upcoming Weeks below.
 
 ## Constraints
 - **Honor the Phase**: Prioritize the Season Plan's phase intent.
@@ -89,7 +89,7 @@ Create a detailed 28-day (4-week) training plan.
 
 ## Output Requirements
 1. **Zones Table**: Define intensity zones first.
-2. **Structure**: Group by Week (1-4).
+2. **Structure**: Group by week.
 3. **Daily Format**:
    - **DAY & DATE**: e.g., "Mon, Nov 24"
    - **FOCUS**: 1-2 words (e.g., "Recovery", "VO2max")
@@ -103,9 +103,29 @@ Create a detailed 28-day (4-week) training plan.
 - place sessions smartly to avoid back to back high intensity sessions or strength sessions etc.
 """
 
+WEEKLY_PLANNER_CHECKIN_INSTRUCTIONS = """
+## Check-In Mode
+This is a weekly check-in, not a full replan. Follow this process:
+
+1. **Assess** the past week using the Garmin activity data vs the season plan phase intent.
+2. **Write `coach_feedback`** — always populate this field. 3-4 concise bullet points:
+   - What the data shows (sessions completed, load, any gaps)
+   - How it compares to the season plan's current phase
+   - Anything to watch (fatigue, missed key sessions, upcoming constraints)
+   - What (if anything) is being adjusted and why
+3. **Decide on `schedule_updated`**:
+   - If the athlete is on track and no changes are needed: set `schedule_updated = false`,
+     leave `scheduled_days` empty, and write `output` as a brief summary only (no full plan).
+   - If there is meaningful drift, the athlete note requests changes, or key sessions need
+     restructuring: set `schedule_updated = true` and produce the full updated schedule.
+
+If the athlete wrote a note under "Athlete Note", treat it as direct instruction — it may
+warrant a schedule change, a priority shift, or just an acknowledgment in your feedback.
+"""
+
 WEEKLY_PLANNER_FINAL_CHECKLIST = """
 ## Final Checklist
-- Follow 28-day horizon and week grouping.
+- Follow the planning horizon and week grouping.
 - Do not contradict expert constraints.
 - Keep output compact and structured.
 
@@ -133,8 +153,9 @@ Rules:
 - reps: use midpoint if a range is given (e.g. "8-10" → 9).
 
 ## Day-by-Day Schedule (scheduled_days field)
-When outputting the final markdown plan, also populate `scheduled_days` with exactly 28 entries —
-one per day, using the exact dates from the Upcoming Weeks list provided in the inputs.
+When outputting the final markdown plan, populate `scheduled_days` with one entry per day covering
+every date in the Upcoming Weeks list ({num_days} entries). In check-in mode, only populate this
+if `schedule_updated` is true — leave it empty otherwise.
 
 Rules:
 - session_type: "run" for any running session, "strength" for gym work, "rest" for off/recovery
@@ -170,17 +191,23 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
         plotting_enabled=False,
     )
 
+    num_days = len(state.get("week_dates") or []) or 28
+    checkin_mode = state.get("checkin_mode", False)
+    logger.info("Weekly planner node: check-in mode %s", "on" if checkin_mode else "off")
+
     system_prompt = (
         get_workflow_context("weekly_planner")
         + WEEKLY_PLANNER_SYSTEM_PROMPT
+        + (WEEKLY_PLANNER_CHECKIN_INSTRUCTIONS if checkin_mode else "")
         + (get_hitl_instructions("weekly_planner") if hitl_enabled else "")
-        + WEEKLY_PLANNER_FINAL_CHECKLIST.format(catalog=_GARMIN_EXERCISE_CATALOG)
+        + WEEKLY_PLANNER_FINAL_CHECKLIST.format(catalog=_GARMIN_EXERCISE_CATALOG, num_days=num_days)
     )
 
     qa_messages = normalize_langchain_messages(state.get("weekly_planner_messages", []))
     user_message = {
         "role": "user",
         "content": WEEKLY_PLANNER_USER_PROMPT.format(
+            num_days=num_days,
             season_plan=extract_agent_content(state.get("season_plan")),
             athlete_name=state["athlete_name"],
             current_date=json.dumps(state["current_date"], indent=2),
@@ -227,10 +254,16 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
             scheduled_days = [d.model_dump() for d in agent_output.scheduled_days]
             logger.info("Weekly planner produced %d scheduled day(s)", len(scheduled_days))
 
+        if agent_output.coach_feedback:
+            logger.info("Coach feedback: %s", agent_output.coach_feedback[:120])
+        logger.info("Schedule updated: %s", agent_output.schedule_updated)
+
         return {
             "weekly_plan": agent_output.model_dump(),
             "strength_sessions": strength_sessions,
             "scheduled_days": scheduled_days,
+            "coach_feedback": agent_output.coach_feedback,
+            "schedule_updated": agent_output.schedule_updated,
             "costs": [create_cost_entry("weekly_planner", execution_time)],
         }
 
