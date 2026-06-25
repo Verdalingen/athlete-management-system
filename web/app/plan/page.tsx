@@ -138,7 +138,7 @@ export default async function PlanPage() {
       {/* ── Replan actions ── */}
       <section className="section" style={{ marginTop: 0, marginBottom: 24 }}>
         <h2 className="section-title">Actions</h2>
-        <ReplanPanel initialJobs={replanJobs} />
+        <ReplanPanel initialJobs={replanJobs} scheduledDays={(daysRes.data ?? []) as ScheduledDay[]} />
       </section>
 
       {/* ── Phase banner ── */}

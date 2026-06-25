@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -311,13 +311,17 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         if extraction_settings.get("upload_to_garmin", False):
             strength_sessions = result.get("strength_sessions") or []
             if strength_sessions:
-                logger.info("📲 Uploading %d strength session(s) to Garmin Connect…", len(strength_sessions))
+                logger.info("📲 Syncing %d strength session(s) with Garmin Connect…", len(strength_sessions))
                 storage = FilePlanStorage(base_dir=str(output_dir / "storage"))
-                workout_ids = _upload_strength_sessions(strength_sessions, email, password)
-                if workout_ids:
-                    existing = storage.load_json("cli_user", "garmin_workout_ids") or {}
-                    existing.update(workout_ids)
-                    storage.save_json("cli_user", "garmin_workout_ids", existing)
+                old_ids = storage.load_json("cli_user", "garmin_workout_ids") or {}
+                new_ids = _sync_strength_sessions(strength_sessions, old_ids, email, password)
+                if new_ids:
+                    # Keep past sessions in history, replace future ones with new uploads
+                    today = date.today().isoformat()
+                    merged = {d: v for d, v in old_ids.items() if d < today}
+                    merged.update(new_ids)
+                    storage.save_json("cli_user", "garmin_workout_ids", merged)
+                    workout_ids = new_ids
             else:
                 logger.info("📲 upload_to_garmin is enabled but no strength sessions found in plan.")
 
@@ -420,13 +424,16 @@ async def run_replan_from_config(
     if extraction_settings.get("upload_to_garmin", False):
         strength_sessions = result.get("strength_sessions") or []
         if strength_sessions:
-            logger.info("📲 Uploading %d strength session(s) to Garmin…", len(strength_sessions))
+            logger.info("📲 Syncing %d strength session(s) with Garmin Connect…", len(strength_sessions))
             storage2 = FilePlanStorage(base_dir=str(output_dir / "storage"))
-            workout_ids = _upload_strength_sessions(strength_sessions, email, password)
-            if workout_ids:
-                existing = storage2.load_json("cli_user", "garmin_workout_ids") or {}
-                existing.update(workout_ids)
-                storage2.save_json("cli_user", "garmin_workout_ids", existing)
+            old_ids = storage2.load_json("cli_user", "garmin_workout_ids") or {}
+            new_ids = _sync_strength_sessions(strength_sessions, old_ids, email, password)
+            if new_ids:
+                today = date.today().isoformat()
+                merged = {d: v for d, v in old_ids.items() if d < today}
+                merged.update(new_ids)
+                storage2.save_json("cli_user", "garmin_workout_ids", merged)
+                workout_ids = new_ids
         else:
             logger.info("📲 upload_to_garmin is enabled but no strength sessions in check-in.")
 
@@ -548,18 +555,40 @@ def _write_to_supabase(
         logger.warning("⚠️  Supabase write failed (plan still saved locally): %s", exc)
 
 
-def _upload_strength_sessions(
-    strength_sessions: list[dict[str, Any]],
+def _sync_strength_sessions(
+    new_sessions: list[dict[str, Any]],
+    old_workout_ids: dict[str, Any],
     email: str,
     password: str,
 ) -> dict[str, Any]:
-    """Upload strength sessions to Garmin. Returns {date: {workout_id, schedule_id, name}} mapping."""
+    """Delete future planned Garmin workouts, then upload new sessions. Single connection.
+
+    Sessions whose date is in the past are assumed completed and left untouched.
+    Returns {date: {workout_id, schedule_id, name}} for the newly uploaded sessions.
+    """
+    today = date.today().isoformat()
+
     gc = GarminConnectClient()
     gc.connect(email=email, password=password)
     client = gc.client
-    workout_ids: dict[str, Any] = {}
+    new_workout_ids: dict[str, Any] = {}
+
     try:
-        for s in strength_sessions:
+        # Remove old planned sessions that haven't happened yet
+        for session_date, entry in old_workout_ids.items():
+            if session_date >= today:
+                workout_id = entry.get("workout_id")
+                if workout_id:
+                    try:
+                        delete_strength_workout(client, int(workout_id))
+                    except Exception:
+                        logger.warning(
+                            "Could not delete old workoutId=%s for %s — skipping",
+                            workout_id, session_date,
+                        )
+
+        # Upload new sessions
+        for s in new_sessions:
             exercises = [
                 PlannedExercise(
                     garmin_category=ex["garmin_category"],
@@ -573,8 +602,6 @@ def _upload_strength_sessions(
                 )
                 for ex in s.get("exercises", [])
             ]
-            # Prepend date to the workout name so each session is uniquely identifiable
-            # in Garmin Connect (e.g. "Jun 23 · Upper A").
             raw_date = s["date"]
             try:
                 date_prefix = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%b %-d")
@@ -589,7 +616,7 @@ def _upload_strength_sessions(
             )
             try:
                 entry = upload_strength_session(client, session)
-                workout_ids[session.date] = entry
+                new_workout_ids[session.date] = entry
                 logger.info(
                     "✅ '%s' → workoutId=%s scheduled on %s",
                     session.name, entry["workout_id"], session.date,
@@ -598,7 +625,7 @@ def _upload_strength_sessions(
                 logger.exception("❌ Failed to upload '%s'", session.name)
     finally:
         gc.disconnect()
-    return workout_ids
+    return new_workout_ids
 
 
 
