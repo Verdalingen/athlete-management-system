@@ -147,7 +147,11 @@ export default async function WeekPage() {
                 {!d.is_rest && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
                     <span className={TYPE_BADGE[d.session_type] ?? "badge"}>{d.session_type}</span>
-                    {d.is_key && <span className="badge badge-accent">Key session</span>}
+                    {d.is_key && (
+                      <span className="badge badge-amber">
+                        <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />Key session
+                      </span>
+                    )}
                     {session && (
                       <span className="badge badge-blue">
                         <i className="ti ti-clock" style={{ marginRight: 4 }} />
@@ -164,8 +168,8 @@ export default async function WeekPage() {
                 )}
               </div>
 
-              {/* ── Workout structure ── */}
-              {!d.is_rest && d.description && (
+              {/* ── Workout structure (non-strength only) ── */}
+              {!d.is_rest && d.session_type !== "strength" && d.description && (
                 <div style={{ marginBottom: 14 }}>
                   <WorkoutStructure description={d.description} />
                 </div>
@@ -183,6 +187,7 @@ export default async function WeekPage() {
                         <th>Exercise</th>
                         <th style={{ width: 80, textAlign: "center" }}>Sets × Reps</th>
                         <th style={{ width: 60, textAlign: "center" }}>Rest</th>
+                        <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -194,6 +199,9 @@ export default async function WeekPage() {
                           </td>
                           <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
                             {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
+                          </td>
+                          <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
+                            {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
                           </td>
                         </tr>
                       ))}

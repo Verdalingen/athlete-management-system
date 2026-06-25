@@ -36,4 +36,5 @@ export interface Exercise {
   sets: number;
   reps: number;
   rest_seconds: number;
+  rir: number | null;
 }

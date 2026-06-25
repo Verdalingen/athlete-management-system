@@ -457,14 +457,32 @@ def _write_report_to_supabase(
         try:
             bench_e1rm = _compute_bench_e1rm(garmin_data or {})
             predicted_5k = _compute_predicted_5k_secs(garmin_data or {})
+            max_hr = _compute_max_heart_rate(garmin_data or {})
             write_report(
                 analysis_html=analysis_html,
                 planning_html=planning_html,
                 bench_e1rm_kg=bench_e1rm,
                 predicted_5k_secs=predicted_5k,
+                max_heart_rate_bpm=max_hr,
             )
         except Exception as exc:
             logger.warning("⚠️  Report write to Supabase failed: %s", exc)
+
+
+def _compute_max_heart_rate(garmin_data: dict[str, Any]) -> int | None:
+    """Highest HR recorded across all recent activities and today's daily stats."""
+    best: int | None = None
+    for acts_key in ("recent_activities", "all_activities"):
+        for act in (garmin_data.get(acts_key) or []):
+            mhr = (act.get("summary") or {}).get("max_heart_rate")
+            if isinstance(mhr, int) and 100 < mhr < 230:
+                if best is None or mhr > best:
+                    best = mhr
+    daily_mhr = (garmin_data.get("daily_stats") or {}).get("max_heart_rate")
+    if isinstance(daily_mhr, int) and 100 < daily_mhr < 230:
+        if best is None or daily_mhr > best:
+            best = daily_mhr
+    return best
 
 
 def _compute_bench_e1rm(garmin_data: dict[str, Any]) -> float | None:
@@ -541,15 +559,19 @@ def _write_to_supabase(
         if analysis_html or planning_html:
             bench_e1rm = _compute_bench_e1rm(garmin_data or {})
             predicted_5k = _compute_predicted_5k_secs(garmin_data or {})
+            max_hr = _compute_max_heart_rate(garmin_data or {})
             if bench_e1rm:
                 logger.info("📈 Bench e1RM: %.1f kg", bench_e1rm)
             if predicted_5k:
                 logger.info("🏃 Predicted 5k: %d s (%d:%02d)", predicted_5k, predicted_5k // 60, predicted_5k % 60)
+            if max_hr:
+                logger.info("❤️  Max HR: %d bpm", max_hr)
             write_report(
                 analysis_html=analysis_html,
                 planning_html=planning_html,
                 bench_e1rm_kg=bench_e1rm,
                 predicted_5k_secs=predicted_5k,
+                max_heart_rate_bpm=max_hr,
             )
     except Exception as exc:
         logger.warning("⚠️  Supabase write failed (plan still saved locally): %s", exc)

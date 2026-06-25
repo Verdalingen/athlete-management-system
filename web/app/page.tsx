@@ -167,18 +167,24 @@ export default async function DashboardPage() {
                   <thead>
                     <tr>
                       <th>Exercise</th>
-                      <th>Sets</th>
-                      <th>Reps</th>
-                      <th>Rest</th>
+                      <th style={{ width: 80, textAlign: "center" }}>Sets × Reps</th>
+                      <th style={{ width: 60, textAlign: "center" }}>Rest</th>
+                      <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
                     </tr>
                   </thead>
                   <tbody>
                     {session.exercises.map((ex) => (
                       <tr key={ex.id}>
                         <td style={{ fontWeight: 600 }}>{ex.display_name}</td>
-                        <td>{ex.sets}</td>
-                        <td>{ex.reps}</td>
-                        <td style={{ color: "var(--muted)" }}>{ex.rest_seconds / 60} min</td>
+                        <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
+                          {ex.sets}×{ex.reps}
+                        </td>
+                        <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
+                          {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
+                        </td>
+                        <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
+                          {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

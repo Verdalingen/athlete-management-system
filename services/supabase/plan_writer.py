@@ -18,6 +18,7 @@ def write_report(
     report_date: str | None = None,
     bench_e1rm_kg: float | None = None,
     predicted_5k_secs: int | None = None,
+    max_heart_rate_bpm: int | None = None,
 ) -> str | None:
     """Persist the latest analysis/planning HTML reports. Returns the row UUID."""
     if not analysis_html and not planning_html:
@@ -35,6 +36,8 @@ def write_report(
         payload["bench_e1rm_kg"] = bench_e1rm_kg
     if predicted_5k_secs is not None:
         payload["predicted_5k_secs"] = predicted_5k_secs
+    if max_heart_rate_bpm is not None:
+        payload["max_heart_rate_bpm"] = max_heart_rate_bpm
     row = sb.table("analyses").insert(payload).execute()
     report_id = row.data[0]["id"]
     logger.info("📋 Report saved to Supabase (id=%s)", report_id)
@@ -130,6 +133,7 @@ def write_plan(
                     "sets": ex["sets"],
                     "reps": ex["reps"],
                     "rest_seconds": ex.get("rest_seconds", 180),
+                    "rir": ex.get("rir"),
                 }
                 for i, ex in enumerate(exercises)
             ]).execute()

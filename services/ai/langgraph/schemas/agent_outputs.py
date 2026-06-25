@@ -27,6 +27,7 @@ class StrengthExercise(BaseModel):
     reps: int = Field(..., description="Reps per set; use midpoint if a range is given")
     weight_kg: float | None = Field(None, description="Always null — Garmin's API does not support pre-setting weight via structured workout upload.")
     rest_seconds: int = Field(180, description="Rest between sets in seconds. 180 (3 min) for ALL exercises — this is the floor, never go lower.")
+    rir: int | None = Field(None, description="Reps in reserve: how many reps remain before failure. 2-3 for hypertrophy/accessory work, 1-2 for heavy strength sets, 0 for all-out sets, null for deload/technique sessions where effort is self-regulated.")
 
 
 class StrengthSessionData(BaseModel):

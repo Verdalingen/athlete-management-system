@@ -18,13 +18,6 @@ interface PlanMeta {
   totalWeeks: number;
 }
 
-interface Zone {
-  zone: string;
-  name: string;
-  pct: string;
-  effort: string;
-}
-
 import type { WeekGoal } from "@/lib/plan-parser";
 
 function parseMeta(md: string, start: string, end: string): PlanMeta {
@@ -46,15 +39,6 @@ function parseMeta(md: string, start: string, end: string): PlanMeta {
   };
 }
 
-function parseZones(md: string): Zone[] {
-  const block = md.match(/##\s+Intensity Zones\n\n([\s\S]+?)(?:\n---|\n##)/);
-  if (!block) return [];
-  const rows = block[1].split("\n").filter(l => l.startsWith("|") && !l.includes("---") && !l.includes("Zone"));
-  return rows.map(row => {
-    const cols = row.split("|").map(s => s.trim()).filter(Boolean);
-    return { zone: cols[0], name: cols[1], pct: cols[2], effort: cols[3] };
-  }).filter(z => z.zone && z.name);
-}
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -115,7 +99,6 @@ export default async function PlanPage() {
   );
 
   const meta      = parseMeta(plan.markdown, plan.start_date, plan.end_date);
-  const zones     = parseZones(plan.markdown);
   const weekGoals = parseWeekGoals(plan.markdown);
 
   const created = new Date(plan.created_at).toLocaleDateString("en-GB", {
@@ -142,32 +125,62 @@ export default async function PlanPage() {
       </section>
 
       {/* ── Phase banner ── */}
-      {meta.phase && (
-        <div className="card card-accent" style={{ marginBottom: 0 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16, alignItems: "start", flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.2px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
-                Current Phase
+      {meta.phase && (() => {
+        const phaseMatch = meta.phase.match(/^([\d\s→\-–]+)\s*\(([^)]+)\)/);
+        const phaseLabel = phaseMatch ? `Phase ${phaseMatch[1].trim()}` : null;
+        const phaseName  = phaseMatch ? phaseMatch[2].trim() : meta.phase;
+
+        const startMs    = new Date(plan.start_date + "T00:00:00").getTime();
+        const endMs      = new Date(plan.end_date   + "T00:00:00").getTime();
+        const todayMs    = new Date(today           + "T00:00:00").getTime();
+        const progress   = Math.min(100, Math.max(0, ((todayMs - startMs) / (endMs - startMs)) * 100));
+        const currentWeek = Math.max(1, Math.ceil((todayMs - startMs) / (7 * 86400000)));
+
+        return (
+          <div className="card" style={{ marginBottom: 0, borderLeft: "3px solid var(--accent)" }}>
+            {/* Top row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--accent)" }}>
+                {phaseLabel ?? "Current Phase"}
               </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{meta.phase}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {meta.chronicLoad && (
+                  <span style={{ fontSize: 11, color: "var(--dim)" }}>Entry load {meta.chronicLoad}</span>
+                )}
+                <span className="badge badge-accent">Week {currentWeek} / {meta.totalWeeks}</span>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-              {meta.chronicLoad && (
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>Chronic Load (entry)</div>
-                  <div style={{ fontSize: 18, fontWeight: 800 }}>{meta.chronicLoad}</div>
-                </div>
-              )}
-              {meta.target && (
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>Target</div>
-                  <div style={{ fontSize: 13, color: "var(--text)", maxWidth: 260 }}>{meta.target}</div>
-                </div>
-              )}
+
+            {/* Phase name */}
+            <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.3, color: "var(--text)", marginBottom: 16 }}>
+              {phaseName}
             </div>
+
+            {/* Season progress */}
+            <div style={{ marginBottom: meta.target ? 16 : 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <span style={{ fontSize: 11, color: "var(--dim)" }}>Season progress</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                  {Math.round(progress)}%
+                </span>
+              </div>
+              <div style={{ height: 6, background: "rgba(255,255,255,.08)", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 3 }} />
+              </div>
+            </div>
+
+            {/* Target */}
+            {meta.target && (
+              <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 6 }}>
+                  Target
+                </div>
+                <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{meta.target}</div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Season calendar (interactive) ── */}
       <section className="section">
@@ -211,36 +224,6 @@ export default async function PlanPage() {
         </section>
       )}
 
-      {/* ── Intensity zones ── */}
-      {zones.length > 0 && (
-        <section className="section">
-          <h2 className="section-title">Intensity Zones</h2>
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Zone</th>
-                  <th>Name</th>
-                  <th>% HR max</th>
-                  <th>Effort</th>
-                </tr>
-              </thead>
-              <tbody>
-                {zones.map((z, i) => (
-                  <tr key={i}>
-                    <td>
-                      <span className="badge badge-accent">{z.zone}</span>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>{z.name}</td>
-                    <td style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>{z.pct}</td>
-                    <td style={{ color: "var(--muted)", fontSize: 12 }}>{z.effort}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
 
     </div>
   );

@@ -151,6 +151,11 @@ Rules:
 - weight_kg: always null — the athlete sets weight on the day. Do not guess or prescribe a weight.
 - rest_seconds: 180 (3 minutes) for ALL exercises without exception — accessories included. Never use a lower value.
 - reps: use midpoint if a range is given (e.g. "8-10" → 9).
+- rir: reps in reserve. Set based on training intent:
+    2-3  for general hypertrophy and accessory work (most sets)
+    1-2  for heavy compound strength sets (low rep, high load)
+    0    for all-out / AMRAP sets
+    null for deload weeks or technique-only sessions where effort is self-regulated.
 
 ## Day-by-Day Schedule (scheduled_days field)
 When outputting the final markdown plan, populate `scheduled_days` with one entry per day covering

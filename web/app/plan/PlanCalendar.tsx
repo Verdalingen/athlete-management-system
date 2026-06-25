@@ -173,7 +173,7 @@ export function PlanCalendar({
               ))}
               {hasKey && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(124,92,255,.5)", background: "rgba(124,92,255,.1)" }} />
+                  <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(255,204,102,.50)", background: "rgba(255,204,102,.07)" }} />
                   Key session
                 </div>
               )}
@@ -235,7 +235,11 @@ export function PlanCalendar({
                   <span className={TYPE_BADGE[selected.session_type] ?? "badge"}>
                     {SESSION_LABEL[selected.session_type] ?? selected.session_type}
                   </span>
-                  {selected.is_key && <span className="badge badge-accent">Key session</span>}
+                  {selected.is_key && (
+                    <span className="badge badge-amber">
+                      <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />Key session
+                    </span>
+                  )}
                   {selectedStrength && (
                     <span className="badge badge-blue">
                       <i className="ti ti-clock" style={{ marginRight: 4 }} />
@@ -250,8 +254,8 @@ export function PlanCalendar({
                   )}
                 </div>
 
-                {/* ── Workout description ── */}
-                {selected.description && (
+                {/* ── Workout structure (non-strength only) ── */}
+                {selected.description && selected.session_type !== "strength" && (
                   <div style={{ marginBottom: 16 }}>
                     <WorkoutStructure description={selected.description} />
                   </div>
@@ -269,10 +273,11 @@ export function PlanCalendar({
                           <th>Exercise</th>
                           <th style={{ width: 64, textAlign: "center" }}>Sets × Reps</th>
                           <th style={{ width: 60, textAlign: "center" }}>Rest</th>
+                          <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {selectedStrength.exercises.map((ex, i) => (
+                        {selectedStrength.exercises.map((ex) => (
                           <tr key={ex.id}>
                             <td>
                               <span style={{ fontWeight: 600 }}>{ex.display_name}</span>
@@ -282,6 +287,9 @@ export function PlanCalendar({
                             </td>
                             <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
                               {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
+                            </td>
+                            <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
+                              {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
                             </td>
                           </tr>
                         ))}

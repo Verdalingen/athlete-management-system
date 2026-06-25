@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { signOut } from "@/app/login/actions";
 
 const NAV = [
-  { href: "/",       label: "Today",  icon: "ti-home" },
-  { href: "/week",   label: "Week",   icon: "ti-calendar" },
-  { href: "/plan",   label: "Plan",   icon: "ti-route" },
-  { href: "/report", label: "Report", icon: "ti-file-analytics" },
+  { href: "/",        label: "Today",   icon: "ti-home" },
+  { href: "/week",    label: "Week",    icon: "ti-calendar" },
+  { href: "/plan",    label: "Plan",    icon: "ti-route" },
+  { href: "/report",  label: "Report",  icon: "ti-file-analytics" },
+  { href: "/profile", label: "Profile", icon: "ti-user" },
 ];
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
@@ -83,14 +83,6 @@ export function Sidebar() {
           <NavItems />
         </nav>
 
-        <div className="sb-bottom">
-          <form action={signOut} style={{ width: "100%" }}>
-            <button type="submit" className="sb-item" title="Sign out">
-              <i className="ti ti-logout" aria-hidden="true" />
-              <span className="sb-label">Sign out</span>
-            </button>
-          </form>
-        </div>
       </aside>
 
       {/* ── Mobile: top bar ── */}
@@ -133,14 +125,6 @@ export function Sidebar() {
           <NavItems onNavigate={() => setMobileOpen(false)} />
         </nav>
 
-        <div className="sb-bottom">
-          <form action={signOut} style={{ width: "100%" }}>
-            <button type="submit" className="sb-item">
-              <i className="ti ti-logout" aria-hidden="true" />
-              <span className="sb-label">Sign out</span>
-            </button>
-          </form>
-        </div>
       </div>
     </>
   );
