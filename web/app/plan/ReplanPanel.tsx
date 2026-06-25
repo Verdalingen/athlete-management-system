@@ -15,7 +15,11 @@ const STATUS_COLOR: Record<string, string> = {
   pending: "var(--amber)", running: "var(--cyan)", done: "var(--green)", error: "var(--red)",
 };
 const SESSION_DOT: Record<string, string> = {
-  run: "var(--cyan)", strength: "var(--accent)", race: "var(--red)", cross: "var(--green)",
+  run: "var(--cyan)", strength: "var(--accent)", race: "var(--red)", cross: "var(--amber)",
+};
+
+const SESSION_LABEL: Record<string, string> = {
+  run: "Run", strength: "Strength", race: "Race", cross: "Cross-train",
 };
 
 function toDateStr(d: Date): string {
@@ -196,10 +200,10 @@ function CalendarPicker({
             <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(255,180,0,.25)", border: "1px solid rgba(255,180,0,.5)" }} />
             Constrained
           </div>
-          {Object.entries(SESSION_DOT).map(([type, color]) => (
+          {[...new Set(scheduledDays.filter(s => !s.is_rest).map(s => s.session_type))].map(type => (
             <div key={type} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
-              {type.charAt(0).toUpperCase() + type.slice(1)}
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: SESSION_DOT[type] ?? "var(--dim)" }} />
+              {SESSION_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1))}
             </div>
           ))}
         </div>

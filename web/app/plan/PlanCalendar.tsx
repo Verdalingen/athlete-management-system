@@ -26,6 +26,13 @@ const SESSION_COLOR: Record<string, string> = {
   rest:     "var(--dim)",
 };
 
+const SESSION_LABEL: Record<string, string> = {
+  strength: "Strength",
+  run:      "Run",
+  race:     "Race",
+  cross:    "Cross-train",
+};
+
 const TYPE_BADGE: Record<string, string> = {
   strength: "badge badge-accent",
   run:      "badge badge-cyan",
@@ -148,19 +155,29 @@ export function PlanCalendar({
           })}
         </div>
 
-        {/* Legend */}
-        <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
-          {([ ["Strength", "var(--accent)"], ["Run", "var(--cyan)"], ["Race", "var(--red)"], ["Cross", "var(--amber)"] ] as [string, string][]).map(([label, color]) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
-              {label}
+        {/* Legend — derived from actual data */}
+        {(() => {
+          const presentTypes = [...new Set(
+            Object.values(dayMap).filter(d => !d.is_rest).map(d => d.session_type)
+          )];
+          const hasKey = Object.values(dayMap).some(d => d.is_key);
+          return (
+            <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
+              {presentTypes.map(type => (
+                <div key={type} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: SESSION_COLOR[type] ?? "var(--dim)" }} />
+                  {SESSION_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1))}
+                </div>
+              ))}
+              {hasKey && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(124,92,255,.5)", background: "rgba(124,92,255,.1)" }} />
+                  Key session
+                </div>
+              )}
             </div>
-          ))}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-            <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(124,92,255,.5)", background: "rgba(124,92,255,.1)" }} />
-            Key session
-          </div>
-        </div>
+          );
+        })()}
       </div>
 
       {/* ── Modal overlay ── */}
