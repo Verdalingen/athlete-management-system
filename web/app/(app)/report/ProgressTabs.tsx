@@ -253,6 +253,9 @@ export function PMCChart({
 
   const spanDays = tRange / 86400000 || 1;
   const barW = Math.max(2, (plotW / spanDays) * 0.8);
+  // Inset TSB bar scale so the outer edges of the first/last bar align with the plot boundary
+  const tsbBarPlotW = plotW - barW;
+  const tsbXS = (i: number) => BOT_PAD.left + barW / 2 + ((new Date(visibleDates[i]).getTime() - t0) / tRange) * tsbBarPlotW;
 
   // Monthly X-axis ticks (bottom chart only)
   const xMonthTicks: Array<{ x: number; label: string }> = [];
@@ -399,12 +402,6 @@ export function PMCChart({
           preserveAspectRatio="xMidYMid meet"
           onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)}>
 
-          <defs>
-            <clipPath id="tsb-plot-clip">
-              <rect x={BOT_PAD.left} y={BOT_PAD.top} width={plotW} height={botPlotH} />
-            </clipPath>
-          </defs>
-
           <ZoneBands bands={tsbBands} yC={yTC}
             plotLeft={BOT_PAD.left} plotWidth={plotW} plotTop={BOT_PAD.top} plotH={botPlotH}
             effMin={tsbNiceMin} effMax={tsbNiceMax} />
@@ -425,19 +422,17 @@ export function PMCChart({
           <line x1={BOT_PAD.left} y1={tsbZeroY} x2={W - BOT_PAD.right} y2={tsbZeroY}
             stroke="rgba(148,163,184,0.5)" strokeWidth={1} />
 
-          <g clipPath="url(#tsb-plot-clip)">
-            {tsbPts.map(p => {
-              const bx = xS(p.idx) - barW / 2;
-              const barColor = getZoneColor(p.value, tsbBands, p.value >= 0 ? "#22c55e" : "#ef4444");
-              const barTop = p.value >= 0 ? yTC(p.value) : tsbZeroY;
-              const barBot = p.value >= 0 ? tsbZeroY : yTC(p.value);
-              return (
-                <rect key={p.idx} x={bx.toFixed(1)} y={barTop.toFixed(1)}
-                  width={barW.toFixed(1)} height={Math.max(1, barBot - barTop).toFixed(1)}
-                  fill={barColor} opacity={hoverIdx === p.idx ? 1 : 0.75} rx={1} />
-              );
-            })}
-          </g>
+          {tsbPts.map(p => {
+            const bx = tsbXS(p.idx) - barW / 2;
+            const barColor = getZoneColor(p.value, tsbBands, p.value >= 0 ? "#22c55e" : "#ef4444");
+            const barTop = p.value >= 0 ? yTC(p.value) : tsbZeroY;
+            const barBot = p.value >= 0 ? tsbZeroY : yTC(p.value);
+            return (
+              <rect key={p.idx} x={bx.toFixed(1)} y={barTop.toFixed(1)}
+                width={barW.toFixed(1)} height={Math.max(1, barBot - barTop).toFixed(1)}
+                fill={barColor} opacity={hoverIdx === p.idx ? 1 : 0.75} rx={1} />
+            );
+          })}
 
           {xMonthTicks.map((t, i) => (
             <g key={i}>
@@ -448,7 +443,7 @@ export function PMCChart({
           ))}
 
           {hoverIdx != null && (() => {
-            const hx = xS(hoverIdx);
+            const hx = tsbXS(hoverIdx);
             const tsbV = tsb[hoverIdx]?.value;
             return (
               <>
