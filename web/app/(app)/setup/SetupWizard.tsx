@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { saveProfileStep } from "@/app/actions/athlete-profile";
 import type { AthleteProfile } from "@/app/actions/athlete-profile";
+import { storeGarminCredentials, deleteGarminCredentials } from "@/app/actions/garmin-credentials";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,8 +28,8 @@ const EMPTY: AthleteProfile = {
 const DAYS    = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_VALS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
-const STEP_LABELS = ["Goals", "Background", "Schedule", "Health", "Preferences"];
-const STEP_ICONS  = ["ti-target", "ti-barbell", "ti-calendar", "ti-heart-rate-monitor", "ti-adjustments"];
+const STEP_LABELS = ["Goals", "Background", "Schedule", "Health", "Preferences", "Garmin"];
+const STEP_ICONS  = ["ti-target", "ti-barbell", "ti-calendar", "ti-heart-rate-monitor", "ti-adjustments", "ti-device-watch"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,20 @@ function numVal(v: string): number | null {
   return isNaN(n) ? null : n;
 }
 
+// Goal-type helpers — empty string = no selection yet → show everything
+function isCardioRelevant(g: string) { return !g || g === "race" || g === "hybrid" || g === "fitness"; }
+function isStrengthRelevant(g: string) { return !g || g === "strength" || g === "aesthetics" || g === "hybrid" || g === "fitness"; }
+function hasRaceEvents(g: string) { return !g || g === "race" || g === "hybrid"; }
+
+const GOAL_TARGET_PLACEHOLDER: Record<string, string> = {
+  race:       "e.g. Sub-45 min 10k and qualify for the city marathon in spring 2027",
+  strength:   "e.g. 140kg bench press and 200kg deadlift within 12 months",
+  aesthetics: "e.g. Gain 10kg of lean muscle, visible definition, balanced upper body by summer",
+  hybrid:     "e.g. Sub-10 min 3000m and 140kg bench press by end of 2026",
+  fitness:    "e.g. Run a 5k without stopping, complete 20 push-ups, feel healthier overall",
+  "":         "e.g. Sub-10 min 3000m and 140kg bench press by end of 2026",
+};
+
 // ── Wizard steps ───────────────────────────────────────────────────────────────
 
 function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
@@ -96,7 +111,7 @@ function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<Athle
         <Label>Describe your specific target</Label>
         <Hint>Be as precise as possible — exact times, weights, distances, or milestones.</Hint>
         <textarea className="textarea" style={{ minHeight: 72 }}
-          placeholder="e.g. Sub-10 min 3000m and 140kg bench press by end of 2026"
+          placeholder={GOAL_TARGET_PLACEHOLDER[data.primary_goal_type] ?? GOAL_TARGET_PLACEHOLDER[""]}
           value={data.primary_goal_detail} onChange={e => set({ primary_goal_detail: e.target.value })} />
       </Field>
       <Field>
@@ -110,33 +125,35 @@ function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<Athle
         <input className="input" placeholder="e.g. By end of 2026, within 6 months, before summer"
           value={data.goal_timeline} onChange={e => set({ goal_timeline: e.target.value })} />
       </Field>
-      <Field>
-        <Label>Races or key events<Opt /></Label>
-        {data.events.map((ev, i) => (
-          <div key={i} className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Event {i + 1}</span>
-              <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeEvent(i)}>Remove</button>
+      {hasRaceEvents(data.primary_goal_type) && (
+        <Field>
+          <Label>Races or key events<Opt /></Label>
+          {data.events.map((ev, i) => (
+            <div key={i} className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Event {i + 1}</span>
+                <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeEvent(i)}>Remove</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <Field><Label>Name</Label><input className="input" placeholder="e.g. Oslo Marathon" value={ev.name} onChange={e => updateEvent(i, "name", e.target.value)} /></Field>
+                <Field><Label>Date</Label><input className="input" type="date" value={ev.date} onChange={e => updateEvent(i, "date", e.target.value)} /></Field>
+                <Field>
+                  <Label>Priority</Label>
+                  <select className="select-input" value={ev.priority} onChange={e => updateEvent(i, "priority", e.target.value)}>
+                    <option value="A">A — Peak for this</option>
+                    <option value="B">B — Tune-up / secondary</option>
+                    <option value="C">C — Just participating</option>
+                  </select>
+                </Field>
+                <Field><Label>Target time<Opt /></Label><input className="input" placeholder="e.g. sub 3:30" value={ev.target_time} onChange={e => updateEvent(i, "target_time", e.target.value)} /></Field>
+              </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Field><Label>Name</Label><input className="input" placeholder="e.g. Oslo Marathon" value={ev.name} onChange={e => updateEvent(i, "name", e.target.value)} /></Field>
-              <Field><Label>Date</Label><input className="input" type="date" value={ev.date} onChange={e => updateEvent(i, "date", e.target.value)} /></Field>
-              <Field>
-                <Label>Priority</Label>
-                <select className="select-input" value={ev.priority} onChange={e => updateEvent(i, "priority", e.target.value)}>
-                  <option value="A">A — Peak for this</option>
-                  <option value="B">B — Tune-up / secondary</option>
-                  <option value="C">C — Just participating</option>
-                </select>
-              </Field>
-              <Field><Label>Target time<Opt /></Label><input className="input" placeholder="e.g. sub 3:30" value={ev.target_time} onChange={e => updateEvent(i, "target_time", e.target.value)} /></Field>
-            </div>
-          </div>
-        ))}
-        <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start" }} onClick={addEvent}>
-          <i className="ti ti-plus" style={{ marginRight: 6 }} />Add event
-        </button>
-      </Field>
+          ))}
+          <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start" }} onClick={addEvent}>
+            <i className="ti ti-plus" style={{ marginRight: 6 }} />Add event
+          </button>
+        </Field>
+      )}
     </div>
   );
 }
@@ -186,23 +203,29 @@ function BackgroundStep({ data, set }: { data: AthleteProfile; set: (p: Partial<
             value={data.hours_per_week ?? ""} onChange={e => set({ hours_per_week: numVal(e.target.value) })} />
         </Field>
       </div>
-      <div>
-        <Label>Current performance benchmarks</Label>
-        <Hint>Fill in what&apos;s relevant — leave blank what doesn&apos;t apply.</Hint>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 8 }}>
-          {([["Bench 1RM (kg)", "bench_1rm_kg", "e.g. 125"], ["Squat 1RM (kg)", "squat_1rm_kg", "e.g. 140"], ["Deadlift 1RM (kg)", "deadlift_1rm_kg", "e.g. 180"]] as const).map(([label, key, ph]) => (
-            <Field key={key}>
-              <Label>{label}</Label>
-              <input className="input" type="number" placeholder={ph}
-                value={data[key] ?? ""} onChange={e => set({ [key]: numVal(e.target.value) })} />
-            </Field>
-          ))}
+      {(isStrengthRelevant(data.primary_goal_type) || isCardioRelevant(data.primary_goal_type)) && (
+        <div>
+          <Label>Current performance benchmarks</Label>
+          <Hint>Fill in what&apos;s relevant — leave blank what doesn&apos;t apply.</Hint>
+          {isStrengthRelevant(data.primary_goal_type) && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 8 }}>
+              {([["Bench 1RM (kg)", "bench_1rm_kg", "e.g. 125"], ["Squat 1RM (kg)", "squat_1rm_kg", "e.g. 140"], ["Deadlift 1RM (kg)", "deadlift_1rm_kg", "e.g. 180"]] as const).map(([label, key, ph]) => (
+                <Field key={key}>
+                  <Label>{label}</Label>
+                  <input className="input" type="number" placeholder={ph}
+                    value={data[key] ?? ""} onChange={e => set({ [key]: numVal(e.target.value) })} />
+                </Field>
+              ))}
+            </div>
+          )}
+          {isCardioRelevant(data.primary_goal_type) && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+              <Field><Label>5k time</Label><input className="input" placeholder="e.g. 23:45" value={data.run_5k_time} onChange={e => set({ run_5k_time: e.target.value })} /></Field>
+              <Field><Label>10k time</Label><input className="input" placeholder="e.g. 50:10" value={data.run_10k_time} onChange={e => set({ run_10k_time: e.target.value })} /></Field>
+            </div>
+          )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-          <Field><Label>5k time</Label><input className="input" placeholder="e.g. 23:45" value={data.run_5k_time} onChange={e => set({ run_5k_time: e.target.value })} /></Field>
-          <Field><Label>10k time</Label><input className="input" placeholder="e.g. 50:10" value={data.run_10k_time} onChange={e => set({ run_10k_time: e.target.value })} /></Field>
-        </div>
-      </div>
+      )}
       <Field>
         <Label>Other benchmarks<Opt /></Label>
         <textarea className="textarea" style={{ minHeight: 60 }}
@@ -313,14 +336,16 @@ function PreferencesStep({ data, set }: { data: AthleteProfile; set: (p: Partial
           { value: "no_pref",   label: "No preference — coach decides",     desc: "Leave it entirely to the AI coach based on your goals and readiness." },
         ]}
       />
-      <RadioGroup label="Cardio / running preference" value={data.indoor_outdoor} onChange={v => set({ indoor_outdoor: v })}
-        options={[
-          { value: "outdoor_pref", label: "Outdoor preferred",  desc: "Default to running or cycling outdoors — indoor as a fallback in bad weather." },
-          { value: "outdoor_only", label: "Outdoor only",       desc: "Always outdoors. No treadmills or gym cardio machines." },
-          { value: "indoor",       label: "Indoor preferred",   desc: "Prefer treadmill, rowing machine, or other gym cardio." },
-          { value: "no_pref",      label: "No preference",      desc: "Whatever suits the session — coach decides." },
-        ]}
-      />
+      {isCardioRelevant(data.primary_goal_type) && (
+        <RadioGroup label="Cardio / running preference" value={data.indoor_outdoor} onChange={v => set({ indoor_outdoor: v })}
+          options={[
+            { value: "outdoor_pref", label: "Outdoor preferred",  desc: "Default to running or cycling outdoors — indoor as a fallback in bad weather." },
+            { value: "outdoor_only", label: "Outdoor only",       desc: "Always outdoors. No treadmills or gym cardio machines." },
+            { value: "indoor",       label: "Indoor preferred",   desc: "Prefer treadmill, rowing machine, or other gym cardio." },
+            { value: "no_pref",      label: "No preference",      desc: "Whatever suits the session — coach decides." },
+          ]}
+        />
+      )}
       <Field>
         <Label>What do you enjoy about training?</Label>
         <Hint>Types of sessions, movements, or feelings you genuinely look forward to.</Hint>
@@ -346,6 +371,106 @@ function PreferencesStep({ data, set }: { data: AthleteProfile; set: (p: Partial
   );
 }
 
+// ── Garmin Connect step ────────────────────────────────────────────────────────
+
+function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
+  const [connected, setConnected] = useState(!!initialEmail);
+  const [connectedEmail, setConnectedEmail] = useState(initialEmail ?? "");
+  const [showForm, setShowForm] = useState(!initialEmail);
+  const [email, setEmail] = useState(initialEmail ?? "");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "saving" | "disconnecting" | "done" | "error">("idle");
+  const [errMsg, setErrMsg] = useState("");
+
+  async function handleConnect() {
+    if (!email || !password) return;
+    setStatus("saving");
+    setErrMsg("");
+    const result = await storeGarminCredentials(email, password);
+    if (result.error) { setStatus("error"); setErrMsg(result.error); return; }
+    setConnected(true);
+    setConnectedEmail(email);
+    setShowForm(false);
+    setPassword("");
+    setStatus("done");
+  }
+
+  async function handleDisconnect() {
+    setStatus("disconnecting");
+    setErrMsg("");
+    const result = await deleteGarminCredentials();
+    if (result.error) { setStatus("error"); setErrMsg(result.error); return; }
+    setConnected(false);
+    setConnectedEmail("");
+    setEmail("");
+    setShowForm(true);
+    setStatus("idle");
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <div className="card" style={{ borderLeft: "3px solid var(--accent)", padding: "12px 16px" }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+          Your Garmin Connect credentials are encrypted at rest using Supabase Vault (AES-256). They are used only to sync your training data and health metrics with the AI coach. You can disconnect at any time.
+        </div>
+      </div>
+
+      {connected && !showForm ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green, #22c55e)" }} />
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Connected</span>
+            <span style={{ fontSize: 13, color: "var(--muted)" }}>— {connectedEmail}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn-secondary" style={{ fontSize: 13 }}
+              onClick={() => { setEmail(connectedEmail); setShowForm(true); setStatus("idle"); }}>
+              <i className="ti ti-pencil" style={{ marginRight: 6 }} />Update credentials
+            </button>
+            <button type="button" className="btn-secondary" style={{ fontSize: 13, color: "var(--red, #ef4444)" }}
+              onClick={handleDisconnect} disabled={status === "disconnecting"}>
+              <i className="ti ti-unlink" style={{ marginRight: 6 }} />
+              {status === "disconnecting" ? "Disconnecting…" : "Disconnect"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {connected && (
+            <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start", fontSize: 13 }}
+              onClick={() => { setShowForm(false); setStatus("idle"); }}>
+              <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />Cancel
+            </button>
+          )}
+          <Field>
+            <Label>Garmin Connect email</Label>
+            <input className="input" type="email" placeholder="you@example.com"
+              value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" />
+          </Field>
+          <Field>
+            <Label>Garmin Connect password</Label>
+            <input className="input" type="password" placeholder="••••••••"
+              value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+          </Field>
+          <button type="button" className="btn-primary" style={{ alignSelf: "flex-start" }}
+            onClick={handleConnect} disabled={!email || !password || status === "saving"}>
+            {status === "saving"
+              ? <><i className="ti ti-loader-2" style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />Connecting…</>
+              : <><i className="ti ti-link" style={{ marginRight: 6 }} />{connected ? "Update" : "Connect"}</>}
+          </button>
+        </div>
+      )}
+
+      {status === "error" && <div style={{ color: "var(--red, #ef4444)", fontSize: 13 }}>{errMsg}</div>}
+      {status === "done" && <div style={{ color: "var(--green, #22c55e)", fontSize: 13 }}>Credentials saved successfully.</div>}
+
+      <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
+        No Garmin Connect account? You can skip this step and connect later from your profile settings.
+      </div>
+    </div>
+  );
+}
+
 // ── Context preview (read-only) ────────────────────────────────────────────────
 
 function ContextPreview({ label, text }: { label: string; text: string }) {
@@ -363,14 +488,15 @@ function ContextPreview({ label, text }: { label: string; text: string }) {
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
+export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial: AthleteProfile | null; devProfileStale?: boolean; garminEmail?: string | null }) {
   const hasContext = !!(initial?.generated_analysis_context || initial?.generated_planning_context);
 
   const [mode, setMode] = useState<"review" | "wizard">(hasContext ? "review" : "wizard");
   const [step, setStep] = useState(1);
-  const [maxStep, setMaxStep] = useState(hasContext ? 5 : 1);
+  const [maxStep, setMaxStep] = useState(hasContext ? 6 : 1);
   const [data, setData] = useState<AthleteProfile>(initial ?? EMPTY);
   const [isDirty, setIsDirty] = useState(false);
+  const [profileStale, setProfileStale] = useState(devProfileStale ?? false);
   const [showText, setShowText] = useState(false);
   const [saving, startSave] = useTransition();
   const [generating, setGenerating] = useState(false);
@@ -398,12 +524,19 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
 
   async function handleNext() {
     setError(null);
+    if (step === 6) {
+      setMode("review");
+      if (isDirty && (data.generated_analysis_context || data.generated_planning_context)) setProfileStale(true);
+      setIsDirty(false);
+      return;
+    }
     startSave(async () => {
       const result = await saveProfileStep(getStepPartial(step));
       if (result.error) { setError(result.error); return; }
       if (step === 5) {
-        setMode("review");
-        setIsDirty(false);
+        const next = 6;
+        setStep(next);
+        setMaxStep(m => Math.max(m, next));
       } else {
         const next = step + 1;
         setStep(next);
@@ -431,11 +564,24 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
       if (result.error) throw new Error(result.error);
       setData(d => ({ ...d, generated_analysis_context: analysisContext, generated_planning_context: planningContext, setup_completed: true }));
       setIsDirty(false);
+      setProfileStale(false);
     } catch {
       setError("Failed to generate context. Please try again.");
     } finally {
       setGenerating(false);
     }
+  }
+
+  async function handleSaveExit() {
+    if (!isDirty) { setMode("review"); return; }
+    setError(null);
+    startSave(async () => {
+      const result = await saveProfileStep(getStepPartial(step));
+      if (result.error) { setError(result.error); return; }
+      setIsDirty(false);
+      if (data.generated_analysis_context || data.generated_planning_context) setProfileStale(true);
+      setMode("review");
+    });
   }
 
   async function handleSaveText() {
@@ -464,6 +610,18 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
             ? "Your coaching context has been generated from your profile answers."
             : "No coaching context yet. Fill in your profile answers and generate a brief for your AI coach."}
         </div>
+
+        {/* Staleness warning */}
+        {profileStale && (
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: 10,
+            background: "rgba(234,179,8,.08)", border: "1px solid rgba(234,179,8,.3)",
+            borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "var(--yellow, #eab308)", lineHeight: 1.5,
+          }}>
+            <i className="ti ti-refresh-alert" style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }} />
+            <span>Your profile answers have changed. <strong>Regenerate</strong> to update the coaching context.</span>
+          </div>
+        )}
 
         {/* Context preview */}
         {hasCtx && !showText && (
@@ -540,6 +698,7 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
     "Schedule & equipment",
     "Health & limitations",
     "Training preferences",
+    "Connect Garmin",
   ];
   const STEP_SUBTITLES = [
     "Your goals are the foundation of every decision the coach makes.",
@@ -547,6 +706,7 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
     "When and where you train shapes what's possible.",
     "Any limitations the coach should know about.",
     "A plan you'll actually stick to beats a perfect plan you hate.",
+    "Sync your training data, health metrics, and performance trends.",
   ];
 
   return (
@@ -594,11 +754,12 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
 
       {/* Step content */}
       <div className="card" style={{ marginBottom: 24 }}>
-        {step === 1 && <GoalsStep       data={data} set={patch} />}
-        {step === 2 && <BackgroundStep  data={data} set={patch} />}
-        {step === 3 && <ScheduleStep    data={data} set={patch} />}
-        {step === 4 && <HealthStep      data={data} set={patch} />}
-        {step === 5 && <PreferencesStep data={data} set={patch} />}
+        {step === 1 && <GoalsStep          data={data} set={patch} />}
+        {step === 2 && <BackgroundStep     data={data} set={patch} />}
+        {step === 3 && <ScheduleStep       data={data} set={patch} />}
+        {step === 4 && <HealthStep         data={data} set={patch} />}
+        {step === 5 && <PreferencesStep    data={data} set={patch} />}
+        {step === 6 && <GarminConnectStep  initialEmail={garminEmail} />}
       </div>
 
       {/* Error */}
@@ -611,10 +772,21 @@ export function SetupWizard({ initial }: { initial: AthleteProfile | null }) {
           <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />
           {step === 1 ? "Overview" : "Back"}
         </button>
-        <span style={{ fontSize: 12, color: "var(--dim)" }}>Step {step} of 5</span>
-        <button className="btn-primary" onClick={handleNext} disabled={saving}>
-          {saving ? "Saving…" : step === 5 ? <>Save answers <i className="ti ti-check" style={{ marginLeft: 6 }} /></> : <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>}
-        </button>
+        <span style={{ fontSize: 12, color: "var(--dim)" }}>Step {step} of 6</span>
+        <div style={{ display: "flex", gap: 8 }}>
+          {step < 6 && (
+            <button className="btn-secondary" onClick={handleSaveExit} disabled={saving}>
+              {saving ? "Saving…" : "Save & exit"}
+            </button>
+          )}
+          <button className="btn-primary" onClick={handleNext} disabled={saving}>
+            {saving ? "Saving…" : step === 6
+              ? <>Finish <i className="ti ti-check" style={{ marginLeft: 6 }} /></>
+              : step === 5
+                ? <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>
+                : <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>}
+          </button>
+        </div>
       </div>
     </div>
   );

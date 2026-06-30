@@ -19,6 +19,8 @@ def write_report(
     bench_e1rm_kg: float | None = None,
     predicted_5k_secs: int | None = None,
     max_heart_rate_bpm: int | None = None,
+    kpis: dict | None = None,
+    personal_records: list | None = None,
 ) -> str | None:
     """Persist the latest analysis/planning HTML reports. Returns the row UUID."""
     if not analysis_html and not planning_html:
@@ -38,10 +40,124 @@ def write_report(
         payload["predicted_5k_secs"] = predicted_5k_secs
     if max_heart_rate_bpm is not None:
         payload["max_heart_rate_bpm"] = max_heart_rate_bpm
+    if kpis is not None:
+        payload["kpis"] = kpis
+    if personal_records is not None:
+        payload["personal_records"] = personal_records
     row = sb.table("analyses").insert(payload).execute()
     report_id = row.data[0]["id"]
     logger.info("📋 Report saved to Supabase (id=%s)", report_id)
     return report_id
+
+
+def upsert_kpis(
+    kpis: dict,
+    personal_records: list | None = None,
+    report_date: str | None = None,
+) -> None:
+    """Upsert a KPI snapshot for today. Creates a row if none exists for this date,
+    otherwise updates only the kpis (and personal_records) columns in place."""
+    sb = get_supabase()
+    user_id = _user_id()
+    today = report_date or str(date.today())
+
+    existing = sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).limit(1).execute()
+    if existing.data:
+        row_id = existing.data[0]["id"]
+        update: dict = {"kpis": kpis}
+        if personal_records is not None:
+            update["personal_records"] = personal_records
+        sb.table("analyses").update(update).eq("id", row_id).execute()
+        logger.info("📊 KPIs updated for %s (id=%s)", today, row_id)
+    else:
+        payload: dict = {
+            "user_id": user_id,
+            "report_date": today,
+            "analysis_html": "",
+            "planning_html": "",
+            "kpis": kpis,
+        }
+        if personal_records is not None:
+            payload["personal_records"] = personal_records
+        row = sb.table("analyses").insert(payload).execute()
+        logger.info("📊 KPIs inserted for %s (id=%s)", today, row.data[0]["id"])
+
+
+def upsert_daily_metrics_batch(
+    records: list[dict],
+    user_id: str | None = None,
+) -> int:
+    """Upsert a list of per-day metric records into the daily_metrics table.
+
+    Each record must have a ``date`` key (ISO string). Unknown extra keys are
+    silently ignored — the DB schema is the source of truth.
+
+    Returns the total number of rows written.
+    """
+    if not records:
+        return 0
+    sb = get_supabase()
+    uid = user_id or _user_id()
+
+    # Columns accepted by daily_metrics (everything else is dropped to avoid errors)
+    ALLOWED = {
+        "date", "ctl", "atl", "tsb", "acwr", "ramp_7d", "monotony", "strain",
+        "vo2max_running", "vo2max_cycling",
+        "rhr", "hrv_overnight", "sleep_score", "sleep_hours", "sleep_deep_h",
+        "sleep_rem_h", "stress_avg", "body_battery", "weight_kg",
+    }
+
+    rows = []
+    for rec in records:
+        d = rec.get("date")
+        if not d:
+            continue
+        clean = {k: v for k, v in rec.items() if k in ALLOWED and v is not None}
+        clean["user_id"] = uid
+        clean["date"] = d
+        rows.append(clean)
+
+    if not rows:
+        return 0
+
+    chunk = 100
+    total = 0
+    for i in range(0, len(rows), chunk):
+        sb.table("daily_metrics").upsert(
+            rows[i : i + chunk],
+            on_conflict="user_id,date",
+        ).execute()
+        total += len(rows[i : i + chunk])
+
+    logger.info("📊 daily_metrics: upserted %d rows", total)
+    return total
+
+
+def write_weekly_review(
+    *,
+    week_start: str,
+    summary_html: str,
+    kpi_delta: dict | None = None,
+    user_id: str | None = None,
+) -> None:
+    """Upsert a weekly review for the given week (Monday ISO date).
+
+    Called at the end of each weekly check-in. ``week_start`` must be the
+    Monday of the reviewed week (e.g. "2026-06-23"). Subsequent calls for the
+    same week overwrite the previous review.
+    """
+    sb = get_supabase()
+    uid = user_id or _user_id()
+    payload: dict = {
+        "user_id": uid,
+        "week_start": week_start,
+        "summary_html": summary_html,
+        "updated_at": "now()",
+    }
+    if kpi_delta is not None:
+        payload["kpi_delta"] = kpi_delta
+    sb.table("weekly_reviews").upsert(payload, on_conflict="user_id,week_start").execute()
+    logger.info("📝 Weekly review saved for week %s", week_start)
 
 
 def _user_id() -> str:

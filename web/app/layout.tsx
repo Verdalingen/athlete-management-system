@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Sidebar } from "./Sidebar";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -22,12 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <div className="app-shell">
-          <Sidebar />
-          <div className="main-area">
-            {children}
-          </div>
-        </div>
+        {children}
         <Analytics />
       </body>
     </html>

@@ -29,9 +29,11 @@ export async function proxy(request: NextRequest) {
   // Important: always use getUser() not getSession() — getUser() hits the server.
   const { data: { user } } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const isLoginPage    = request.nextUrl.pathname.startsWith("/login");
+  const isAuthCallback = request.nextUrl.pathname.startsWith("/auth/");
+  const isDevPreview   = process.env.NODE_ENV !== "production" && request.nextUrl.pathname.startsWith("/setup/dev-preview");
 
-  if (!user && !isLoginPage) {
+  if (!user && !isLoginPage && !isAuthCallback && !isDevPreview) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

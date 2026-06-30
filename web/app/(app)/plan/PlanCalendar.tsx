@@ -27,6 +27,57 @@ const SESSION_COLOR: Record<string, string> = {
   rest:     "var(--dim)",
 };
 
+function parseDurationLabel(description: string | null): string | null {
+  if (!description) return null;
+
+  // No intervals — show the leading duration exactly as written
+  if (!/[×x]/i.test(description)) {
+    const m = description.match(/^(\d+(?:-\d+)?)\s*min/i);
+    return m ? `${m[1]} min` : null;
+  }
+
+  let total = 0;
+
+  // Grouped intervals: N×(Xmin work, Ymin rec, ...)
+  let rest = description;
+  let hasGrouped = false;
+  for (const bm of description.matchAll(/(\d+)\s*[×x]\s*\(([^)]+)\)/gi)) {
+    hasGrouped = true;
+    const reps = parseInt(bm[1]);
+    let inner = 0;
+    for (const im of bm[2].matchAll(/(\d+(?:\.\d+)?)\s*min/gi))
+      inner += parseFloat(im[1]);
+    total += reps * inner;
+    rest = rest.replace(bm[0], "");
+  }
+  if (hasGrouped) {
+    // Add any standalone Xmin values outside the blocks (warm-up, cool-down, etc.)
+    for (const m of rest.matchAll(/(\d+(?:\.\d+)?)\s*min/gi))
+      total += parseFloat(m[1]);
+    return `~${Math.round(total)} min`;
+  }
+
+  // Simple: N min base + A×Bmin work (C min/s rec)
+  const base = description.match(/^(\d+)(?:-(\d+))?\s*min/i);
+  if (base) {
+    const lo = parseInt(base[1]), hi = base[2] ? parseInt(base[2]) : lo;
+    total += (lo + hi) / 2;
+  }
+  const iv = description.match(/(\d+)\s*[×x]\s*(\d+(?:\.\d+)?)\s*min/i);
+  if (iv) {
+    const reps = parseInt(iv[1]), work = parseFloat(iv[2]);
+    total += reps * work;
+    // Recovery per rep: (Cmin ...) or (Cs ...)
+    const rec = description.match(/\((\d+(?:\.\d+)?)\s*(min|s)\b/i);
+    if (rec) {
+      const v = parseFloat(rec[1]);
+      total += reps * (rec[2].toLowerCase() === "s" ? v / 60 : v);
+    }
+  }
+
+  return total > 0 ? `~${Math.round(total)} min` : null;
+}
+
 const SESSION_LABEL: Record<string, string> = {
   strength: "Strength",
   run:      "Run",
@@ -240,12 +291,20 @@ export function PlanCalendar({
                       <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />Key session
                     </span>
                   )}
-                  {selectedStrength && (
+                  {selectedStrength ? (
                     <span className="badge badge-blue">
                       <i className="ti ti-clock" style={{ marginRight: 4 }} />
                       {formatDuration(selectedStrength.estimated_duration_secs)}
                     </span>
-                  )}
+                  ) : (() => {
+                    const dur = parseDurationLabel(selected.description);
+                    return dur ? (
+                      <span className="badge badge-blue">
+                        <i className="ti ti-clock" style={{ marginRight: 4 }} />
+                        {dur}
+                      </span>
+                    ) : null;
+                  })()}
                   {selectedStrength?.garmin_workout_id && (
                     <span className="badge badge-green">
                       <i className="ti ti-check" style={{ marginRight: 4 }} />

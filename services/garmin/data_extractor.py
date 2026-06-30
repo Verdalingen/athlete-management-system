@@ -6,6 +6,10 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, TypeVar
 
 import requests
+try:
+    from garth.exc import GarthHTTPError as _GarthHTTPError
+except ImportError:
+    _GarthHTTPError = None  # type: ignore[assignment,misc]
 
 from .client import GarminConnectClient
 from .models import (
@@ -195,9 +199,15 @@ class TriathlonCoachDataExtractor(DataExtractor):
         try:
             result = fn(*args)
             return result if result is not None else default
-        except (requests.HTTPError, requests.RequestException, RuntimeError, TypeError, ValueError):
-            logger.exception("API failed: %s", what)
-            return default
+        except Exception as exc:
+            # Catch garth's own HTTP error type (not a subclass of requests.HTTPError)
+            # as well as standard requests errors and other runtime failures.
+            is_http = isinstance(exc, (requests.HTTPError, requests.RequestException))
+            is_garth = _GarthHTTPError is not None and isinstance(exc, _GarthHTTPError)
+            if is_http or is_garth or isinstance(exc, (RuntimeError, TypeError, ValueError)):
+                logger.warning("API call skipped (%s): %s", type(exc).__name__, what)
+                return default
+            raise
 
     def _training_status_cached(self, day_iso: str) -> dict[str, Any]:
         cache = self._training_status_cache
@@ -358,6 +368,13 @@ class TriathlonCoachDataExtractor(DataExtractor):
             default=None,
             what="get_race_predictions",
         )
+
+        if getattr(config, "include_metrics", True):
+            mstart, mend = date_ranges["metrics"]["start"], date_ranges["metrics"]["end"]
+            data["body_battery"] = self.get_body_battery(mstart, mend)
+            data["training_readiness"] = self.get_training_readiness(mend)
+
+        data["personal_records"] = self.get_personal_records()
 
         return GarminData(**data)
 
@@ -1253,6 +1270,65 @@ class TriathlonCoachDataExtractor(DataExtractor):
             chronic_span=chronic_span,
             uncouple_days=uncouple_days,
         )
+
+    def get_body_battery(self, start_date: date, end_date: date) -> list[dict[str, Any]]:
+        """Return one entry per day with the end-of-day body battery level."""
+        raw: Any = self._call_api(
+            self.garmin.client.get_body_battery,
+            start_date.isoformat(), end_date.isoformat(),
+            default=[],
+            what=f"get_body_battery({start_date}, {end_date})",
+        )
+        result: list[dict[str, Any]] = []
+        for day_entry in raw or []:
+            if not isinstance(day_entry, dict):
+                continue
+            cal_date = day_entry.get("date") or day_entry.get("calendarDate")
+            readings = day_entry.get("bodyBatteryValuesArray") or day_entry.get("charged") or []
+            if readings and isinstance(readings, list):
+                # Last reading of the day is the end-of-day value
+                last = readings[-1]
+                level = last[1] if isinstance(last, (list, tuple)) and len(last) > 1 else (
+                    last.get("value") if isinstance(last, dict) else None
+                )
+                result.append({"date": cal_date, "end_of_day": _to_int(level)})
+        return result
+
+    def get_training_readiness(self, end_date: date) -> dict[str, Any] | None:
+        """Return the most recent training readiness assessment."""
+        raw: Any = self._call_api(
+            self.garmin.client.get_training_readiness,
+            end_date.isoformat(),
+            default=None,
+            what=f"get_training_readiness({end_date})",
+        )
+        if not raw or not isinstance(raw, dict):
+            return None
+        dto = raw.get("trainingReadinessDTO") or raw
+        return {
+            "score": _to_int(dto.get("score")),
+            "level": dto.get("level"),
+            "feedback": dto.get("feedbackLong") or dto.get("feedbackShort"),
+        }
+
+    def get_personal_records(self) -> list[dict[str, Any]]:
+        """Return Garmin-tracked personal records."""
+        raw: Any = self._call_api(
+            self.garmin.client.get_personal_record,
+            default=[],
+            what="get_personal_record",
+        )
+        result: list[dict[str, Any]] = []
+        for pr in raw or []:
+            if not isinstance(pr, dict):
+                continue
+            result.append({
+                "type": pr.get("typeId") or pr.get("personalRecordTypeId") or pr.get("activityType"),
+                "value": pr.get("value") or pr.get("pr"),
+                "activity_id": pr.get("activityId"),
+                "pr_start_time_local": pr.get("prStartTimeLocal") or pr.get("startTimeLocal"),
+            })
+        return result
 
     @staticmethod
     def _generate_sample_dates(start_date: date, end_date: date, interval_days: int) -> list[date]:

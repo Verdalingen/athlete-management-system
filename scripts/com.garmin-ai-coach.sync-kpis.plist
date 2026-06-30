@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Unique identifier for this agent -->
+  <key>Label</key>
+  <string>com.garmin-ai-coach.sync-kpis</string>
+
+  <!-- Run the sync script via bash (launchd ignores shebangs) -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-l</string>
+    <string>/Users/adrianwalderhaug-johnsen/Documents/garmin-ai-coach/scripts/sync_kpis.sh</string>
+  </array>
+
+  <!-- Fire once on login/load -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Also fire when waking from sleep, in case the Mac was already logged in -->
+  <key>StartInterval</key>
+  <integer>43200</integer>
+
+  <!-- Write stdout/stderr to log files for debugging -->
+  <key>StandardOutPath</key>
+  <string>/Users/adrianwalderhaug-johnsen/.garmin-ai-coach-kpi-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/adrianwalderhaug-johnsen/.garmin-ai-coach-kpi-sync.log</string>
+
+  <!-- Keep environment clean -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>/Users/adrianwalderhaug-johnsen</string>
+  </dict>
+</dict>
+</plist>

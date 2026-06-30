@@ -25,7 +25,8 @@ from services.garmin import ExtractionConfig, TriathlonCoachDataExtractor
 from services.garmin.client import GarminConnectClient
 from services.garmin.strength_uploader import PlannedExercise, PlannedSet, PlannedStrengthSession, delete_strength_workout, upload_strength_session
 from services.outside.client import OutsideApiGraphQlClient
-from services.supabase.plan_writer import write_plan, write_report
+from services.garmin.history_sync import build_daily_metrics_records
+from services.supabase.plan_writer import write_plan, write_report, upsert_kpis, upsert_daily_metrics_batch
 from daily_checkin_cli import run_daily_from_config
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -57,8 +58,21 @@ class ConfigParser:
             raise ValueError(f"Unsupported config format: {self.config_path.suffix}")
 
     def get_athlete_info(self) -> tuple[str, str]:
+        # In SaaS mode, email comes from Supabase vault
+        import os
+        user_id = os.environ.get("SUPABASE_USER_ID")
+        if user_id:
+            try:
+                from services.supabase.credentials import get_garmin_credentials
+                creds = get_garmin_credentials(user_id)
+                if creds:
+                    email, _ = creds
+                    return self.config.get("athlete", {}).get("name", "Athlete"), email
+            except Exception:
+                pass
+
         if not (email := self.config.get("athlete", {}).get("email")):
-            raise ValueError("Athlete email is required in config file")
+            raise ValueError("Athlete email is required in config file or Supabase vault")
 
         return self.config.get("athlete", {}).get("name", "Athlete"), email
 
@@ -97,10 +111,38 @@ class ConfigParser:
         return Path(self.config.get("output", {}).get("directory", "./data"))
 
     def get_password(self) -> str:
-        return (
-            self.config.get("credentials", {}).get("password", "") or
-            getpass.getpass("Enter Garmin Connect password: ")
-        )
+        import os
+        user_id = os.environ.get("SUPABASE_USER_ID")
+
+        # 1. Supabase Vault (SaaS multi-user — preferred when SUPABASE_USER_ID is set)
+        if user_id:
+            try:
+                from services.supabase.credentials import get_garmin_credentials
+                creds = get_garmin_credentials(user_id)
+                if creds:
+                    _, password = creds
+                    return password
+            except Exception:
+                pass
+
+        _, email = self.get_athlete_info()
+
+        # 2. macOS Keychain / system credential store (personal use)
+        try:
+            import keyring
+            stored = keyring.get_password("garmin-ai-coach", email)
+            if stored:
+                return stored
+        except Exception:
+            pass
+
+        # 3. Config file (acceptable for personal setups, keep out of git)
+        cfg_password = self.config.get("credentials", {}).get("password", "")
+        if cfg_password:
+            return cfg_password
+
+        # 4. Interactive prompt (not available in headless contexts)
+        return getpass.getpass("Enter Garmin Connect password: ")
 
 
 def fetch_outside_competitions_from_config(config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -325,7 +367,10 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
             else:
                 logger.info("📲 upload_to_garmin is enabled but no strength sessions found in plan.")
 
-        _write_to_supabase(result, workout_ids, garmin_data=asdict(garmin_data))
+        gd_dict = asdict(garmin_data)
+        _write_to_supabase(result, workout_ids, garmin_data=gd_dict)
+        # Full extraction includes 360-day training load history — persist all of it.
+        upsert_daily_metrics_batch(build_daily_metrics_records(gd_dict))
     except Exception as e:
         logger.error("❌ Analysis failed: %s", e)
         raise
@@ -437,8 +482,11 @@ async def run_replan_from_config(
         else:
             logger.info("📲 upload_to_garmin is enabled but no strength sessions in check-in.")
 
-    _write_to_supabase(result, workout_ids, garmin_data=asdict(garmin_data))
-    _write_report_to_supabase(output_dir, garmin_data=asdict(garmin_data))
+    gd = asdict(garmin_data)
+    _write_to_supabase(result, workout_ids, garmin_data=gd)
+    _write_report_to_supabase(output_dir, garmin_data=gd)
+    # Full extraction includes 360-day training load history — persist all of it.
+    upsert_daily_metrics_batch(build_daily_metrics_records(gd))
     return coach_feedback
 
 
@@ -455,18 +503,185 @@ def _write_report_to_supabase(
     planning_html = planning_path.read_text(encoding="utf-8") if planning_path.exists() else None
     if analysis_html or planning_html:
         try:
-            bench_e1rm = _compute_bench_e1rm(garmin_data or {})
-            predicted_5k = _compute_predicted_5k_secs(garmin_data or {})
-            max_hr = _compute_max_heart_rate(garmin_data or {})
+            gd = garmin_data or {}
+            bench_e1rm = _compute_bench_e1rm(gd)
+            predicted_5k = _compute_predicted_5k_secs(gd)
+            max_hr = _compute_max_heart_rate(gd)
             write_report(
                 analysis_html=analysis_html,
                 planning_html=planning_html,
                 bench_e1rm_kg=bench_e1rm,
                 predicted_5k_secs=predicted_5k,
                 max_heart_rate_bpm=max_hr,
+                kpis=_compute_kpis(gd),
+                personal_records=_extract_personal_records(gd),
             )
         except Exception as exc:
             logger.warning("⚠️  Report write to Supabase failed: %s", exc)
+
+
+def _compute_kpis(garmin_data: dict[str, Any]) -> dict[str, Any]:
+    """Assemble a structured KPI snapshot from the full garmin_data dict."""
+    from statistics import mean as _mean
+
+    def _dg(*keys: str, src: dict | None = None) -> Any:
+        node = src if src is not None else garmin_data
+        for k in keys:
+            if not isinstance(node, dict):
+                return None
+            node = node.get(k)
+        return node
+
+    # ── Training Load (most recent day in history) ──────────────────────
+    load_history: list[dict] = garmin_data.get("training_load_history") or []
+    latest_load = load_history[-1] if load_history else {}
+
+    training_load = {
+        "chronic_28d_avg": latest_load.get("chronic_28d_avg"),
+        "acute_7d_sum": latest_load.get("acute_7d_sum"),
+        "acwr_uncoupled": latest_load.get("acwr_uncoupled"),
+        "tsb": latest_load.get("tsb"),
+        "monotony_7d": latest_load.get("monotony_7d"),
+        "strain_7d": latest_load.get("strain_7d"),
+        "ramp_7d": latest_load.get("ramp_7d"),
+    }
+
+    # ── Physiological ───────────────────────────────────────────────────
+    phys = garmin_data.get("physiological_markers") or {}
+    if hasattr(phys, "__dict__"):
+        phys = phys.__dict__
+    up = garmin_data.get("user_profile") or {}
+    if hasattr(up, "__dict__"):
+        up = up.__dict__
+
+    hrv_raw = phys.get("hrv") or {}
+    baseline = hrv_raw.get("baseline") or {}
+
+    # LT pace: convert m/s → min/km
+    lt_speed = up.get("lactate_threshold_speed")
+    lt_pace_min_per_km = round(1000 / (lt_speed * 60), 2) if lt_speed else None
+
+    physiological = {
+        "vo2max_running": phys.get("vo2_max"),
+        "rhr": phys.get("resting_heart_rate"),
+        "lactate_threshold_hr": up.get("lactate_threshold_heart_rate"),
+        "lactate_threshold_pace_min_per_km": lt_pace_min_per_km,
+    }
+
+    hrv = {
+        "weekly_avg": hrv_raw.get("weekly_avg"),
+        "last_night_avg": hrv_raw.get("last_night_avg"),
+        "last_night_5min_high": hrv_raw.get("last_night_5min_high"),
+        "baseline_low": baseline.get("balanced_low"),
+        "baseline_high": baseline.get("balanced_upper"),
+    }
+
+    # ── Recovery indicators (7-day avg) ─────────────────────────────────
+    indicators: list[dict] = garmin_data.get("recovery_indicators") or []
+    if indicators and hasattr(indicators[0], "__dict__"):
+        indicators = [i.__dict__ for i in indicators]
+
+    sleep_entries = [i.get("sleep") or {} for i in indicators if i.get("sleep")]
+    stress_entries = [i.get("stress") or {} for i in indicators if i.get("stress")]
+
+    def _avg(vals: list) -> float | None:
+        clean = [v for v in vals if v is not None]
+        return round(_mean(clean), 1) if clean else None
+
+    def _latest(key: str, src: list[dict]) -> Any:
+        for entry in reversed(src):
+            v = entry.get(key)
+            if v is not None:
+                return v
+        return None
+
+    sleep = {
+        "avg_total_hours": _avg([s.get("duration", {}).get("total") for s in sleep_entries]),
+        "avg_deep_hours": _avg([s.get("duration", {}).get("deep") for s in sleep_entries]),
+        "avg_rem_hours": _avg([s.get("duration", {}).get("rem") for s in sleep_entries]),
+        "avg_score": _avg([s.get("quality", {}).get("overall_score") for s in sleep_entries]),
+        "avg_overnight_hrv": _avg([s.get("avg_overnight_hrv") for s in sleep_entries]),
+        "avg_rhr": _avg([s.get("resting_heart_rate") for s in sleep_entries]),
+        "latest_score": _latest("quality", sleep_entries) and _latest("quality", sleep_entries).get("overall_score"),
+    }
+
+    stress = {
+        "avg_7d": _avg([s.get("avg_level") for s in stress_entries]),
+        "max_7d": _avg([s.get("max_level") for s in stress_entries]),
+    }
+
+    # ── Body metrics ────────────────────────────────────────────────────
+    body_raw = garmin_data.get("body_metrics") or {}
+    if hasattr(body_raw, "__dict__"):
+        body_raw = body_raw.__dict__
+    weight_data = (body_raw.get("weight") or {})
+    weight_entries: list[dict] = weight_data.get("data") or [] if isinstance(weight_data, dict) else []
+    weight_avg = weight_data.get("average") if isinstance(weight_data, dict) else None
+    latest_weight = next((e.get("weight") for e in reversed(weight_entries) if e.get("weight")), None)
+    earliest_weight = next((e.get("weight") for e in weight_entries if e.get("weight")), None)
+
+    hydration_entries: list[dict] = body_raw.get("hydration") or []
+    hydration_avg = _avg([h.get("intake") for h in hydration_entries if h.get("intake")])
+
+    body = {
+        "weight_kg": latest_weight or weight_avg,
+        "weight_change_kg": round(latest_weight - earliest_weight, 2) if latest_weight and earliest_weight else None,
+        "weight_entries": weight_entries[-14:],  # last 14 days for trend sparkline
+        "hydration_avg_l": hydration_avg,
+    }
+
+    # ── Body battery ────────────────────────────────────────────────────
+    bb_entries: list[dict] = garmin_data.get("body_battery") or []
+    bb_levels = [e.get("end_of_day") for e in bb_entries if e.get("end_of_day") is not None]
+    body_battery = {
+        "latest": bb_levels[-1] if bb_levels else None,
+        "avg_7d": _avg(bb_levels[-7:]) if bb_levels else None,
+    }
+
+    # ── Training readiness ──────────────────────────────────────────────
+    tr_raw = garmin_data.get("training_readiness") or {}
+    training_readiness = {
+        "score": tr_raw.get("score"),
+        "level": tr_raw.get("level"),
+        "feedback": tr_raw.get("feedback"),
+    } if tr_raw else {}
+
+    # ── Race predictions ────────────────────────────────────────────────
+    preds_raw = garmin_data.get("race_predictions") or {}
+
+    def _pred_secs(keys: list[str]) -> int | None:
+        for k in keys:
+            v = preds_raw.get(k) or (preds_raw.get("racePredictions") or {}).get(k)
+            if v is None:
+                continue
+            secs = v if isinstance(v, (int, float)) else (v.get("time") or v.get("raceDuration"))
+            if secs:
+                return int(secs)
+        return None
+
+    race_predictions = {
+        "5k_secs":            _pred_secs(["fiveK", "5k", "raceTime5K"]),
+        "10k_secs":           _pred_secs(["tenK", "10k", "raceTime10K"]),
+        "half_marathon_secs": _pred_secs(["halfMarathon", "raceTimeHalfMarathon"]),
+        "marathon_secs":      _pred_secs(["marathon", "raceTimeMarathon"]),
+    }
+
+    return {
+        "as_of": datetime.now().date().isoformat(),
+        "training_load": training_load,
+        "physiological": physiological,
+        "hrv": hrv,
+        "sleep": sleep,
+        "stress": stress,
+        "body": body,
+        "body_battery": body_battery,
+        "training_readiness": training_readiness,
+        "race_predictions": race_predictions,
+    }
+
+
+def _extract_personal_records(garmin_data: dict[str, Any]) -> list[dict[str, Any]]:
+    return garmin_data.get("personal_records") or []
 
 
 def _compute_max_heart_rate(garmin_data: dict[str, Any]) -> int | None:
@@ -557,9 +772,10 @@ def _write_to_supabase(
         if isinstance(planning_html, dict):
             planning_html = planning_html.get("content", "")
         if analysis_html or planning_html:
-            bench_e1rm = _compute_bench_e1rm(garmin_data or {})
-            predicted_5k = _compute_predicted_5k_secs(garmin_data or {})
-            max_hr = _compute_max_heart_rate(garmin_data or {})
+            gd = garmin_data or {}
+            bench_e1rm = _compute_bench_e1rm(gd)
+            predicted_5k = _compute_predicted_5k_secs(gd)
+            max_hr = _compute_max_heart_rate(gd)
             if bench_e1rm:
                 logger.info("📈 Bench e1RM: %.1f kg", bench_e1rm)
             if predicted_5k:
@@ -572,6 +788,8 @@ def _write_to_supabase(
                 bench_e1rm_kg=bench_e1rm,
                 predicted_5k_secs=predicted_5k,
                 max_heart_rate_bpm=max_hr,
+                kpis=_compute_kpis(gd),
+                personal_records=_extract_personal_records(gd),
             )
     except Exception as exc:
         logger.warning("⚠️  Supabase write failed (plan still saved locally): %s", exc)
@@ -746,6 +964,94 @@ def create_config_template(output_path: Path) -> None:
         logger.error("❌ Template file not found")
 
 
+_SYNC_STAMP = Path.home() / ".garmin-ai-coach-kpi-sync"
+
+def cmd_sync_kpis(config_path: Path) -> None:
+    """Lightweight daily KPI sync — no AI, no plan generation.
+
+    Skips if already run today (checked via a local stamp file) so that
+    the LaunchAgent can fire on every login/wake without double-syncing.
+    """
+    today_str = date.today().isoformat()
+
+    # Skip if already synced today
+    if _SYNC_STAMP.exists() and _SYNC_STAMP.read_text().strip() == today_str:
+        logger.info("⏭️  KPI sync already done today (%s) — skipping.", today_str)
+        return
+
+    config_parser = ConfigParser(config_path)
+    _, email = config_parser.get_athlete_info()
+    password = config_parser.get_password()
+
+    logger.info("🔄 Daily KPI sync starting for %s …", today_str)
+
+    # Minimal extraction: only what's needed for daily metrics (no detailed
+    # activities, no long-term trends, 3-day window to capture last night's sleep)
+    extraction_config = ExtractionConfig(
+        activities_range=3,
+        metrics_range=3,
+        include_detailed_activities=False,
+        include_metrics=True,
+        include_mindfulness=False,
+        include_long_term_trends=False,
+    )
+
+    extractor = TriathlonCoachDataExtractor(email, password)
+    garmin_data = extractor.extract_data(extraction_config)
+    gd = asdict(garmin_data)
+
+    kpis = _compute_kpis(gd)
+    personal_records = _extract_personal_records(gd)
+
+    upsert_kpis(kpis=kpis, personal_records=personal_records or None)
+
+    # Also persist today's row into the dense time-series table for trend charts.
+    # (Minimal extraction only covers ~3 days, so this adds/updates a small window.)
+    upsert_daily_metrics_batch(build_daily_metrics_records(gd))
+
+    _SYNC_STAMP.write_text(today_str)
+    logger.info("✅ KPI sync complete for %s.", today_str)
+
+
+def cmd_sync_history(config_path: Path) -> None:
+    """Full historical backfill of daily_metrics (up to 365 days from Garmin).
+
+    - training_load_history: 365 days of EWMA metrics computed from activity loads
+    - vo2_max_history: all available VO2max estimates
+    - body_battery: last 56 days of end-of-day levels
+    - recovery_indicators: last 56 days of sleep/HRV/RHR/stress
+    - body_metrics: all available weight history
+
+    After the first run, ``--sync-kpis`` keeps daily_metrics current day-by-day.
+    """
+    cp = ConfigParser(config_path)
+    _, email = cp.get_athlete_info()
+    password = cp.get_password()
+
+    # metrics_range capped at 14: Garmin's body battery endpoint returns 400
+    # for windows wider than ~14 days. Training load comes from activities
+    # (unaffected) and VO2max from long_term_trends (also unaffected).
+    extraction_config = ExtractionConfig(
+        activities_range=21,
+        metrics_range=14,
+        include_detailed_activities=False,
+        include_metrics=True,
+        include_mindfulness=False,
+        include_long_term_trends=True,
+        long_term_range=365,
+        long_term_interval=7,
+    )
+
+    logger.info("🔄 Starting full history sync (up to 365 days) — this may take a few minutes…")
+    extractor = TriathlonCoachDataExtractor(email, password)
+    garmin_data = extractor.extract_data(extraction_config)
+    gd = asdict(garmin_data)
+
+    records = build_daily_metrics_records(gd)
+    n = upsert_daily_metrics_batch(records)
+    logger.info("✅ History sync complete — %d daily metric rows upserted.", n)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Garmin AI Coach CLI - AI Triathlon Coach",
@@ -759,11 +1065,32 @@ def main():
                             "only the weekly planner against the stored season plan (~$0.20-0.40)")
     group.add_argument("--queue", type=Path, metavar="CONFIG",
                        help="Process pending replan jobs queued via the web UI")
+    group.add_argument("--sync-kpis", type=Path, metavar="CONFIG",
+                       help="Lightweight daily KPI sync (no AI). Safe to run on every login — "
+                            "skips automatically if already synced today.")
+    group.add_argument("--sync-history", type=Path, metavar="CONFIG",
+                       help="Backfill up to 365 days of trend data from Garmin into daily_metrics. "
+                            "Run once after initial setup, then daily sync keeps it current.")
+    group.add_argument("--set-password", type=Path, metavar="CONFIG",
+                       help="Securely store Garmin password in the system keychain (run once, never stored in files)")
     group.add_argument("--init-config", type=Path, help="Create a configuration template file")
 
     parser.add_argument("--output-dir", type=Path, help="Override output directory from config")
 
     args = parser.parse_args()
+
+    if args.set_password:
+        config_parser = ConfigParser(args.set_password)
+        _, email = config_parser.get_athlete_info()
+        try:
+            import keyring
+        except ImportError:
+            logger.error("❌ keyring not installed — run: pixi install")
+            sys.exit(1)
+        password = getpass.getpass(f"Garmin password for {email}: ")
+        keyring.set_password("garmin-ai-coach", email, password)
+        logger.info("✅ Password stored in system keychain for %s", email)
+        return
 
     if args.init_config:
         create_config_template(args.init_config)
@@ -794,6 +1121,24 @@ def main():
             logger.info("❌ Queue processing cancelled")
         except Exception as e:
             logger.error("❌ Queue processing failed: %s", e)
+            sys.exit(1)
+
+    if args.sync_kpis:
+        try:
+            cmd_sync_kpis(args.sync_kpis)
+        except KeyboardInterrupt:
+            logger.info("❌ KPI sync cancelled")
+        except Exception as e:
+            logger.error("❌ KPI sync failed: %s", e)
+            sys.exit(1)
+
+    if args.sync_history:
+        try:
+            cmd_sync_history(args.sync_history)
+        except KeyboardInterrupt:
+            logger.info("❌ History sync cancelled")
+        except Exception as e:
+            logger.error("❌ History sync failed: %s", e)
             sys.exit(1)
 
 

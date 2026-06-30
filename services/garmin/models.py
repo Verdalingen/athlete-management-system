@@ -185,3 +185,6 @@ class GarminData:
     long_term_vo2_max_trend: dict[str, list[dict[str, Any]]] | None = None
     long_term_training_load_trend: list[dict[str, Any]] | None = None
     race_predictions: dict[str, Any] | None = None
+    body_battery: list[dict[str, Any]] | None = None       # daily end-of-day body battery
+    training_readiness: dict[str, Any] | None = None       # most recent readiness score
+    personal_records: list[dict[str, Any]] | None = None   # Garmin-tracked PRs

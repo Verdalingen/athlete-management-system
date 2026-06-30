@@ -8,7 +8,7 @@ const NAV = [
   { href: "/",        label: "Today",   icon: "ti-home" },
   { href: "/week",    label: "Week",    icon: "ti-calendar" },
   { href: "/plan",    label: "Plan",    icon: "ti-route" },
-  { href: "/report",  label: "Report",  icon: "ti-file-analytics" },
+  { href: "/report",  label: "Progress", icon: "ti-trending-up" },
   { href: "/profile", label: "Profile", icon: "ti-user" },
 ];
 

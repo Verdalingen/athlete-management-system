@@ -15,6 +15,7 @@ typing_extensions = ">=4.13.0"
 [pypi-dependencies]
 # Install the project itself in editable mode
 garmin-ai-coach = { path = ".", editable = true }
+keyring = ">=25.0"
 garminconnect = ">=0.2.30, <0.3"
 anthropic = ">=0.71.0, <0.72"
 typing-extensions = ">=4.13.0"  # pydantic-core 2.33+ requires Sentinel which landed in 4.13

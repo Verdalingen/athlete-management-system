@@ -1,11 +1,15 @@
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
+import { getGarminConnectionStatus } from "@/app/actions/garmin-credentials";
 import { SetupWizard } from "./SetupWizard";
 import Link from "next/link";
 
 export const metadata = { title: "Coaching Setup" };
 
 export default async function SetupPage() {
-  const profile = await getAthleteProfile();
+  const [profile, garmin] = await Promise.all([
+    getAthleteProfile(),
+    getGarminConnectionStatus(),
+  ]);
 
   return (
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "48px 24px 80px" }}>
@@ -19,7 +23,7 @@ export default async function SetupPage() {
           This takes about 5 minutes and shapes every plan you receive.
         </p>
       </div>
-      <SetupWizard initial={profile} />
+      <SetupWizard initial={profile} garminEmail={garmin.email} />
     </main>
   );
 }

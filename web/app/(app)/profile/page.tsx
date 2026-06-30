@@ -14,15 +14,14 @@ interface Zone {
   pct: string;
 }
 
-function parseZones(md: string): Zone[] {
-  const block = md.match(/##\s+Intensity Zones\n\n([\s\S]+?)(?:\n---|\n##)/);
-  if (!block) return [];
-  const rows = block[1].split("\n").filter(l => l.startsWith("|") && !l.includes("---") && !l.includes("Zone"));
-  return rows.map(row => {
-    const cols = row.split("|").map(s => s.trim()).filter(Boolean);
-    return { zone: cols[0], name: cols[1], pct: cols[2] };
-  }).filter(z => z.zone && z.name);
-}
+// Olympiatoppen 5-zone model (% of HRmax)
+const ZONES: Zone[] = [
+  { zone: "Z1", name: "Recovery",           pct: "< 72"   },
+  { zone: "Z2", name: "Aerobic base",       pct: "72–82"  },
+  { zone: "Z3", name: "Aerobic threshold",  pct: "82–87"  },
+  { zone: "Z4", name: "Lactate threshold",  pct: "87–92"  },
+  { zone: "Z5", name: "VO₂max",             pct: "> 92"   },
+];
 
 const ZONE_COLOR: Record<string, string> = {
   Z1: "var(--dim)",
@@ -70,7 +69,7 @@ export default async function ProfilePage() {
   const manualMaxHR: number | null = settingsRes.data?.[0]?.max_heart_rate_bpm ?? null;
   const effectiveMaxHR: number | null = manualMaxHR ?? garminMaxHR;
 
-  const zones = plan ? parseZones(plan.markdown) : [];
+  const zones = ZONES;
   const planGenerated = plan
     ? new Date(plan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
@@ -162,53 +161,43 @@ export default async function ProfilePage() {
       {/* ── Intensity Zones ── */}
       <section className="section">
         <h2 className="section-title">Intensity Zones</h2>
-        {zones.length > 0 ? (
-          <>
-            <div className="card" style={{ padding: 0 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 64 }}>Zone</th>
-                    <th>Name</th>
-                    <th style={{ width: 110 }}>% HR max</th>
-                    {effectiveMaxHR && <th style={{ width: 130 }}>BPM range</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {zones.map((z, i) => (
-                    <tr key={i}>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: ZONE_COLOR[z.zone] ?? "var(--dim)", flexShrink: 0 }} />
-                          <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: ZONE_COLOR[z.zone] ?? "var(--dim)" }}>
-                            {z.zone}
-                          </span>
-                        </div>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{z.name}</td>
-                      <td style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>{z.pct}</td>
-                      {effectiveMaxHR && (
-                        <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: ZONE_COLOR[z.zone] ?? "var(--dim)" }}>
-                          {hrRange(z.pct, effectiveMaxHR)}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p style={{ fontSize: 11, color: "var(--dim)", marginTop: 8 }}>
-              Calibrated by your AI coach
-              {planGenerated ? ` · Generated ${planGenerated}` : ""}
-              {plan ? ` · ${formatShort(plan.start_date)} – ${formatShort(plan.end_date)}` : ""}
-              {!effectiveMaxHR && " · Set your max HR above to see BPM ranges"}
-            </p>
-          </>
-        ) : (
-          <div className="card" style={{ textAlign: "center", padding: "32px 20px", color: "var(--muted)" }}>
-            No zones found. Zones are defined when a training plan is generated.
-          </div>
-        )}
+        <div className="card" style={{ padding: 0 }}>
+          <table>
+            <thead>
+              <tr>
+                <th style={{ width: 64 }}>Zone</th>
+                <th>Name</th>
+                <th style={{ width: 110 }}>% HR max</th>
+                {effectiveMaxHR && <th style={{ width: 130 }}>BPM range</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {zones.map((z, i) => (
+                <tr key={i}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: ZONE_COLOR[z.zone] ?? "var(--dim)", flexShrink: 0 }} />
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 700, color: ZONE_COLOR[z.zone] ?? "var(--dim)" }}>
+                        {z.zone}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={{ fontWeight: 600 }}>{z.name}</td>
+                  <td style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 12 }}>{z.pct}%</td>
+                  {effectiveMaxHR && (
+                    <td style={{ fontFamily: "var(--mono)", fontSize: 12, color: ZONE_COLOR[z.zone] ?? "var(--dim)" }}>
+                      {hrRange(z.pct, effectiveMaxHR)}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p style={{ fontSize: 11, color: "var(--dim)", marginTop: 8 }}>
+          Olympiatoppen 5-zone model
+          {!effectiveMaxHR && " · Set your max HR above to see BPM ranges"}
+        </p>
       </section>
 
       {/* ── Sign out ── */}
