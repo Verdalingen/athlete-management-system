@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 const NAV = [
-  { href: "/",        label: "Today",   icon: "ti-home" },
-  { href: "/week",    label: "Week",    icon: "ti-calendar" },
-  { href: "/plan",    label: "Plan",    icon: "ti-route" },
-  { href: "/report",  label: "Progress", icon: "ti-trending-up" },
-  { href: "/profile", label: "Profile", icon: "ti-user" },
+  { href: "/",           label: "Today",     icon: "ti-home" },
+  { href: "/week",       label: "Week",      icon: "ti-calendar" },
+  { href: "/plan",       label: "Plan",      icon: "ti-route" },
+  { href: "/nutrition",  label: "Nutrition", icon: "ti-salad" },
+  { href: "/report",     label: "Progress",  icon: "ti-trending-up" },
+  { href: "/profile",    label: "Profile",   icon: "ti-user" },
 ];
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {

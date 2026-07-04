@@ -1,0 +1,2489 @@
+"use client";
+
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { BarcodeScanner } from "./BarcodeScanner";
+import { PhotoFoodCapture } from "./PhotoFoodCapture";
+import { WeekStrip } from "./WeekStrip";
+import { WeightCard } from "./WeightCard";
+import { CustomFoodModal, type CustomFood } from "./CustomFoodModal";
+import { MealBuilderModal, type MealTemplate, type MealDraft } from "./MealBuilderModal";
+import { MealManagerModal } from "./MealManagerModal";
+import { WeeklyMealPlanModal } from "./WeeklyMealPlanModal";
+import { QuantityInput } from "./QuantityInput";
+import type { Portion } from "./useQuantityInput";
+import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type DiaryEntry = {
+  id: string;
+  date: string;
+  meal_type: string;
+  food_name: string;
+  brand?: string | null;
+  quantity_g: number;
+  serving_qty?: number | null;
+  serving_label?: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g?: number;
+  sugar_g?: number;
+  sodium_mg?: number;
+  vitamin_a_mcg?: number;
+  vitamin_c_mg?: number;
+  vitamin_d_mcg?: number;
+  vitamin_e_mg?: number;
+  vitamin_k_mcg?: number;
+  thiamin_mg?: number;
+  riboflavin_mg?: number;
+  niacin_mg?: number;
+  vitamin_b6_mg?: number;
+  folate_mcg?: number;
+  vitamin_b12_mcg?: number;
+  calcium_mg?: number;
+  iron_mg?: number;
+  magnesium_mg?: number;
+  phosphorus_mg?: number;
+  potassium_mg?: number;
+  zinc_mg?: number;
+  copper_mg?: number;
+  saturated_fat_g?: number;
+  monounsaturated_fat_g?: number;
+  polyunsaturated_fat_g?: number;
+  omega3_g?: number;
+  cholesterol_mg?: number;
+  meal_items?: Array<{
+    food_name: string;
+    quantity_g: number;
+    serving_qty?: number | null;
+    serving_label?: string | null;
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    fiber_g: number;
+  }> | null;
+};
+
+type RecentFood = {
+  food_name: string;
+  quantity_g: number;
+  serving_qty?: number | null;
+  serving_label?: string | null;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g?: number;
+  usda_fdc_id?: number | null;
+  date: string;
+  use_count: number;
+};
+
+type NutritionTarget = {
+  day_type: string;
+  calories: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
+  fiber_g?: number;
+  water_ml?: number;
+  notes?: string;
+  source?: string;
+};
+
+type USDAFood = {
+  fdcId: number;
+  description: string;
+  brand?: string | null;
+  category?: string | null;
+  servingSize?: number | null;
+  servingUnit?: string;
+  servingLabel?: string | null;
+  portions?: Portion[];
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
+  vitamin_a_mcg: number;
+  vitamin_c_mg: number;
+  vitamin_d_mcg: number;
+  vitamin_e_mg: number;
+  vitamin_k_mcg: number;
+  thiamin_mg: number;
+  riboflavin_mg: number;
+  niacin_mg: number;
+  vitamin_b6_mg: number;
+  folate_mcg: number;
+  vitamin_b12_mcg: number;
+  calcium_mg: number;
+  iron_mg: number;
+  magnesium_mg: number;
+  phosphorus_mg: number;
+  potassium_mg: number;
+  zinc_mg: number;
+  copper_mg: number;
+  saturated_fat_g: number;
+  monounsaturated_fat_g: number;
+  polyunsaturated_fat_g: number;
+  omega3_g: number;
+  cholesterol_mg: number;
+  isCustom?: boolean;
+  customFoodId?: string;
+};
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const MEALS = [
+  { key: "breakfast",    label: "Breakfast",    emoji: "🌅" },
+  { key: "pre_workout",  label: "Pre-Workout",  emoji: "⚡" },
+  { key: "lunch",        label: "Lunch",        emoji: "☀️" },
+  { key: "post_workout", label: "Post-Workout", emoji: "💪" },
+  { key: "dinner",       label: "Dinner",       emoji: "🌙" },
+  { key: "snacks",       label: "Snacks",       emoji: "🍎" },
+];
+
+const WATER_ML_PER_GLASS = 250;
+const WATER_GLASSES_TARGET = 10; // 2.5L default
+
+const DAY_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  hard:    { label: "⚡ Hard Session Day",  color: "var(--red)",    bg: "rgba(255,92,122,.12)" },
+  easy:    { label: "🏃 Easy Day",          color: "var(--blue)",   bg: "rgba(111,182,255,.12)" },
+  rest:    { label: "😴 Rest Day",          color: "var(--green)",  bg: "rgba(56,217,150,.12)" },
+  race:    { label: "🏁 Race Day",          color: "var(--accent)", bg: "rgba(124,92,255,.12)" },
+  default: { label: "📅 Training Day",     color: "var(--muted)",  bg: "rgba(255,255,255,.05)" },
+};
+
+// Standard adult RDAs (approximate)
+const RDA: Record<string, number> = {
+  vitamin_a_mcg:   900,
+  vitamin_c_mg:    90,
+  vitamin_d_mcg:   20,
+  vitamin_e_mg:    15,
+  vitamin_k_mcg:   120,
+  thiamin_mg:      1.2,
+  riboflavin_mg:   1.3,
+  niacin_mg:       16,
+  vitamin_b6_mg:   1.7,
+  folate_mcg:      400,
+  vitamin_b12_mcg: 2.4,
+  calcium_mg:      1000,
+  iron_mg:         8,
+  magnesium_mg:    420,
+  phosphorus_mg:   700,
+  potassium_mg:    4700,
+  zinc_mg:         11,
+  copper_mg:       0.9,
+  sodium_mg:       2300,    // max
+  saturated_fat_g: 20,      // max
+  omega3_g:        1.6,
+  cholesterol_mg:  300,     // max
+  fiber_g:         38,
+};
+
+const MICRO_GROUPS = [
+  {
+    label: "Vitamins",
+    items: [
+      { key: "vitamin_c_mg",    label: "Vitamin C",  unit: "mg" },
+      { key: "vitamin_d_mcg",   label: "Vitamin D",  unit: "µg" },
+      { key: "vitamin_a_mcg",   label: "Vitamin A",  unit: "µg" },
+      { key: "vitamin_e_mg",    label: "Vitamin E",  unit: "mg" },
+      { key: "vitamin_k_mcg",   label: "Vitamin K",  unit: "µg" },
+      { key: "thiamin_mg",      label: "Thiamin",    unit: "mg" },
+      { key: "riboflavin_mg",   label: "Riboflavin", unit: "mg" },
+      { key: "niacin_mg",       label: "Niacin",     unit: "mg" },
+      { key: "vitamin_b6_mg",   label: "Vitamin B6", unit: "mg" },
+      { key: "folate_mcg",      label: "Folate",     unit: "µg" },
+      { key: "vitamin_b12_mcg", label: "Vitamin B12",unit: "µg" },
+    ],
+  },
+  {
+    label: "Minerals",
+    items: [
+      { key: "calcium_mg",    label: "Calcium",    unit: "mg" },
+      { key: "iron_mg",       label: "Iron",       unit: "mg" },
+      { key: "magnesium_mg",  label: "Magnesium",  unit: "mg" },
+      { key: "potassium_mg",  label: "Potassium",  unit: "mg" },
+      { key: "phosphorus_mg", label: "Phosphorus", unit: "mg" },
+      { key: "zinc_mg",       label: "Zinc",       unit: "mg" },
+      { key: "sodium_mg",     label: "Sodium",     unit: "mg" },
+      { key: "copper_mg",     label: "Copper",     unit: "mg" },
+    ],
+  },
+  {
+    label: "Fats",
+    items: [
+      { key: "saturated_fat_g",       label: "Saturated",     unit: "g" },
+      { key: "monounsaturated_fat_g",  label: "Monounsat.",    unit: "g" },
+      { key: "polyunsaturated_fat_g",  label: "Polyunsat.",    unit: "g" },
+      { key: "omega3_g",              label: "Omega-3",       unit: "g" },
+      { key: "cholesterol_mg",        label: "Cholesterol",   unit: "mg" },
+    ],
+  },
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function round1(n: number) { return Math.round(n * 10) / 10; }
+
+function computeTotals(entries: DiaryEntry[]) {
+  const food = entries.filter(e => e.meal_type !== "water");
+  const sum = (key: keyof DiaryEntry) =>
+    round1(food.reduce((s, e) => s + ((e[key] as number) ?? 0), 0));
+
+  return {
+    calories:            Math.round(food.reduce((s, e) => s + e.calories, 0)),
+    protein_g:           sum("protein_g"),
+    carbs_g:             sum("carbs_g"),
+    fat_g:               sum("fat_g"),
+    fiber_g:             sum("fiber_g"),
+    sugar_g:             sum("sugar_g"),
+    sodium_mg:           sum("sodium_mg"),
+    vitamin_a_mcg:       sum("vitamin_a_mcg"),
+    vitamin_c_mg:        sum("vitamin_c_mg"),
+    vitamin_d_mcg:       sum("vitamin_d_mcg"),
+    vitamin_e_mg:        sum("vitamin_e_mg"),
+    vitamin_k_mcg:       sum("vitamin_k_mcg"),
+    thiamin_mg:          sum("thiamin_mg"),
+    riboflavin_mg:       sum("riboflavin_mg"),
+    niacin_mg:           sum("niacin_mg"),
+    vitamin_b6_mg:       sum("vitamin_b6_mg"),
+    folate_mcg:          sum("folate_mcg"),
+    vitamin_b12_mcg:     sum("vitamin_b12_mcg"),
+    calcium_mg:          sum("calcium_mg"),
+    iron_mg:             sum("iron_mg"),
+    magnesium_mg:        sum("magnesium_mg"),
+    phosphorus_mg:       sum("phosphorus_mg"),
+    potassium_mg:        sum("potassium_mg"),
+    zinc_mg:             sum("zinc_mg"),
+    copper_mg:           sum("copper_mg"),
+    saturated_fat_g:         sum("saturated_fat_g"),
+    monounsaturated_fat_g:   sum("monounsaturated_fat_g"),
+    polyunsaturated_fat_g:   sum("polyunsaturated_fat_g"),
+    omega3_g:                sum("omega3_g"),
+    cholesterol_mg:          sum("cholesterol_mg"),
+  };
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+}
+
+function prevDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function nextDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function pct(val: number, max: number) {
+  return Math.min(100, max > 0 ? Math.round((val / max) * 100) : 0);
+}
+
+// ── SVG Ring ─────────────────────────────────────────────────────────────────
+
+function CalRing({ value, max, size = 100, stroke = 9 }: { value: number; max: number; size?: number; stroke?: number }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const fill = max > 0 ? Math.min(1, value / max) : 0;
+  const offset = circ * (1 - fill);
+  const cx = size / 2;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth={stroke} />
+      <circle
+        cx={cx} cy={cx} r={r} fill="none"
+        stroke={fill >= 1 ? "var(--amber)" : "var(--accent)"}
+        strokeWidth={stroke}
+        strokeDasharray={circ}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${cx} ${cx})`}
+        style={{ transition: "stroke-dashoffset .5s ease" }}
+      />
+    </svg>
+  );
+}
+
+// ── Macro bar ────────────────────────────────────────────────────────────────
+
+function MacroBar({ label, value, max, color, unit = "g" }: { label: string; value: number; max: number; color: string; unit?: string }) {
+  const p = pct(value, max);
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+        <span style={{ color: "var(--muted)" }}>{label}</span>
+        <span style={{ color, fontWeight: 700 }}>{value}{unit} <span style={{ color: "var(--dim)", fontWeight: 400 }}>/ {max}{unit}</span></span>
+      </div>
+      <div className="progress-bar">
+        <div className="progress-fill" style={{ width: `${p}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Micro row ────────────────────────────────────────────────────────────────
+
+function MicroRow({ label, value, rda, unit }: { label: string; value: number; rda: number; unit: string }) {
+  const p = Math.min(120, pct(value, rda));
+  const over = p >= 110;
+  const met = p >= 95;
+  const low = p < 40;
+  const barColor = over ? "var(--amber)" : met ? "var(--green)" : low ? "rgba(255,92,122,.6)" : "var(--accent)";
+  const valColor = over ? "var(--amber)" : met ? "var(--green)" : low ? "var(--red)" : "var(--muted)";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", width: 90, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {label}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ height: 4, background: "rgba(255,255,255,.07)", borderRadius: 2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${p}%`, background: barColor, borderRadius: 2, transition: "width .4s ease" }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: valColor, width: 52, textAlign: "right", flexShrink: 0, fontWeight: met || over ? 700 : 400 }}>
+        {value > 0 ? `${value}${unit}` : "—"}
+        {over ? " ↑" : met ? " ✓" : ""}
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
+
+type DailyTarget = {
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  water_ml: number;
+  workout_context?: string | null;
+  notes?: string | null;
+  source: string;
+  date: string;
+};
+
+type CoachNudge = { message: string; tomorrow_session?: string | null; created_at?: string };
+
+type MealRecommendation = {
+  id?: string;
+  date?: string;
+  meal_type: string;
+  name: string;
+  description?: string | null;
+  ingredients: Array<{
+    food_name: string; quantity_g: number;
+    serving_qty?: number | null; serving_label?: string | null;
+    calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number;
+  }>;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g?: number;
+  micros?: Record<string, number>;
+};
+
+export function NutritionClient({
+  initialDate,
+  initialEntries,
+  target,
+  dayType: initialDayType,
+  dailyTarget: initialDailyTarget,
+  nudge: initialNudge,
+  mealRecommendations: initialMealRecommendations,
+}: {
+  initialDate: string;
+  initialEntries: DiaryEntry[];
+  target: NutritionTarget | null;
+  dayType: string;
+  dailyTarget: DailyTarget | null;
+  nudge: CoachNudge | null;
+  mealRecommendations: MealRecommendation[];
+}) {
+  const formatQty = useFormatQty();
+  const [unitSystem, setUnitSystem] = useUnitSystem();
+  const [date, setDate] = useState(initialDate);
+  const [entries, setEntries] = useState<DiaryEntry[]>(initialEntries);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Search modal state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeMeal, setActiveMeal] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<USDAFood[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedFood, setSelectedFood] = useState<USDAFood | null>(null);
+  const [addQty, setAddQty] = useState(100);
+  const [addServingQty, setAddServingQty] = useState<number | null>(null);
+  const [addServingLabel, setAddServingLabel] = useState<string | null>(null);
+  const [portionsLoading, setPortionsLoading] = useState(false);
+  const [addingFood, setAddingFood] = useState(false);
+  const [recentFoods, setRecentFoods] = useState<RecentFood[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
+  const recentFetchedAt = useRef<number>(0);
+
+  // Quick-add (just numbers) state
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickMeal, setQuickMeal] = useState("");
+  const [quickForm, setQuickForm] = useState({ name: "", calories: 0, protein: 0, carbs: 0, fat: 0, servingQty: "", servingLabel: "" });
+
+  // Photo AI
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoMeal, setPhotoMeal] = useState("");
+
+  // Barcode scanner
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [barcodeError, setBarcodeError] = useState<string | null>(null);
+
+  // Copy from previous day
+  const [copyOpen, setCopyOpen] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  // Custom foods
+  const [customFoods, setCustomFoods] = useState<CustomFood[]>([]);
+  const customFoodsLoaded = useRef(false);
+  const [customFoodModalOpen, setCustomFoodModalOpen] = useState(false);
+  const [editingCustomFood, setEditingCustomFood] = useState<CustomFood | null>(null);
+
+  // Meal templates
+  const [mealTemplates, setMealTemplates] = useState<MealTemplate[]>([]);
+  const mealsLoaded = useRef(false);
+  const [mealBuilderOpen, setMealBuilderOpen] = useState(false);
+  const [mealBuilderDraft, setMealBuilderDraft] = useState<MealDraft | null>(null);
+  const [mealManagerOpen, setMealManagerOpen] = useState(false);
+  const [loggingMealId, setLoggingMealId] = useState<string | null>(null);
+  const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  const [expandedRecs, setExpandedRecs] = useState<Set<string>>(new Set());
+  const [mealPlanOpen, setMealPlanOpen] = useState(false);
+
+  // Targets config modal
+  const [targetsOpen, setTargetsOpen] = useState(false);
+  const [targetForm, setTargetForm] = useState({
+    day_type: initialDayType === "default" ? "default" : initialDayType,
+    calories: target?.calories ?? 2200,
+    protein_g: target?.protein_g ?? 160,
+    carbs_g: target?.carbs_g ?? 250,
+    fat_g: target?.fat_g ?? 75,
+    fiber_g: target?.fiber_g ?? 30,
+    water_ml: target?.water_ml ?? 2500,
+  });
+  const [targetSaving, setTargetSaving] = useState(false);
+  const [targetGenerating, setTargetGenerating] = useState(false);
+  const [targetGenNote, setTargetGenNote] = useState<string | null>(null);
+  const generatedTargets = useRef<NutritionTarget[]>([]);
+
+  // Per-day target state (client-driven so navigation is instant)
+  const [dayType, setDayType] = useState(initialDayType);
+  const [dailyTarget, setDailyTarget] = useState<DailyTarget | null>(initialDailyTarget);
+
+  // Coach meal recommendations
+  const [mealRecommendations, setMealRecommendations] = useState<MealRecommendation[]>(initialMealRecommendations);
+  const [recsGenerating, setRecsGenerating] = useState(false);
+
+  // Coach nudge
+  const [nudge, setNudge] = useState<CoachNudge | null>(initialNudge);
+  const [nudgeLoading, setNudgeLoading] = useState(false);
+  const [currentTarget, setCurrentTarget] = useState<NutritionTarget | null>(target);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Date navigation ────────────────────────────────────────────────────────
+
+  const navigateDate = useCallback(async (newDate: string) => {
+    setLoadingEntries(true);
+    setDate(newDate);
+    setDailyTarget(null);  // clear immediately — no stale flash
+    setMealRecommendations([]);
+    try {
+      const [diaryRes, dtRes, recsRes] = await Promise.all([
+        fetch(`/api/nutrition/diary?date=${newDate}`).then(r => r.json()),
+        fetch(`/api/nutrition/daily-target?date=${newDate}`).then(r => r.json()),
+        fetch(`/api/nutrition/meal-recommendations?date=${newDate}`).then(r => r.json()),
+      ]);
+      setEntries(diaryRes.data ?? []);
+      setDailyTarget(dtRes.dailyTarget ?? null);
+      setDayType(dtRes.dayType ?? "default");
+      setCurrentTarget(dtRes.target ?? null);
+      setMealRecommendations(recsRes.data ?? []);
+    } finally {
+      setLoadingEntries(false);
+    }
+  }, []);
+
+  // ── Computed values ────────────────────────────────────────────────────────
+
+  const totals = useMemo(() => computeTotals(entries), [entries]);
+  const waterEntries = useMemo(() => entries.filter(e => e.meal_type === "water"), [entries]);
+  const waterMl = useMemo(() => waterEntries.reduce((s, e) => s + e.quantity_g, 0), [waterEntries]);
+  const waterTarget = currentTarget?.water_ml ?? 2500;
+  const waterGlasses = Math.round(waterMl / WATER_ML_PER_GLASS);
+  const waterGlassTarget = Math.ceil(waterTarget / WATER_ML_PER_GLASS);
+
+  const calTarget = currentTarget?.calories ?? 0;
+  const isOverCalories = calTarget > 0 && totals.calories > calTarget;
+  const remaining = calTarget > 0 ? Math.max(0, calTarget - totals.calories) : 0;
+  const isToday = date === todayISO();
+  const dayMeta = DAY_TYPE_LABELS[dayType] ?? DAY_TYPE_LABELS.default;
+
+  // ── Food search ───────────────────────────────────────────────────────────
+
+  const handleSearch = useCallback((q: string) => {
+    setSearchQuery(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.length < 2) { setSearchResults([]); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(`/api/nutrition/search?q=${encodeURIComponent(q)}`);
+        const { foods } = await res.json();
+        setSearchResults(foods ?? []);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 400);
+  }, []);
+
+  const handleBarcodeScan = useCallback(async (barcode: string) => {
+    setScannerOpen(false);
+    setBarcodeLoading(true);
+    setBarcodeError(null);
+    try {
+      const res = await fetch(`/api/nutrition/barcode?code=${encodeURIComponent(barcode)}`);
+      const { found, food } = await res.json();
+      if (found && food) {
+        // Map OFF food shape to USDAFood shape (they share the same fields now)
+        selectSearchResult(food as USDAFood);
+        setSearchOpen(true);
+      } else {
+        setBarcodeError(`Barcode ${barcode} not found in Open Food Facts database. Try searching by name.`);
+        setSearchOpen(true);
+      }
+    } catch {
+      setBarcodeError("Barcode lookup failed. Check your connection and try again.");
+      setSearchOpen(true);
+    } finally {
+      setBarcodeLoading(false);
+    }
+  }, []);
+
+  const handlePhotoLog = useCallback(async (
+    aiItems: Array<{ food_name: string; quantity_g: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g?: number; usda_fdc_id?: number; }>
+  ) => {
+    const results = await Promise.all(
+      aiItems.map(item =>
+        fetch(`/api/nutrition/diary?date=${date}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            meal_type:    photoMeal,
+            food_name:    item.food_name,
+            quantity_g:   item.quantity_g,
+            calories:     item.calories,
+            protein_g:    item.protein_g,
+            carbs_g:      item.carbs_g,
+            fat_g:        item.fat_g,
+            fiber_g:      item.fiber_g ?? 0,
+            usda_fdc_id:  item.usda_fdc_id ?? null,
+          }),
+        }).then(r => r.json())
+      )
+    );
+    const newEntries = results.map(r => r.data).filter(Boolean);
+    setEntries(prev => [...prev, ...newEntries]);
+  }, [date, photoMeal]);
+
+  function customToUSDA(food: CustomFood): USDAFood {
+    const pieceUnit = food.serving_unit && food.serving_unit !== "g" ? food.serving_unit : null;
+    return {
+      fdcId: 0,
+      description: food.name,
+      brand: food.brand ?? null,
+      category: "My foods",
+      servingSize: food.serving_size_g,
+      servingUnit: "g",
+      servingLabel: food.serving_size_g !== 100 ? `1 serving (${food.serving_size_g}g)` : null,
+      portions: pieceUnit ? [{ label: pieceUnit, gramWeight: food.serving_size_g }] : [],
+      calories: food.calories_per_100g,
+      protein: food.protein_per_100g,
+      carbs: food.carbs_per_100g,
+      fat: food.fat_per_100g,
+      fiber: food.fiber_per_100g,
+      sugar: food.sugar_per_100g,
+      sodium: food.sodium_per_100mg,
+      vitamin_a_mcg: 0, vitamin_c_mg: 0, vitamin_d_mcg: 0, vitamin_e_mg: 0, vitamin_k_mcg: 0,
+      thiamin_mg: 0, riboflavin_mg: 0, niacin_mg: 0, vitamin_b6_mg: 0, folate_mcg: 0, vitamin_b12_mcg: 0,
+      calcium_mg: 0, iron_mg: 0, magnesium_mg: 0, phosphorus_mg: 0, potassium_mg: 0, zinc_mg: 0, copper_mg: 0,
+      saturated_fat_g: 0, monounsaturated_fat_g: 0, polyunsaturated_fat_g: 0, omega3_g: 0, cholesterol_mg: 0,
+      isCustom: true,
+      customFoodId: food.id,
+    };
+  }
+
+  const deleteCustomFood = async (id: string) => {
+    await fetch(`/api/nutrition/custom-foods/${id}`, { method: "DELETE" });
+    setCustomFoods(prev => prev.filter(f => f.id !== id));
+    if (selectedFood?.customFoodId === id) setSelectedFood(null);
+  };
+
+  const openSearch = (meal: string) => {
+    setActiveMeal(meal);
+    setSearchOpen(true);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSelectedFood(null);
+    setAddQty(100);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
+    // Load custom foods once per session
+    if (!customFoodsLoaded.current) {
+      customFoodsLoaded.current = true;
+      fetch("/api/nutrition/custom-foods")
+        .then(r => r.json())
+        .then(({ foods }) => setCustomFoods(foods ?? []))
+        .catch(() => {});
+    }
+    // Load meal templates once per session
+    if (!mealsLoaded.current) {
+      mealsLoaded.current = true;
+      fetch("/api/nutrition/meals")
+        .then(r => r.json())
+        .then(({ meals }) => setMealTemplates(meals ?? []))
+        .catch(() => {});
+    }
+    // Refresh recent foods if stale (older than 60 s)
+    if (Date.now() - recentFetchedAt.current > 60_000) {
+      setRecentLoading(true);
+      fetch("/api/nutrition/recent")
+        .then(r => r.json())
+        .then(({ foods }) => { setRecentFoods(foods ?? []); recentFetchedAt.current = Date.now(); })
+        .catch(() => {})
+        .finally(() => setRecentLoading(false));
+    }
+  };
+
+  const logRecentFood = async (food: RecentFood) => {
+    setAddingFood(true);
+    try {
+      const res = await fetch(`/api/nutrition/diary?date=${date}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meal_type:      activeMeal,
+          food_name:      food.food_name,
+          quantity_g:     food.quantity_g,
+          serving_qty:    food.serving_qty ?? null,
+          serving_label:  food.serving_label ?? null,
+          calories:    food.calories,
+          protein_g:   food.protein_g,
+          carbs_g:     food.carbs_g,
+          fat_g:       food.fat_g,
+          fiber_g:     food.fiber_g ?? 0,
+          usda_fdc_id: food.usda_fdc_id ?? null,
+        }),
+      });
+      const { data } = await res.json();
+      if (data) setEntries(prev => [...prev, data]);
+      recentFetchedAt.current = 0; // invalidate so next open refetches
+      setSearchOpen(false);
+    } finally {
+      setAddingFood(false);
+    }
+  };
+
+  const openRecentFoodDetail = (food: RecentFood) => {
+    const qty = Math.max(food.quantity_g, 1);
+    const scale = 100 / qty;
+    const r1 = (v: number) => Math.round(v * scale * 10) / 10;
+    const priorPortion: Portion[] = food.serving_qty && food.serving_label
+      ? [{ label: food.serving_label, gramWeight: round1(qty / food.serving_qty) }]
+      : [];
+    const syntheticFood: USDAFood = {
+      fdcId: food.usda_fdc_id ?? 0,
+      description: food.food_name,
+      brand: null, category: null,
+      servingSize: qty, servingUnit: "g", servingLabel: `${qty}g (previous portion)`,
+      portions: priorPortion,
+      calories:  r1(food.calories),
+      protein:   r1(food.protein_g),
+      carbs:     r1(food.carbs_g),
+      fat:       r1(food.fat_g),
+      fiber:     r1(food.fiber_g ?? 0),
+      sugar: 0, sodium: 0,
+      vitamin_a_mcg: 0, vitamin_c_mg: 0, vitamin_d_mcg: 0, vitamin_e_mg: 0, vitamin_k_mcg: 0,
+      thiamin_mg: 0, riboflavin_mg: 0, niacin_mg: 0, vitamin_b6_mg: 0, folate_mcg: 0, vitamin_b12_mcg: 0,
+      calcium_mg: 0, iron_mg: 0, magnesium_mg: 0, phosphorus_mg: 0, potassium_mg: 0, zinc_mg: 0, copper_mg: 0,
+      saturated_fat_g: 0, monounsaturated_fat_g: 0, polyunsaturated_fat_g: 0, omega3_g: 0, cholesterol_mg: 0,
+    };
+    selectSearchResult(syntheticFood);
+  };
+
+  const copyFromDate = async (fromDate: string) => {
+    setCopyOpen(false);
+    setCopying(true);
+    try {
+      const res = await fetch("/api/nutrition/copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from_date: fromDate, to_date: date }),
+      });
+      const { entries: newEntries } = await res.json();
+      if (newEntries?.length) setEntries(prev => [...prev, ...newEntries]);
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const logMealTemplate = async (template: MealTemplate) => {
+    setLoggingMealId(template.id);
+    const servings = Math.max(template.servings, 1);
+    const scale = 1 / servings;
+    const sc1 = (v: number) => Math.round(v * scale * 10) / 10;
+
+    const items = template.meal_template_items.map(item => ({
+      food_name:     item.food_name,
+      quantity_g:    Math.round(item.quantity_g * scale),
+      calories:      Math.round(item.calories   * scale),
+      protein_g:     sc1(item.protein_g),
+      carbs_g:       sc1(item.carbs_g),
+      fat_g:         sc1(item.fat_g),
+      fiber_g:       sc1(item.fiber_g ?? 0),
+      usda_fdc_id:   item.usda_fdc_id ?? null,
+    }));
+
+    // Fetch full nutritional data (including micros) for USDA ingredients
+    const fdcIds = items.map(it => it.usda_fdc_id).filter((id): id is number => Boolean(id));
+    let fdcMap: Record<number, Record<string, number>> = {};
+    if (fdcIds.length) {
+      try {
+        const r = await fetch(`/api/nutrition/food-details?ids=${fdcIds.join(",")}`);
+        const { foods } = await r.json() as { foods: Array<Record<string, number>> };
+        for (const f of foods ?? []) fdcMap[f.fdcId] = f;
+      } catch { /* micros unavailable — proceed without */ }
+    }
+
+    // Aggregate macros + micros across all items
+    type Agg = Record<string, number>;
+    const agg: Agg = { quantity_g: 0, calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0,
+      sugar_g: 0, sodium_mg: 0, vitamin_a_mcg: 0, vitamin_c_mg: 0, vitamin_d_mcg: 0,
+      vitamin_e_mg: 0, vitamin_k_mcg: 0, thiamin_mg: 0, riboflavin_mg: 0, niacin_mg: 0,
+      vitamin_b6_mg: 0, folate_mcg: 0, vitamin_b12_mcg: 0, calcium_mg: 0, iron_mg: 0,
+      magnesium_mg: 0, phosphorus_mg: 0, potassium_mg: 0, zinc_mg: 0, copper_mg: 0,
+      saturated_fat_g: 0, monounsaturated_fat_g: 0, polyunsaturated_fat_g: 0, omega3_g: 0, cholesterol_mg: 0 };
+
+    for (const item of items) {
+      agg.quantity_g += item.quantity_g;
+      agg.calories   += item.calories;
+      agg.protein_g  += item.protein_g;
+      agg.carbs_g    += item.carbs_g;
+      agg.fat_g      += item.fat_g;
+      agg.fiber_g    += item.fiber_g;
+      const fd = item.usda_fdc_id ? fdcMap[item.usda_fdc_id] : null;
+      if (fd) {
+        const s = item.quantity_g / 100;
+        agg.sugar_g             += (fd.sugar            ?? 0) * s;
+        agg.sodium_mg           += (fd.sodium           ?? 0) * s;
+        agg.vitamin_a_mcg       += (fd.vitamin_a_mcg    ?? 0) * s;
+        agg.vitamin_c_mg        += (fd.vitamin_c_mg     ?? 0) * s;
+        agg.vitamin_d_mcg       += (fd.vitamin_d_mcg    ?? 0) * s;
+        agg.vitamin_e_mg        += (fd.vitamin_e_mg     ?? 0) * s;
+        agg.vitamin_k_mcg       += (fd.vitamin_k_mcg    ?? 0) * s;
+        agg.thiamin_mg          += (fd.thiamin_mg       ?? 0) * s;
+        agg.riboflavin_mg       += (fd.riboflavin_mg    ?? 0) * s;
+        agg.niacin_mg           += (fd.niacin_mg        ?? 0) * s;
+        agg.vitamin_b6_mg       += (fd.vitamin_b6_mg    ?? 0) * s;
+        agg.folate_mcg          += (fd.folate_mcg       ?? 0) * s;
+        agg.vitamin_b12_mcg     += (fd.vitamin_b12_mcg  ?? 0) * s;
+        agg.calcium_mg          += (fd.calcium_mg       ?? 0) * s;
+        agg.iron_mg             += (fd.iron_mg          ?? 0) * s;
+        agg.magnesium_mg        += (fd.magnesium_mg     ?? 0) * s;
+        agg.phosphorus_mg       += (fd.phosphorus_mg    ?? 0) * s;
+        agg.potassium_mg        += (fd.potassium_mg     ?? 0) * s;
+        agg.zinc_mg             += (fd.zinc_mg          ?? 0) * s;
+        agg.copper_mg           += (fd.copper_mg        ?? 0) * s;
+        agg.saturated_fat_g     += (fd.saturated_fat_g     ?? 0) * s;
+        agg.monounsaturated_fat_g += (fd.monounsaturated_fat_g ?? 0) * s;
+        agg.polyunsaturated_fat_g += (fd.polyunsaturated_fat_g ?? 0) * s;
+        agg.omega3_g            += (fd.omega3_g         ?? 0) * s;
+        agg.cholesterol_mg      += (fd.cholesterol_mg   ?? 0) * s;
+      }
+    }
+
+    const r1 = (v: number) => Math.round(v * 10) / 10;
+    try {
+      const res = await fetch(`/api/nutrition/diary?date=${date}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meal_type:              activeMeal,
+          food_name:              template.name,
+          quantity_g:             Math.round(agg.quantity_g),
+          calories:               Math.round(agg.calories),
+          protein_g:              r1(agg.protein_g),
+          carbs_g:                r1(agg.carbs_g),
+          fat_g:                  r1(agg.fat_g),
+          fiber_g:                r1(agg.fiber_g),
+          sugar_g:                r1(agg.sugar_g),
+          sodium_mg:              r1(agg.sodium_mg),
+          vitamin_a_mcg:          r1(agg.vitamin_a_mcg),
+          vitamin_c_mg:           r1(agg.vitamin_c_mg),
+          vitamin_d_mcg:          r1(agg.vitamin_d_mcg),
+          vitamin_e_mg:           r1(agg.vitamin_e_mg),
+          vitamin_k_mcg:          r1(agg.vitamin_k_mcg),
+          thiamin_mg:             r1(agg.thiamin_mg),
+          riboflavin_mg:          r1(agg.riboflavin_mg),
+          niacin_mg:              r1(agg.niacin_mg),
+          vitamin_b6_mg:          r1(agg.vitamin_b6_mg),
+          folate_mcg:             r1(agg.folate_mcg),
+          vitamin_b12_mcg:        r1(agg.vitamin_b12_mcg),
+          calcium_mg:             r1(agg.calcium_mg),
+          iron_mg:                r1(agg.iron_mg),
+          magnesium_mg:           r1(agg.magnesium_mg),
+          phosphorus_mg:          r1(agg.phosphorus_mg),
+          potassium_mg:           r1(agg.potassium_mg),
+          zinc_mg:                r1(agg.zinc_mg),
+          copper_mg:              r1(agg.copper_mg),
+          saturated_fat_g:        r1(agg.saturated_fat_g),
+          monounsaturated_fat_g:  r1(agg.monounsaturated_fat_g),
+          polyunsaturated_fat_g:  r1(agg.polyunsaturated_fat_g),
+          omega3_g:               r1(agg.omega3_g),
+          cholesterol_mg:         r1(agg.cholesterol_mg),
+          meal_items:             items.map(({ usda_fdc_id: _, ...rest }) => rest),
+        }),
+      });
+      const { data } = await res.json();
+      if (data) setEntries(prev => [...prev, data]);
+      setSearchOpen(false);
+    } finally {
+      setLoggingMealId(null);
+    }
+  };
+
+  const logRecommendedMeal = async (rec: MealRecommendation, targetDate?: string) => {
+    const logDate = targetDate ?? date;
+    const res = await fetch(`/api/nutrition/diary?date=${logDate}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meal_type:   rec.meal_type,
+        food_name:   rec.name,
+        quantity_g:  rec.ingredients.reduce((s, i) => s + i.quantity_g, 0),
+        calories:    rec.calories,
+        protein_g:   rec.protein_g,
+        carbs_g:     rec.carbs_g,
+        fat_g:       rec.fat_g,
+        fiber_g:     rec.fiber_g ?? 0,
+        meal_items:  rec.ingredients,
+        ...(rec.micros ?? {}),
+      }),
+    });
+    const { data } = await res.json();
+    if (data && logDate === date) setEntries(prev => [...prev, data]);
+    return data;
+  };
+
+  const generateMealRecommendations = async (days: number, forDate?: string) => {
+    setRecsGenerating(true);
+    try {
+      const res = await fetch("/api/nutrition/meal-recommendations/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: forDate ?? date, days }),
+      });
+      const json = await res.json();
+      // The response may span several days (week planning) — only today's slice matters here.
+      if (json.data) setMealRecommendations((json.data as MealRecommendation[]).filter(r => r.date === date));
+    } finally {
+      setRecsGenerating(false);
+    }
+  };
+
+  // Auto-plan the coming week the first time this page loads with nothing generated yet,
+  // so the coach recommendation is already there rather than requiring a manual click.
+  const weekAutoPlanned = useRef(false);
+  useEffect(() => {
+    if (weekAutoPlanned.current) return;
+    if (mealRecommendations.length > 0) { weekAutoPlanned.current = true; return; }
+    const horizonEnd = (() => { const d = new Date(todayISO()); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })();
+    if (date < todayISO() || date > horizonEnd) return;
+    weekAutoPlanned.current = true;
+    generateMealRecommendations(7, todayISO());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const openQuickAdd = (meal: string) => {
+    setQuickMeal(meal);
+    setQuickForm({ name: "", calories: 0, protein: 0, carbs: 0, fat: 0, servingQty: "", servingLabel: "" });
+    setQuickOpen(true);
+  };
+
+  // ── Add food ──────────────────────────────────────────────────────────────
+
+  // Selects a food for the quantity-entry step and fetches its USDA portion
+  // options (foodPortions) in the background — grams stay usable immediately,
+  // the piece-unit picker just populates a moment later once fetched.
+  // Fallback for branded/packaged foods with no USDA foodPortions array but a
+  // household-serving label (e.g. "1 slice"): synthesize a single portion so
+  // the picker still offers a natural unit instead of grams-only.
+  function impliedPortion(food: USDAFood): Portion[] {
+    if (!food.servingLabel || !food.servingSize) return [];
+    const noun = food.servingLabel.replace(/^[\d.]+\s*/, "").split("(")[0].trim();
+    return [{ label: noun || "serving", gramWeight: food.servingSize }];
+  }
+
+  const selectSearchResult = useCallback(async (food: USDAFood) => {
+    setSelectedFood(food);
+    setAddQty(food.servingSize ? Math.round(food.servingSize) : 100);
+    setAddServingQty(null);
+    setAddServingLabel(null);
+    if (food.isCustom || !food.fdcId) {
+      // No USDA fdcId to look up (custom food or barcode/OFF item) — the food
+      // object already carries any portions the caller synthesized (custom
+      // foods) or none; fall back to an implied single serving if possible.
+      if (!food.portions?.length) {
+        setSelectedFood(prev => (prev ? { ...prev, portions: impliedPortion(food) } : prev));
+      }
+      return;
+    }
+    setPortionsLoading(true);
+    try {
+      const res = await fetch(`/api/nutrition/food-details?ids=${food.fdcId}`);
+      const { foods } = await res.json() as { foods?: Array<{ fdcId: number; portions?: Portion[] }> };
+      const portions = foods?.[0]?.portions?.length ? foods[0].portions : impliedPortion(food);
+      setSelectedFood(prev => (prev && prev.fdcId === food.fdcId ? { ...prev, portions } : prev));
+    } catch {
+      // degrade to grams-only — non-fatal
+    } finally {
+      setPortionsLoading(false);
+    }
+  }, []);
+
+  const handleAddFood = async (food: USDAFood, meal: string, qty: number, servingQty?: number | null, servingLabel?: string | null) => {
+    setAddingFood(true);
+    const scale = qty / 100;
+    const s = (v: number) => round1(v * scale);
+
+    const entry = {
+      meal_type:              meal,
+      food_name:              food.description,
+      brand:                  food.brand,
+      quantity_g:             qty,
+      serving_qty:            servingQty ?? null,
+      serving_label:          servingLabel ?? null,
+      calories:               Math.round(food.calories * scale),
+      protein_g:              s(food.protein),
+      carbs_g:                s(food.carbs),
+      fat_g:                  s(food.fat),
+      fiber_g:                s(food.fiber),
+      sugar_g:                s(food.sugar),
+      sodium_mg:              s(food.sodium),
+      vitamin_a_mcg:          s(food.vitamin_a_mcg),
+      vitamin_c_mg:           s(food.vitamin_c_mg),
+      vitamin_d_mcg:          s(food.vitamin_d_mcg),
+      vitamin_e_mg:           s(food.vitamin_e_mg),
+      vitamin_k_mcg:          s(food.vitamin_k_mcg),
+      thiamin_mg:             s(food.thiamin_mg),
+      riboflavin_mg:          s(food.riboflavin_mg),
+      niacin_mg:              s(food.niacin_mg),
+      vitamin_b6_mg:          s(food.vitamin_b6_mg),
+      folate_mcg:             s(food.folate_mcg),
+      vitamin_b12_mcg:        s(food.vitamin_b12_mcg),
+      calcium_mg:             s(food.calcium_mg),
+      iron_mg:                s(food.iron_mg),
+      magnesium_mg:           s(food.magnesium_mg),
+      phosphorus_mg:          s(food.phosphorus_mg),
+      potassium_mg:           s(food.potassium_mg),
+      zinc_mg:                s(food.zinc_mg),
+      copper_mg:              s(food.copper_mg),
+      saturated_fat_g:        s(food.saturated_fat_g),
+      monounsaturated_fat_g:  s(food.monounsaturated_fat_g),
+      polyunsaturated_fat_g:  s(food.polyunsaturated_fat_g),
+      omega3_g:               s(food.omega3_g),
+      cholesterol_mg:         s(food.cholesterol_mg),
+      usda_fdc_id:            String(food.fdcId),
+    };
+
+    try {
+      const res = await fetch(`/api/nutrition/diary?date=${date}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry),
+      });
+      const { data } = await res.json();
+      if (data) setEntries(prev => [...prev, data]);
+      setSearchOpen(false);
+    } finally {
+      setAddingFood(false);
+    }
+  };
+
+  const handleQuickAdd = async () => {
+    if (!quickForm.name || quickForm.calories === 0) return;
+    setAddingFood(true);
+    try {
+      const res = await fetch(`/api/nutrition/diary?date=${date}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meal_type:      quickMeal,
+          food_name:      quickForm.name,
+          quantity_g:     100,
+          serving_qty:    quickForm.servingQty ? parseFloat(quickForm.servingQty) || null : null,
+          serving_label:  quickForm.servingLabel.trim() || null,
+          calories:   quickForm.calories,
+          protein_g:  quickForm.protein,
+          carbs_g:    quickForm.carbs,
+          fat_g:      quickForm.fat,
+        }),
+      });
+      const { data } = await res.json();
+      if (data) setEntries(prev => [...prev, data]);
+      setQuickOpen(false);
+    } finally {
+      setAddingFood(false);
+    }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  const handleDelete = async (id: string) => {
+    setEntries(prev => prev.filter(e => e.id !== id));
+    await fetch(`/api/nutrition/diary/${id}`, { method: "DELETE" });
+  };
+
+  // ── Water ─────────────────────────────────────────────────────────────────
+
+  const handleAddWater = async () => {
+    const res = await fetch(`/api/nutrition/diary?date=${date}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meal_type:  "water",
+        food_name:  "Water",
+        quantity_g: WATER_ML_PER_GLASS,
+        calories:   0,
+        protein_g:  0,
+        carbs_g:    0,
+        fat_g:      0,
+      }),
+    });
+    const { data } = await res.json();
+    if (data) setEntries(prev => [...prev, data]);
+  };
+
+  const handleRemoveWater = async () => {
+    const last = [...waterEntries].pop();
+    if (!last) return;
+    setEntries(prev => prev.filter(e => e.id !== last.id));
+    await fetch(`/api/nutrition/diary/${last.id}`, { method: "DELETE" });
+  };
+
+  // ── Save targets ──────────────────────────────────────────────────────────
+
+  const handleSaveTargets = async () => {
+    setTargetSaving(true);
+    try {
+      const res = await fetch("/api/nutrition/targets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(targetForm),
+      });
+      const { data } = await res.json();
+      if (data) setCurrentTarget(data);
+      setTargetsOpen(false);
+    } finally {
+      setTargetSaving(false);
+    }
+  };
+
+  // ── AI-generate targets ───────────────────────────────────────────────────
+
+  const handleGenerateTargets = async () => {
+    setTargetGenerating(true);
+    setTargetGenNote(null);
+    try {
+      const res = await fetch("/api/nutrition/targets/generate", { method: "POST" });
+      const { targets, error } = await res.json();
+      if (error) { setTargetGenNote(`Error: ${error}`); return; }
+      generatedTargets.current = targets as NutritionTarget[];
+      // Update form to show the day_type matching the current selection
+      const match = (targets as NutritionTarget[]).find(t => t.day_type === targetForm.day_type)
+        ?? (targets as NutritionTarget[])[0];
+      if (match) {
+        setTargetForm({
+          day_type: match.day_type,
+          calories: match.calories ?? 2200,
+          protein_g: match.protein_g ?? 160,
+          carbs_g: match.carbs_g ?? 250,
+          fat_g: match.fat_g ?? 75,
+          fiber_g: match.fiber_g ?? 30,
+          water_ml: match.water_ml ?? 2500,
+        });
+        setCurrentTarget(match);
+      }
+      const note = match?.notes;
+      setTargetGenNote(note ? `Coach: ${note}` : "Targets generated and saved for all day types.");
+    } finally {
+      setTargetGenerating(false);
+    }
+  };
+
+  // ── Coach nudge ───────────────────────────────────────────────────────────
+
+  const handleRequestNudge = async () => {
+    setNudgeLoading(true);
+    try {
+      const res = await fetch("/api/nutrition/nudge", { method: "POST" });
+      const { nudge: n } = await res.json();
+      if (n) setNudge(n);
+    } finally {
+      setNudgeLoading(false);
+    }
+  };
+
+  // Auto-generate nudge after 8pm on today's page if one doesn't exist yet
+  useEffect(() => {
+    const isToday = date === new Date().toISOString().slice(0, 10);
+    const isEvening = new Date().getHours() >= 20;
+    if (isToday && isEvening && !nudge && !nudgeLoading) {
+      handleRequestNudge();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
+  // ── Keyboard shortcut (Cmd+K / Ctrl+K) ────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        openSearch("snacks");
+      }
+      if (e.key === "Escape") {
+        setSearchOpen(false);
+        setQuickOpen(false);
+        setTargetsOpen(false);
+        setCopyOpen(false);
+        setMealBuilderOpen(false);
+        setMealManagerOpen(false);
+        setMealPlanOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="page" style={{ paddingBottom: 80 }}>
+
+      {/* ── Top bar ───────────────────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button className="btn-secondary" style={{ padding: "6px 10px" }} onClick={() => navigateDate(prevDate(date))}>‹</button>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{formatDate(date)}</div>
+            {isToday && <div style={{ fontSize: 11, color: "var(--dim)" }}>Today</div>}
+          </div>
+          <button className="btn-secondary" style={{ padding: "6px 10px" }} onClick={() => navigateDate(nextDate(date))} disabled={date >= todayISO()}>›</button>
+        </div>
+
+        {!isToday && (
+          <button className="btn-soft" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => navigateDate(todayISO())}>
+            Go to today
+          </button>
+        )}
+
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 20,
+            color: dayMeta.color, background: dayMeta.bg, border: `1px solid ${dayMeta.color}40`,
+          }}>
+            {dayMeta.label}
+          </span>
+          {currentTarget && (
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>
+              Target <span style={{ color: "var(--accent)", fontWeight: 700 }}>{currentTarget.calories.toLocaleString("en-US")} kcal</span>
+            </span>
+          )}
+          {/* Copy from previous day */}
+          <div style={{ position: "relative" }}>
+            <button
+              className="btn-secondary"
+              style={{ fontSize: 12, padding: "6px 12px", display: "flex", alignItems: "center", gap: 5 }}
+              onClick={() => setCopyOpen(o => !o)}
+              disabled={copying}
+              title="Copy meals from a previous day"
+            >
+              <i className="ti ti-copy" style={{ fontSize: 13 }} aria-hidden="true" />
+              {copying ? "Copying…" : "Copy day"}
+            </button>
+            {copyOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+                background: "var(--surface)", border: "1px solid var(--border)",
+                borderRadius: "var(--radius)", minWidth: 200, boxShadow: "0 8px 32px rgba(0,0,0,.4)",
+                overflow: "hidden",
+              }}>
+                <div style={{ padding: "8px 14px 6px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em" }}>
+                  Copy food entries from
+                </div>
+                {Array.from({ length: 7 }, (_, i) => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - (i + 1));
+                  const ds = d.toISOString().split("T")[0];
+                  const label = i === 0 ? "Yesterday" : i === 1 ? "2 days ago" : d.toLocaleDateString("en", { weekday: "short", month: "short", day: "numeric" });
+                  return (
+                    <button
+                      key={ds}
+                      onClick={() => copyFromDate(ds)}
+                      className="ntr-search-row"
+                      style={{ width: "100%", display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", background: "none", border: "none", color: "var(--text)", fontSize: 13, textAlign: "left", gap: 8, borderTop: "1px solid rgba(255,255,255,.04)" }}
+                    >
+                      <i className="ti ti-calendar" style={{ fontSize: 13, color: "var(--dim)", flexShrink: 0 }} aria-hidden="true" />
+                      {label}
+                    </button>
+                  );
+                })}
+                <div style={{ padding: "6px 14px 8px", fontSize: 10, color: "var(--dim)" }}>
+                  Water entries are not copied
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }} title="Units for ingredient/food quantities">
+            {(["metric", "imperial"] as const).map(u => (
+              <button
+                key={u}
+                onClick={() => setUnitSystem(u)}
+                style={{
+                  fontSize: 11, fontWeight: 700, padding: "6px 10px", border: "none", cursor: "pointer",
+                  background: unitSystem === u ? "rgba(124,92,255,.15)" : "none",
+                  color: unitSystem === u ? "var(--accent)" : "var(--dim)",
+                }}
+              >
+                {u === "metric" ? "g" : "oz/lb"}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => {
+              if (!mealsLoaded.current) {
+                mealsLoaded.current = true;
+                fetch("/api/nutrition/meals")
+                  .then(r => r.json())
+                  .then(({ meals }) => setMealTemplates(meals ?? []))
+                  .catch(() => {});
+              }
+              setMealManagerOpen(true);
+            }}
+            style={{ fontSize: 12, padding: "6px 14px", background: "rgba(255,204,102,.1)", border: "1px solid rgba(255,204,102,.3)", color: "var(--amber)", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 13 }} />
+            Meals
+          </button>
+          <button
+            onClick={() => setMealPlanOpen(true)}
+            className="btn-secondary"
+            style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <i className="ti ti-calendar-week" aria-hidden="true" style={{ fontSize: 13 }} />
+            Meal Plan
+          </button>
+          <button
+            onClick={() => generateMealRecommendations(1)}
+            disabled={recsGenerating}
+            title="Fallback — the coach normally plans the coming week automatically"
+            className="btn-secondary"
+            style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5, opacity: recsGenerating ? 0.7 : 1 }}
+          >
+            <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 13 }} />
+            {recsGenerating ? "Suggesting…" : "Regenerate today"}
+          </button>
+          <button className="btn-primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => openSearch("snacks")}>
+            + Log Food
+          </button>
+        </div>
+      </div>
+
+      {/* ── Week strip ────────────────────────────────────────────────── */}
+      <WeekStrip
+        selectedDate={date}
+        onDateSelect={navigateDate}
+      />
+
+      {/* ── 3-column layout ───────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 220px", gap: 14, alignItems: "start" }}>
+
+        {/* ── LEFT: Summary ─────────────────────────────────────────── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+          {/* Coach daily target banner */}
+          {dailyTarget && (
+            <div style={{ background: "rgba(124,92,255,.08)", border: "1px solid rgba(124,92,255,.25)", borderRadius: "var(--radius)", padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 12 }} />
+                Coach target · {dailyTarget.date}
+              </div>
+              {dailyTarget.workout_context && (
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>{dailyTarget.workout_context}</div>
+              )}
+              {dailyTarget.notes && (
+                <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>{dailyTarget.notes}</div>
+              )}
+            </div>
+          )}
+
+          {/* Coach nudge — today only */}
+          {date === new Date().toISOString().slice(0, 10) && (
+            <div className="card" style={{ padding: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: nudge ? 10 : 0 }}>
+                <div className="card-title" style={{ margin: 0, flex: 1 }}>Coach</div>
+                <button
+                  onClick={handleRequestNudge}
+                  disabled={nudgeLoading}
+                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", fontSize: 10, padding: "3px 8px", fontWeight: 600, opacity: nudgeLoading ? 0.6 : 1 }}
+                >
+                  {nudgeLoading ? "…" : nudge ? "Refresh" : "Ask coach"}
+                </button>
+              </div>
+              {nudge ? (
+                <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
+                  {nudge.message}
+                  {nudge.tomorrow_session && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: "var(--accent)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                      <i className="ti ti-calendar-event" aria-hidden="true" style={{ fontSize: 12 }} />
+                      Tomorrow: {nudge.tomorrow_session}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
+                  Get an evening check-in on your macros, timing, and tomorrow&apos;s session.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Calorie ring */}
+          <div className="card" style={{ padding: 16 }}>
+            <div className="card-title">Calories</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <CalRing value={totals.calories} max={calTarget || 2200} size={96} stroke={9} />
+                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center", lineHeight: 1 }}>
+                  <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                    {calTarget > 0 ? (isOverCalories ? "over" : "remaining") : "logged"}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: isOverCalories ? "var(--amber)" : "var(--text)", marginTop: 2 }}>
+                    {calTarget > 0
+                      ? (isOverCalories ? "+" : "") + (isOverCalories ? totals.calories - calTarget : remaining).toLocaleString("en-US")
+                      : totals.calories.toLocaleString("en-US")}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--dim)" }}>kcal</div>
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <span style={{ color: "var(--dim)" }}>Goal </span>
+                  <span style={{ fontWeight: 700 }}>{calTarget > 0 ? calTarget.toLocaleString("en-US") : "—"}</span>
+                </div>
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <span style={{ color: "var(--dim)" }}>Logged </span>
+                  <span style={{ fontWeight: 700 }}>{totals.calories.toLocaleString("en-US")}</span>
+                </div>
+                {calTarget > 0 && (
+                  <div style={{ fontSize: 11, color: totals.calories > calTarget ? "var(--amber)" : "var(--green)", fontWeight: 700 }}>
+                    {totals.calories > calTarget ? `+${(totals.calories - calTarget).toLocaleString("en-US")} over` : "On track ✓"}
+                  </div>
+                )}
+                {!currentTarget && (
+                  <button className="btn-soft" style={{ fontSize: 10, padding: "3px 8px", marginTop: 4 }} onClick={() => setTargetsOpen(true)}>
+                    Set targets
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Macros */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div className="card-title" style={{ margin: 0 }}>Macros</div>
+              {currentTarget && (
+                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 11 }} onClick={() => setTargetsOpen(true)}>
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {/* Macro pills */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 14 }}>
+              {[
+                { label: "P", val: totals.protein_g, color: "var(--accent)" },
+                { label: "C", val: totals.carbs_g,   color: "var(--cyan)" },
+                { label: "F", val: totals.fat_g,     color: "var(--amber)" },
+              ].map(m => (
+                <div key={m.label} style={{ textAlign: "center", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "8px 4px" }}>
+                  <div style={{ fontSize: 10, color: "var(--dim)", marginBottom: 2 }}>{m.label}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: m.color }}>{m.val}</div>
+                  <div style={{ fontSize: 9, color: "var(--dim)" }}>g</div>
+                </div>
+              ))}
+            </div>
+
+            <MacroBar
+              label="Protein" value={totals.protein_g}
+              max={currentTarget?.protein_g ?? Math.max(1, Math.round(totals.protein_g * 1.2))}
+              color="var(--accent)"
+            />
+            <MacroBar
+              label="Carbs" value={totals.carbs_g}
+              max={currentTarget?.carbs_g ?? Math.max(1, Math.round(totals.carbs_g * 1.2))}
+              color="var(--cyan)"
+            />
+            <MacroBar
+              label="Fat" value={totals.fat_g}
+              max={currentTarget?.fat_g ?? Math.max(1, Math.round(totals.fat_g * 1.2))}
+              color="var(--amber)"
+            />
+            <MacroBar
+              label="Fiber" value={totals.fiber_g}
+              max={currentTarget?.fiber_g ?? 30}
+              color="var(--green)"
+            />
+          </div>
+
+          {/* Nutrient timing — shown on training days */}
+          {dayType !== "rest" && (() => {
+            const preMeals  = entries.filter(e => e.meal_type === "pre_workout");
+            const postMeals = entries.filter(e => e.meal_type === "post_workout");
+            const preP  = round1(preMeals.reduce((s, e)  => s + (e.protein_g ?? 0), 0));
+            const preC  = round1(preMeals.reduce((s, e)  => s + (e.carbs_g  ?? 0), 0));
+            const postP = round1(postMeals.reduce((s, e) => s + (e.protein_g ?? 0), 0));
+            const preCal  = Math.round(preMeals.reduce((s, e)  => s + (e.calories ?? 0), 0));
+            const postCal = Math.round(postMeals.reduce((s, e) => s + (e.calories ?? 0), 0));
+            const PRO_MIN = 20;
+            const preOk  = preP  >= PRO_MIN;
+            const postOk = postP >= PRO_MIN;
+            const preLogged  = preMeals.length  > 0;
+            const postLogged = postMeals.length > 0;
+
+            type Status = "ok" | "low" | "empty";
+            const preStatus:  Status = !preLogged  ? "empty" : preOk  ? "ok" : "low";
+            const postStatus: Status = !postLogged ? "empty" : postOk ? "ok" : "low";
+            const colors: Record<Status, string> = { ok: "var(--green)", low: "var(--amber)", empty: "var(--dim)" };
+            const icons:  Record<Status, string> = { ok: "ti-circle-check", low: "ti-alert-triangle", empty: "ti-circle-dashed" };
+
+            return (
+              <div className="card" style={{ padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div className="card-title" style={{ margin: 0 }}>Nutrient timing</div>
+                  <span style={{ fontSize: 10, color: "var(--dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    {dayType === "hard" ? "Hard day" : "Training day"}
+                  </span>
+                </div>
+                {(["pre", "post"] as const).map(w => {
+                  const isPost    = w === "post";
+                  const status    = isPost ? postStatus : preStatus;
+                  const proteinG  = isPost ? postP : preP;
+                  const carbsG    = isPost ? null : preC;
+                  const cal       = isPost ? postCal : preCal;
+                  const label     = isPost ? "Post-workout" : "Pre-workout";
+                  const tip       = isPost ? "≥20g protein within 45 min" : "≥20g protein + carbs 1–2h before";
+                  return (
+                    <div key={w} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: isPost ? 0 : 12 }}>
+                      <i className={`ti ${icons[status]}`} aria-hidden="true" style={{ fontSize: 16, color: colors[status], marginTop: 1, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+                          {status === "ok" && <span style={{ fontSize: 10, color: "var(--green)", fontWeight: 700 }}>✓</span>}
+                        </div>
+                        {status === "empty" ? (
+                          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{tip}</div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+                            <span style={{ color: "var(--accent)", fontWeight: 600 }}>P{proteinG}g</span>
+                            {carbsG !== null && <span style={{ color: "var(--cyan)", fontWeight: 600, marginLeft: 5 }}>C{carbsG}g</span>}
+                            <span style={{ color: "var(--dim)", marginLeft: 5 }}>{cal} kcal</span>
+                            {status === "low" && <span style={{ color: "var(--amber)", marginLeft: 5 }}>· aim for ≥{PRO_MIN}g</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Water */}
+          <div className="card" style={{ padding: 16 }}>
+            <div className="card-title">Hydration</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+              {Array.from({ length: waterGlassTarget }).map((_, i) => (
+                <div
+                  key={i}
+                  onClick={i < waterGlasses ? handleRemoveWater : handleAddWater}
+                  title={i < waterGlasses ? "Click to remove" : "Click to add"}
+                  style={{
+                    width: 20, height: 20, borderRadius: "50% 50% 50% 0",
+                    transform: "rotate(-45deg)",
+                    cursor: "pointer",
+                    background: i < waterGlasses ? "var(--accent)" : "rgba(255,255,255,.07)",
+                    border: `1px solid ${i < waterGlasses ? "var(--accent)" : "rgba(255,255,255,.12)"}`,
+                    transition: "background .15s",
+                  }}
+                />
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>
+              <span style={{ color: "var(--accent)", fontWeight: 700 }}>{(waterMl / 1000).toFixed(1)}L</span>
+              <span style={{ color: "var(--dim)" }}> / {(waterTarget / 1000).toFixed(1)}L</span>
+              <span style={{ color: "var(--dim)", marginLeft: 6 }}>· {waterGlasses} glasses</span>
+            </div>
+          </div>
+
+          {/* Body weight */}
+          <WeightCard date={date} />
+
+          {/* Totals summary */}
+          {totals.calories > 0 && (
+            <div className="card" style={{ padding: 16 }}>
+              <div className="card-title">Today's totals</div>
+              {[
+                ["Sugar", totals.sugar_g, "g"],
+                ["Sodium", totals.sodium_mg, "mg"],
+                ["Sat. fat", totals.saturated_fat_g, "g"],
+                ["Cholesterol", totals.cholesterol_mg, "mg"],
+              ].map(([label, val, unit]) => (
+                <div key={label as string} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, paddingBottom: 6, borderBottom: "1px solid var(--border)", marginBottom: 6 }}>
+                  <span style={{ color: "var(--muted)" }}>{label}</span>
+                  <span style={{ fontWeight: 600 }}>{val as number > 0 ? `${val}${unit}` : "—"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── CENTER: Meal diary ─────────────────────────────────────── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {loadingEntries && (
+            <div style={{ textAlign: "center", padding: 40, color: "var(--dim)", fontSize: 13 }}>Loading…</div>
+          )}
+
+          {!loadingEntries && MEALS.map(meal => {
+            const mealEntries = entries.filter(e => e.meal_type === meal.key);
+            const mealCal = Math.round(mealEntries.reduce((s, e) => s + e.calories, 0));
+            const mealP = round1(mealEntries.reduce((s, e) => s + (e.protein_g ?? 0), 0));
+            const mealC = round1(mealEntries.reduce((s, e) => s + (e.carbs_g ?? 0), 0));
+            const mealF = round1(mealEntries.reduce((s, e) => s + (e.fat_g ?? 0), 0));
+
+            return (
+              <div key={meal.key} className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {/* Meal header */}
+                <div style={{ display: "flex", alignItems: "center", padding: "10px 14px", borderBottom: mealEntries.length > 0 ? "1px solid var(--border)" : "none" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{meal.emoji} {meal.label}</span>
+                  {mealEntries.length > 0 && (
+                    <div style={{ display: "flex", gap: 5, marginLeft: 10 }}>
+                      {[
+                        { v: `${mealP}g`, c: "var(--accent)" },
+                        { v: `${mealC}g`, c: "var(--cyan)" },
+                        { v: `${mealF}g`, c: "var(--amber)" },
+                      ].map((p, i) => (
+                        <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 10, background: `${p.c}18`, color: p.c }}>{p.v}</span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                    {mealCal > 0 && <span style={{ fontSize: 11, color: "var(--dim)" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>{mealCal}</span> kcal</span>}
+                    <button
+                      onClick={() => { setPhotoMeal(meal.key); setPhotoOpen(true); }}
+                      title="Photo AI recognition"
+                      style={{ background: "none", border: "1px solid rgba(124,92,255,.25)", borderRadius: 6, cursor: "pointer", color: "var(--accent)", fontSize: 13, padding: "3px 7px", transition: "color .12s", lineHeight: 1 }}
+                    >
+                      <i className="ti ti-camera" aria-hidden="true" />
+                    </button>
+                    <button
+                      onClick={() => { setActiveMeal(meal.key); setScannerOpen(true); setBarcodeError(null); }}
+                      title="Scan barcode"
+                      style={{ background: "none", border: "1px solid rgba(45,226,230,.25)", borderRadius: 6, cursor: "pointer", color: "var(--cyan)", fontSize: 13, padding: "3px 7px", transition: "color .12s", lineHeight: 1 }}
+                    >
+                      <i className="ti ti-scan" aria-hidden="true" />
+                    </button>
+                    <button
+                      onClick={() => openSearch(meal.key)}
+                      style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", fontSize: 11, padding: "3px 8px", transition: "color .12s" }}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Coach recommendation — only shown before anything's logged for this slot */}
+                {mealEntries.length === 0 && (() => {
+                  const rec = mealRecommendations.find(r => r.meal_type === meal.key);
+                  if (!rec) return null;
+                  const isRecExpanded = expandedRecs.has(meal.key);
+                  return (
+                    <div style={{ background: "rgba(124,92,255,.06)", borderBottom: "1px solid rgba(124,92,255,.15)", padding: "8px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                        <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 12, color: "var(--accent)" }} />
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".05em" }}>Coach recommends</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <button
+                          onClick={() => setExpandedRecs(prev => {
+                            const next = new Set(prev);
+                            next.has(meal.key) ? next.delete(meal.key) : next.add(meal.key);
+                            return next;
+                          })}
+                          style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, transform: isRecExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1 }}
+                          title={isRecExpanded ? "Collapse ingredients" : "Expand ingredients"}
+                        >›</button>
+                        <div style={{ fontSize: 12, fontWeight: 600 }}>{rec.name}</div>
+                      </div>
+                      {rec.description && (
+                        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2, marginLeft: 19 }}>{rec.description}</div>
+                      )}
+                      {isRecExpanded && (
+                        <div style={{ marginTop: 6, marginLeft: 19, padding: "6px 0", borderTop: "1px solid rgba(124,92,255,.12)" }}>
+                          {rec.ingredients.map((item, idx) => (
+                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < rec.ingredients.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none", gap: 8 }}>
+                              <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)" }}>
+                                {item.food_name}
+                              </div>
+                              <div style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>{formatQty(item.quantity_g, item.serving_qty, item.serving_label)}</div>
+                              <div style={{ display: "flex", gap: 8, fontSize: 10, flexShrink: 0 }}>
+                                <span style={{ color: "var(--accent)" }}>{item.protein_g}g</span>
+                                <span style={{ color: "var(--cyan)" }}>{item.carbs_g}g</span>
+                                <span style={{ color: "var(--amber)" }}>{item.fat_g}g</span>
+                              </div>
+                              <div style={{ fontSize: 10, fontWeight: 600, width: 32, textAlign: "right", flexShrink: 0 }}>{item.calories}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, marginLeft: 19 }}>
+                        <span style={{ fontSize: 10, color: "var(--dim)" }}>
+                          {rec.calories} kcal · P{rec.protein_g}g C{rec.carbs_g}g F{rec.fat_g}g
+                        </span>
+                        <button
+                          className="btn-soft"
+                          style={{ fontSize: 10, padding: "3px 10px" }}
+                          onClick={() => logRecommendedMeal(rec)}
+                        >
+                          Use recommended
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Food rows */}
+                {mealEntries.map(entry => {
+                  const isMeal = entry.meal_items && entry.meal_items.length > 0;
+                  const isExpanded = expandedEntries.has(entry.id);
+                  return (
+                    <div key={entry.id} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                      <div
+                        className="ntr-food-row"
+                        style={{ display: "flex", alignItems: "center", padding: "8px 14px" }}
+                      >
+                        {/* Expand toggle for meal entries */}
+                        {isMeal ? (
+                          <button
+                            onClick={() => setExpandedEntries(prev => {
+                              const next = new Set(prev);
+                              next.has(entry.id) ? next.delete(entry.id) : next.add(entry.id);
+                              return next;
+                            })}
+                            style={{ background: "none", border: "none", color: "var(--amber)", cursor: "pointer", fontSize: 13, padding: "0 4px 0 0", flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1 }}
+                            title={isExpanded ? "Collapse ingredients" : "Expand ingredients"}
+                          >›</button>
+                        ) : <div style={{ width: 14 }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: isMeal ? "var(--amber)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
+                            {isMeal && <i className="ti ti-tools-kitchen-2" style={{ fontSize: 11, flexShrink: 0 }} aria-hidden="true" />}
+                            {entry.food_name}
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--dim)" }}>
+                            {isMeal ? `${entry.meal_items!.length} ingredients · ${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}` : `${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}${entry.brand ? ` · ${entry.brand}` : ""}`}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", marginLeft: 10 }}>
+                          <div style={{ fontSize: 10, color: "var(--dim)", textAlign: "right" }}>
+                            P<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{entry.protein_g}g</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--dim)", textAlign: "right" }}>
+                            C<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--cyan)" }}>{entry.carbs_g}g</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "var(--dim)", textAlign: "right" }}>
+                            F<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--amber)" }}>{entry.fat_g}g</span>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", width: 38, textAlign: "right", marginLeft: 8 }}>
+                          {entry.calories}
+                        </div>
+                        <button
+                          onClick={() => handleDelete(entry.id)}
+                          className="ntr-del-btn"
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 14, padding: "0 0 0 8px", lineHeight: 1, opacity: 0 }}
+                        >✕</button>
+                      </div>
+                      {/* Expanded ingredient list */}
+                      {isMeal && isExpanded && (
+                        <div style={{ background: "rgba(255,204,102,.04)", borderTop: "1px solid rgba(255,204,102,.1)", padding: "6px 14px 8px 32px" }}>
+                          {entry.meal_items!.map((item, idx) => (
+                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < entry.meal_items!.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none", gap: 8 }}>
+                              <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)" }}>
+                                {item.food_name}
+                              </div>
+                              <div style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>{formatQty(item.quantity_g, item.serving_qty, item.serving_label)}</div>
+                              <div style={{ display: "flex", gap: 8, fontSize: 10, flexShrink: 0 }}>
+                                <span style={{ color: "var(--accent)" }}>{item.protein_g}g</span>
+                                <span style={{ color: "var(--cyan)" }}>{item.carbs_g}g</span>
+                                <span style={{ color: "var(--amber)" }}>{item.fat_g}g</span>
+                              </div>
+                              <div style={{ fontSize: 10, fontWeight: 600, width: 32, textAlign: "right", flexShrink: 0 }}>{item.calories}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Quick add row */}
+                <div
+                  onClick={() => openQuickAdd(meal.key)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", cursor: "pointer", color: "var(--dim)", fontSize: 11 }}
+                  className="ntr-quick-row"
+                >
+                  <div style={{ width: 16, height: 16, borderRadius: 4, border: "1px dashed currentColor", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>+</div>
+                  Quick add (just numbers)
+                </div>
+
+                {/* Meal totals */}
+                {mealEntries.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderTop: "1px solid var(--border)" }}>
+                    {[
+                      { label: "Cal", val: mealCal, unit: "" },
+                      { label: "Protein", val: mealP, unit: "g", color: "var(--accent)" },
+                      { label: "Carbs",  val: mealC, unit: "g", color: "var(--cyan)" },
+                      { label: "Fat",    val: mealF, unit: "g", color: "var(--amber)" },
+                    ].map(cell => (
+                      <div key={cell.label} style={{ padding: "7px 14px", textAlign: "center", borderRight: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>{cell.label}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: (cell as {color?: string}).color ?? "var(--text)" }}>{cell.val}{cell.unit}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── RIGHT: Micronutrients ──────────────────────────────────── */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+          {/* Score pills */}
+          {totals.calories > 0 && (() => {
+            const protScore = calTarget > 0 ? Math.min(100, Math.round(pct(totals.protein_g, (currentTarget?.protein_g ?? 150)))) : null;
+            const microCount = MICRO_GROUPS.flatMap(g => g.items).filter(({ key }) => {
+              const rda = RDA[key];
+              const val = totals[key as keyof typeof totals] as number;
+              return rda && val > 0 && val >= rda * 0.8;
+            }).length;
+            const microScore = Math.round((microCount / 22) * 100);
+            return (
+              <div className="card" style={{ padding: 14 }}>
+                <div className="card-title">Today&apos;s Score</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+                  {[
+                    { label: "Protein", score: protScore, color: "var(--accent)" },
+                    { label: "Micros",  score: microScore, color: "var(--cyan)" },
+                  ].map(s => (
+                    <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "10px 6px" }}>
+                      <div style={{
+                        fontSize: 20, fontWeight: 800,
+                        color: s.score == null ? "var(--dim)" : s.score >= 80 ? "var(--green)" : s.score >= 50 ? "var(--amber)" : "var(--red)",
+                      }}>
+                        {s.score ?? "—"}
+                      </div>
+                      <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", marginTop: 2 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Micronutrients */}
+          <div className="card" style={{ padding: 14 }}>
+            <div className="card-title">Micronutrients</div>
+            {totals.calories === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--dim)", textAlign: "center", padding: "16px 0" }}>
+                Log food to see micronutrients
+              </div>
+            ) : (
+              MICRO_GROUPS.map(group => (
+                <div key={group.label} style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--dim)", marginBottom: 8 }}>
+                    {group.label}
+                  </div>
+                  {group.items.map(({ key, label, unit }) => {
+                    const val = round1((totals[key as keyof typeof totals] as number) ?? 0);
+                    const rda = RDA[key] ?? 100;
+                    return (
+                      <MicroRow key={key} label={label} value={val} rda={rda} unit={unit} />
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Food search modal ──────────────────────────────────────────── */}
+      {searchOpen && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,.70)", backdropFilter: "blur(6px)",
+            display: "flex", alignItems: "flex-start", justifyContent: "center",
+            paddingTop: 80,
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setSearchOpen(false); }}
+        >
+          <div style={{
+            background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
+            width: "100%", maxWidth: 620, maxHeight: "calc(100vh - 120px)",
+            display: "flex", flexDirection: "column", overflow: "hidden",
+          }}>
+            {/* Modal header */}
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                  Add to {MEALS.find(m => m.key === activeMeal)?.label}
+                </div>
+                <input
+                  ref={searchInputRef}
+                  className="input"
+                  placeholder="Search foods (USDA database)…"
+                  value={searchQuery}
+                  onChange={e => handleSearch(e.target.value)}
+                  style={{ fontSize: 14 }}
+                />
+              </div>
+              <button
+                onClick={() => { setSearchOpen(false); setPhotoMeal(activeMeal); setPhotoOpen(true); }}
+                title="Photo AI recognition"
+                style={{
+                  background: "rgba(124,92,255,.1)", border: "1px solid rgba(124,92,255,.3)",
+                  color: "var(--accent)", borderRadius: 8, cursor: "pointer",
+                  padding: "9px 12px", lineHeight: 1, flexShrink: 0,
+                  display: "flex", alignItems: "center", gap: 5,
+                }}
+              >
+                <i className="ti ti-camera" aria-hidden="true" style={{ fontSize: 16 }} />
+                <span style={{ fontSize: 11, fontWeight: 700 }}>AI</span>
+              </button>
+              <button
+                onClick={() => { setSearchOpen(false); setScannerOpen(true); setBarcodeError(null); }}
+                title="Scan barcode"
+                style={{
+                  background: "rgba(45,226,230,.1)", border: "1px solid rgba(45,226,230,.3)",
+                  color: "var(--cyan)", borderRadius: 8, cursor: "pointer",
+                  padding: "9px 13px", lineHeight: 1, flexShrink: 0,
+                  display: "flex", alignItems: "center",
+                }}
+              >
+                <i className="ti ti-scan" aria-hidden="true" style={{ fontSize: 16 }} />
+              </button>
+              <button
+                onClick={() => { setSearchOpen(false); setMealManagerOpen(true); }}
+                title="View saved meals"
+                style={{
+                  background: "rgba(255,204,102,.1)", border: "1px solid rgba(255,204,102,.3)",
+                  color: "var(--amber)", borderRadius: 8, cursor: "pointer",
+                  padding: "9px 12px", lineHeight: 1, flexShrink: 0,
+                  display: "flex", alignItems: "center", gap: 4,
+                }}
+              >
+                <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 14 }} />
+                <span style={{ fontSize: 10, fontWeight: 700 }}>Meal</span>
+              </button>
+              <button
+                onClick={() => { setEditingCustomFood(null); setCustomFoodModalOpen(true); }}
+                title="Create custom food"
+                style={{
+                  background: "rgba(56,217,150,.1)", border: "1px solid rgba(56,217,150,.3)",
+                  color: "var(--green)", borderRadius: 8, cursor: "pointer",
+                  padding: "9px 12px", lineHeight: 1, flexShrink: 0,
+                  display: "flex", alignItems: "center", gap: 4,
+                }}
+              >
+                <i className="ti ti-plus" aria-hidden="true" style={{ fontSize: 14 }} />
+                <span style={{ fontSize: 10, fontWeight: 700 }}>Food</span>
+              </button>
+              <button
+                onClick={() => setSearchOpen(false)}
+                style={{ background: "none", border: "1px solid var(--border)", borderRadius: 8, cursor: "pointer", color: "var(--muted)", padding: "8px 12px", fontSize: 13, flexShrink: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Barcode error banner */}
+            {barcodeError && (
+              <div style={{ padding: "10px 20px", background: "rgba(255,92,122,.08)", borderBottom: "1px solid rgba(255,92,122,.2)", fontSize: 12, color: "var(--red)", display: "flex", gap: 8, alignItems: "center" }}>
+                <span>⚠</span>
+                <span style={{ flex: 1 }}>{barcodeError}</span>
+                <button onClick={() => setBarcodeError(null)} style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 14 }}>✕</button>
+              </div>
+            )}
+
+            {/* Search results or food detail */}
+            <div style={{ flex: 1, overflow: "auto" }}>
+              {selectedFood ? (
+                <div style={{ padding: 20 }}>
+                  <button
+                    onClick={() => setSelectedFood(null)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12, marginBottom: 14, padding: 0 }}
+                  >
+                    ← Back to results
+                  </button>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{selectedFood.description}</div>
+                    {selectedFood.brand && <div style={{ fontSize: 12, color: "var(--dim)" }}>{selectedFood.brand}</div>}
+                  </div>
+
+                  {/* Serving size input */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="field-label">Quantity</label>
+                    <QuantityInput
+                      key={selectedFood.fdcId || selectedFood.customFoodId || selectedFood.description}
+                      initialGrams={addQty}
+                      portions={selectedFood.portions ?? []}
+                      loading={portionsLoading}
+                      onChange={(g, sQty, sLabel) => { setAddQty(g); setAddServingQty(sQty); setAddServingLabel(sLabel); }}
+                    />
+                  </div>
+
+                  {/* Nutrition preview (scaled) */}
+                  <div style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: 14, marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}>Nutrition for {addQty}g</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }}>
+                      {[
+                        { label: "Cal",     val: Math.round(selectedFood.calories * addQty / 100),    unit: "",  color: "var(--text)" },
+                        { label: "Protein", val: round1(selectedFood.protein * addQty / 100),          unit: "g", color: "var(--accent)" },
+                        { label: "Carbs",   val: round1(selectedFood.carbs   * addQty / 100),          unit: "g", color: "var(--cyan)" },
+                        { label: "Fat",     val: round1(selectedFood.fat     * addQty / 100),          unit: "g", color: "var(--amber)" },
+                      ].map(m => (
+                        <div key={m.label} style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: m.color }}>{m.val}</div>
+                          <div style={{ fontSize: 9, color: "var(--dim)" }}>{m.label}{m.unit}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+                      {[
+                        { label: "Fiber",  val: round1(selectedFood.fiber * addQty / 100), unit: "g" },
+                        { label: "Sugar",  val: round1(selectedFood.sugar * addQty / 100), unit: "g" },
+                        { label: "Sodium", val: Math.round(selectedFood.sodium * addQty / 100), unit: "mg" },
+                      ].map(m => (
+                        <div key={m.label} style={{ fontSize: 11, color: "var(--muted)" }}>
+                          {m.label}: <span style={{ color: "var(--text)" }}>{m.val}{m.unit}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    className="btn-primary"
+                    style={{ width: "100%" }}
+                    disabled={addingFood || addQty <= 0}
+                    onClick={() => handleAddFood(selectedFood, activeMeal, addQty, addServingQty, addServingLabel)}
+                  >
+                    {addingFood ? "Adding…" : `Add ${formatQty(addQty, addServingQty, addServingLabel)} to ${MEALS.find(m => m.key === activeMeal)?.label}`}
+                  </button>
+                  {selectedFood?.isCustom && selectedFood.customFoodId && (
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <button className="btn-secondary" style={{ flex: 1, fontSize: 12 }}
+                        onClick={() => {
+                          const cf = customFoods.find(f => f.id === selectedFood.customFoodId);
+                          if (cf) { setEditingCustomFood(cf); setCustomFoodModalOpen(true); }
+                        }}
+                      >
+                        <i className="ti ti-edit" style={{ marginRight: 5 }} aria-hidden="true" />Edit food
+                      </button>
+                      <button className="btn-secondary" style={{ fontSize: 12, color: "var(--red)", borderColor: "rgba(255,92,122,.3)" }}
+                        onClick={() => selectedFood.customFoodId && deleteCustomFood(selectedFood.customFoodId)}
+                      >
+                        <i className="ti ti-trash" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {searchQuery.length === 0 && (
+                    <div>
+                      {recentLoading ? (
+                        <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>Loading recent foods…</div>
+                      ) : recentFoods.length > 0 ? (
+                        <>
+                          <div style={{ padding: "10px 20px 6px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", display: "flex", alignItems: "center", gap: 6 }}>
+                            <i className="ti ti-history" style={{ fontSize: 12 }} aria-hidden="true" />
+                            Recent foods
+                          </div>
+                          {recentFoods.map((food, i) => {
+                            const daysAgo = Math.round((Date.now() - new Date(food.date).getTime()) / 86_400_000);
+                            const dateLabel = daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : daysAgo <= 6 ? `${daysAgo}d ago` : new Date(food.date).toLocaleDateString("en", { month: "short", day: "numeric" });
+                            return (
+                              <div
+                                key={i}
+                                className="ntr-search-row"
+                                style={{ display: "flex", alignItems: "center", padding: "9px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 10 }}
+                                onClick={() => openRecentFoodDetail(food)}
+                              >
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {food.food_name}
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}>
+                                    <span>{dateLabel}</span>
+                                    {food.use_count > 1 && <span style={{ color: "var(--accent)", fontWeight: 700 }}>{food.use_count}×</span>}
+                                    <span>·</span>
+                                    <span>{formatQty(food.quantity_g, food.serving_qty, food.serving_label)}</span>
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
+                                  <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories} kcal</span>
+                                  <span style={{ color: "var(--accent)" }}>P{round1(food.protein_g)}g</span>
+                                  <span style={{ color: "var(--cyan)" }}>C{round1(food.carbs_g)}g</span>
+                                  <span style={{ color: "var(--amber)" }}>F{round1(food.fat_g)}g</span>
+                                </div>
+                                <button
+                                  onClick={e => { e.stopPropagation(); logRecentFood(food); }}
+                                  disabled={addingFood}
+                                  title={`Log ${formatQty(food.quantity_g, food.serving_qty, food.serving_label)} to ${MEALS.find(m => m.key === activeMeal)?.label}`}
+                                  style={{
+                                    background: "rgba(124,92,255,.12)", border: "1px solid rgba(124,92,255,.3)",
+                                    color: "var(--accent)", borderRadius: 7, width: 28, height: 28,
+                                    cursor: "pointer", fontSize: 16, lineHeight: 1, flexShrink: 0,
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                  }}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            );
+                          })}
+                          {customFoods.length > 0 && (
+                            <>
+                              <div style={{ padding: "10px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".07em", borderTop: "1px solid var(--border)" }}>
+                                My Foods
+                              </div>
+                              {customFoods.slice(0, 5).map(food => (
+                                <div key={food.id} className="ntr-search-row"
+                                  style={{ display: "flex", alignItems: "center", padding: "9px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 8 }}
+                                  onClick={() => selectSearchResult(customToUSDA(food))}
+                                >
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{food.name}</div>
+                                    <div style={{ fontSize: 11, color: "var(--dim)" }}>{food.brand ?? "Custom"} · {food.serving_size_g}g serving</div>
+                                  </div>
+                                  <div style={{ fontSize: 11, flexShrink: 0, display: "flex", gap: 6 }}>
+                                    <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories_per_100g} kcal</span>
+                                    <span style={{ color: "var(--accent)" }}>P{food.protein_per_100g}g</span>
+                                  </div>
+                                  <button onClick={e => { e.stopPropagation(); setEditingCustomFood(food); setCustomFoodModalOpen(true); }}
+                                    style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }} title="Edit">⋮</button>
+                                </div>
+                              ))}
+                            </>
+                          )}
+                          <div style={{ padding: "10px 20px", fontSize: 11, color: "var(--dim)", textAlign: "center" }}>
+                            Or type to search USDA database (1M+ foods)
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+                          <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
+                          Type to search the USDA food database
+                          <div style={{ fontSize: 11, marginTop: 6 }}>Over 1 million foods from USDA FoodData Central</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* ── My Foods (custom) matching the query ─────────── */}
+                  {searchQuery.length > 0 && (() => {
+                    const q = searchQuery.toLowerCase();
+                    const matches = customFoods.filter(f =>
+                      f.name.toLowerCase().includes(q) || f.brand?.toLowerCase().includes(q)
+                    );
+                    if (!matches.length) return null;
+                    return (
+                      <>
+                        <div style={{ padding: "10px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".07em" }}>
+                          My Foods
+                        </div>
+                        {matches.map(food => (
+                          <div key={food.id} className="ntr-search-row"
+                            style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 8 }}
+                            onClick={() => { setSelectedFood(customToUSDA(food)); setAddQty(food.serving_size_g); }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{food.name}</div>
+                              <div style={{ fontSize: 11, color: "var(--dim)" }}>{food.brand ?? "Custom"} · {food.serving_size_g}g serving</div>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
+                              <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories_per_100g} kcal</span>
+                              <span style={{ color: "var(--accent)" }}>P{food.protein_per_100g}g</span>
+                              <span style={{ color: "var(--cyan)" }}>C{food.carbs_per_100g}g</span>
+                              <span style={{ color: "var(--amber)" }}>F{food.fat_per_100g}g</span>
+                              <span style={{ color: "var(--dim)" }}>/ 100g</span>
+                            </div>
+                            <button
+                              onClick={e => { e.stopPropagation(); setEditingCustomFood(food); setCustomFoodModalOpen(true); }}
+                              style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }}
+                              title="Edit"
+                            >⋮</button>
+                          </div>
+                        ))}
+                        {searchResults.length > 0 && (
+                          <div style={{ padding: "6px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", borderTop: "1px solid var(--border)" }}>
+                            USDA database
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
+                  {searchLoading && (
+                    <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>Searching…</div>
+                  )}
+                  {!searchLoading && searchQuery.length > 0 && searchResults.length === 0 && (() => {
+                    const q = searchQuery.toLowerCase();
+                    const hasCustom = customFoods.some(f => f.name.toLowerCase().includes(q) || f.brand?.toLowerCase().includes(q));
+                    if (hasCustom) return null;
+                    return (
+                      <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
+                        No results for &ldquo;{searchQuery}&rdquo;
+                        <div style={{ marginTop: 10 }}>
+                          <button className="btn-soft" style={{ fontSize: 12 }} onClick={() => { setCustomFoodModalOpen(true); setEditingCustomFood(null); }}>
+                            + Create &ldquo;{searchQuery}&rdquo; as custom food
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {searchResults.map(food => (
+                    <div
+                      key={food.fdcId}
+                      onClick={() => selectSearchResult(food)}
+                      className="ntr-search-row"
+                      style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)" }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {food.description}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                          {food.brand ?? food.category ?? "Generic"}
+                          {food.servingLabel ? ` · ${food.servingLabel}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginLeft: 12, fontSize: 11, flexShrink: 0 }}>
+                        <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories} kcal</span>
+                        <span style={{ color: "var(--accent)" }}>P{food.protein}g</span>
+                        <span style={{ color: "var(--cyan)" }}>C{food.carbs}g</span>
+                        <span style={{ color: "var(--amber)" }}>F{food.fat}g</span>
+                        <span style={{ color: "var(--dim)" }}>/ 100g</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick add modal ────────────────────────────────────────────── */}
+      {quickOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.70)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={e => { if (e.target === e.currentTarget) setQuickOpen(false); }}
+        >
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", width: "100%", maxWidth: 400, padding: 24 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>
+              Quick add to {MEALS.find(m => m.key === quickMeal)?.label}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="field">
+                <label className="field-label">Food name</label>
+                <input className="input" value={quickForm.name} onChange={e => setQuickForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Homemade pasta" />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {[
+                  { key: "calories", label: "Calories", unit: "kcal" },
+                  { key: "protein",  label: "Protein",  unit: "g" },
+                  { key: "carbs",    label: "Carbs",    unit: "g" },
+                  { key: "fat",      label: "Fat",      unit: "g" },
+                ].map(f => (
+                  <div className="field" key={f.key}>
+                    <label className="field-label">{f.label}</label>
+                    <input
+                      type="number" className="input" min={0}
+                      value={quickForm[f.key as keyof typeof quickForm]}
+                      onChange={e => setQuickForm(p => ({ ...p, [f.key]: Number(e.target.value) }))}
+                      placeholder={f.unit}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
+                <div className="field">
+                  <label className="field-label">Qty (optional)</label>
+                  <input
+                    type="number" className="input" min={0} step={0.5}
+                    value={quickForm.servingQty}
+                    onChange={e => setQuickForm(p => ({ ...p, servingQty: e.target.value }))}
+                    placeholder="e.g. 2"
+                  />
+                </div>
+                <div className="field">
+                  <label className="field-label">Unit (optional)</label>
+                  <input
+                    className="input"
+                    value={quickForm.servingLabel}
+                    onChange={e => setQuickForm(p => ({ ...p, servingLabel: e.target.value }))}
+                    placeholder="e.g. cookies"
+                  />
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setQuickOpen(false)}>Cancel</button>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={!quickForm.name || addingFood} onClick={handleQuickAdd}>
+                {addingFood ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Targets modal ─────────────────────────────────────────────── */}
+      {targetsOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.70)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={e => { if (e.target === e.currentTarget) setTargetsOpen(false); }}
+        >
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", width: "100%", maxWidth: 460, padding: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Set nutrition targets</div>
+              <button
+                onClick={handleGenerateTargets}
+                disabled={targetGenerating}
+                style={{ background: "rgba(124,92,255,.12)", border: "1px solid rgba(124,92,255,.35)", color: "var(--accent)", borderRadius: 8, cursor: "pointer", padding: "6px 12px", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, flexShrink: 0, opacity: targetGenerating ? 0.7 : 1 }}
+              >
+                <i className="ti ti-sparkles" aria-hidden="true" style={{ fontSize: 13 }} />
+                {targetGenerating ? "Generating…" : "Generate with AI"}
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: targetGenNote ? 10 : 20 }}>Targets are specific to the training day type.</div>
+            {targetGenNote && (
+              <div style={{ fontSize: 11, background: "rgba(124,92,255,.08)", border: "1px solid rgba(124,92,255,.2)", borderRadius: 8, padding: "8px 12px", color: "var(--accent)", marginBottom: 16, lineHeight: 1.5 }}>
+                <i className="ti ti-brain" aria-hidden="true" style={{ marginRight: 5 }} />
+                {targetGenNote}
+              </div>
+            )}
+
+            <div className="field" style={{ marginBottom: 14 }}>
+              <label className="field-label">Day type</label>
+              <select className="select-input" value={targetForm.day_type} onChange={e => {
+                const dt = e.target.value;
+                const gen = generatedTargets.current.find(t => t.day_type === dt);
+                if (gen) {
+                  setTargetForm({ day_type: dt, calories: gen.calories ?? 2200, protein_g: gen.protein_g ?? 160, carbs_g: gen.carbs_g ?? 250, fat_g: gen.fat_g ?? 75, fiber_g: gen.fiber_g ?? 30, water_ml: gen.water_ml ?? 2500 });
+                  setTargetGenNote(gen.notes ? `Coach: ${gen.notes}` : null);
+                } else {
+                  setTargetForm(p => ({ ...p, day_type: dt }));
+                  setTargetGenNote(null);
+                }
+              }}>
+                <option value="default">Default (all days)</option>
+                <option value="hard">Hard session day</option>
+                <option value="easy">Easy day</option>
+                <option value="rest">Rest day</option>
+                <option value="race">Race day</option>
+              </select>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
+              {[
+                { key: "calories", label: "Calories", unit: "kcal" },
+                { key: "protein_g", label: "Protein", unit: "g" },
+                { key: "carbs_g", label: "Carbs", unit: "g" },
+                { key: "fat_g", label: "Fat", unit: "g" },
+                { key: "fiber_g", label: "Fiber", unit: "g" },
+                { key: "water_ml", label: "Water", unit: "ml" },
+              ].map(f => (
+                <div className="field" key={f.key}>
+                  <label className="field-label">{f.label} ({f.unit})</label>
+                  <input
+                    type="number" className="input" min={0}
+                    value={targetForm[f.key as keyof typeof targetForm]}
+                    onChange={e => setTargetForm(p => ({ ...p, [f.key]: Number(e.target.value) }))}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setTargetsOpen(false)}>Cancel</button>
+              <button className="btn-primary" style={{ flex: 1 }} disabled={targetSaving} onClick={handleSaveTargets}>
+                {targetSaving ? "Saving…" : "Save targets"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── AI photo capture ───────────────────────────────────────────── */}
+      {photoOpen && (
+        <PhotoFoodCapture
+          meal={photoMeal}
+          mealLabel={MEALS.find(m => m.key === photoMeal)?.label ?? photoMeal}
+          onLog={handlePhotoLog}
+          onClose={() => setPhotoOpen(false)}
+        />
+      )}
+
+      {/* ── Custom food create/edit modal ────────────────────────────── */}
+      {customFoodModalOpen && (
+        <CustomFoodModal
+          editFood={editingCustomFood}
+          onSave={food => {
+            setCustomFoods(prev => {
+              const idx = prev.findIndex(f => f.id === food.id);
+              return idx >= 0 ? prev.map((f, i) => i === idx ? food : f) : [food, ...prev];
+            });
+            setCustomFoodModalOpen(false);
+            // Open detail view for the saved food so the user can log it immediately
+            if (!editingCustomFood) {
+              setSelectedFood(customToUSDA(food));
+              setAddQty(food.serving_size_g);
+              setSearchOpen(true);
+            }
+          }}
+          onClose={() => setCustomFoodModalOpen(false)}
+        />
+      )}
+
+      {/* ── Meal manager modal ───────────────────────────────────────── */}
+      {mealManagerOpen && (
+        <MealManagerModal
+          meals={mealTemplates}
+          onUpdate={updated => setMealTemplates(prev => prev.map(m => m.id === updated.id ? updated : m))}
+          onDelete={id => setMealTemplates(prev => prev.filter(m => m.id !== id))}
+          onClose={() => setMealManagerOpen(false)}
+          onBuild={() => { setMealBuilderDraft(null); setMealManagerOpen(false); setMealBuilderOpen(true); }}
+          onImportUrl={draft => { setMealBuilderDraft(draft); setMealManagerOpen(false); setMealBuilderOpen(true); }}
+          onLog={logMealTemplate}
+          loggingMealId={loggingMealId}
+          activeMealLabel={MEALS.find(m => m.key === activeMeal)?.label}
+        />
+      )}
+
+      {/* ── Weekly meal plan modal ───────────────────────────────────── */}
+      {mealPlanOpen && (
+        <WeeklyMealPlanModal
+          onClose={() => setMealPlanOpen(false)}
+          onLog={logRecommendedMeal}
+        />
+      )}
+
+      {/* ── Meal builder modal ───────────────────────────────────────── */}
+      {mealBuilderOpen && (
+        <MealBuilderModal
+          initial={mealBuilderDraft ?? undefined}
+          onSave={meal => {
+            setMealTemplates(prev => [meal, ...prev]);
+            mealsLoaded.current = true;
+            setMealBuilderOpen(false);
+            setMealBuilderDraft(null);
+            // Log the new meal immediately into the active meal slot
+            logMealTemplate(meal);
+          }}
+          onClose={() => { setMealBuilderOpen(false); setMealBuilderDraft(null); }}
+        />
+      )}
+
+      {/* ── Barcode scanner (full-screen) ─────────────────────────────── */}
+      {scannerOpen && (
+        <BarcodeScanner
+          onScan={handleBarcodeScan}
+          onClose={() => { setScannerOpen(false); setSearchOpen(true); }}
+        />
+      )}
+
+      {/* ── Barcode lookup loading overlay ─────────────────────────────── */}
+      {barcodeLoading && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 250,
+          background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14,
+        }}>
+          <i className="ti ti-scan" aria-hidden="true" style={{ fontSize: 36, color: "var(--cyan)" }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--cyan)" }}>Looking up barcode…</div>
+          <div style={{ fontSize: 12, color: "var(--dim)" }}>Searching Open Food Facts database</div>
+        </div>
+      )}
+
+      {/* ── Keyboard shortcut hint ─────────────────────────────────────── */}
+      <div style={{
+        position: "fixed", bottom: 20, right: 20,
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: 10, padding: "8px 14px", fontSize: 11, color: "var(--dim)",
+        display: "flex", gap: 8, alignItems: "center",
+      }}>
+        <span style={{ background: "rgba(255,255,255,.08)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: 10, color: "var(--muted)" }}>⌘K</span>
+        Quick log food
+      </div>
+
+      <style>{`
+        .ntr-food-row:hover .ntr-del-btn { opacity: 1 !important; }
+        .ntr-search-row:hover { background: rgba(255,255,255,.04); }
+        .ntr-quick-row:hover { color: var(--accent) !important; }
+      `}</style>
+    </div>
+  );
+}
