@@ -20,7 +20,7 @@ const EMPTY: AthleteProfile = {
   equipment_notes: "", schedule_notes: "",
   current_injuries: "", injury_history: "", exercises_to_avoid: "", health_notes: "",
   preferred_style: "", training_enjoyments: "", training_dislikes: "",
-  indoor_outdoor: "", additional_notes: "",
+  indoor_outdoor: "", additional_notes: "", meal_variety_preference: "balanced",
   generated_analysis_context: "", generated_planning_context: "",
   setup_completed: false,
 };
@@ -346,6 +346,13 @@ function PreferencesStep({ data, set }: { data: AthleteProfile; set: (p: Partial
           ]}
         />
       )}
+      <RadioGroup label="Meal variety" value={data.meal_variety_preference} onChange={v => set({ meal_variety_preference: v })}
+        options={[
+          { value: "minimal",  label: "Minimal",  desc: "Reuse the same few meals and ingredients across the week to keep shopping simple." },
+          { value: "balanced", label: "Balanced",  desc: "Some repeats, some new recipes each week." },
+          { value: "high",     label: "High variety", desc: "A different meal for almost every slot." },
+        ]}
+      />
       <Field>
         <Label>What do you enjoy about training?</Label>
         <Hint>Types of sessions, movements, or feelings you genuinely look forward to.</Hint>
@@ -513,7 +520,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
       ["training_years_strength", "training_years_cardio", "sport_background", "sessions_per_week", "hours_per_week", "bench_1rm_kg", "squat_1rm_kg", "deadlift_1rm_kg", "run_5k_time", "run_10k_time", "other_benchmarks"],
       ["available_days", "session_duration_mins", "gym_access", "equipment_notes", "schedule_notes"],
       ["current_injuries", "injury_history", "exercises_to_avoid", "health_notes"],
-      ["preferred_style", "training_enjoyments", "training_dislikes", "indoor_outdoor", "additional_notes"],
+      ["preferred_style", "training_enjoyments", "training_dislikes", "indoor_outdoor", "additional_notes", "meal_variety_preference"],
     ];
     const partial: Partial<AthleteProfile> = {};
     for (const k of (keys[s - 1] ?? [])) {

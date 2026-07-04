@@ -41,6 +41,7 @@ export interface AthleteProfile {
   training_dislikes: string;
   indoor_outdoor: string;
   additional_notes: string;
+  meal_variety_preference: string;
   // Generated context
   generated_analysis_context: string;
   generated_planning_context: string;
@@ -75,6 +76,20 @@ export async function saveProfileStep(
     { onConflict: "user_id" }
   );
   if (error) return { error: error.message };
+
+  // Mirror into athlete_memory so the Python LangGraph pipeline (which only
+  // reads preferences via get_athlete_memory) sees this without a separate query.
+  if (partial.meal_variety_preference) {
+    await sb().rpc("upsert_athlete_memory", {
+      p_user_id: uid,
+      p_category: "preferences",
+      p_key: "meal_variety",
+      p_value: partial.meal_variety_preference,
+      p_confidence: 100,
+      p_source: "user_stated",
+    });
+  }
+
   revalidatePath("/profile");
   revalidatePath("/setup");
   return {};

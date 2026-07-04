@@ -32,6 +32,7 @@ const MOCK_PROFILE = {
   training_dislikes: "Long steady-state cardio above 60 min.",
   indoor_outdoor: "outdoor_pref",
   additional_notes: "I respond well to clear structure and numbers.",
+  meal_variety_preference: "balanced",
   generated_analysis_context: `ATHLETE PROFILE — HYBRID (STRENGTH + ENDURANCE)
 Adrian, 26. Goal: sub-10 min 3000m and 140kg bench press by end of 2026.
 Training age: 3-5 years strength, 1-2 years running. Currently 4 sessions/week.
