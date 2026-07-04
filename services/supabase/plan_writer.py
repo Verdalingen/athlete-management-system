@@ -130,7 +130,50 @@ def upsert_daily_metrics_batch(
         total += len(rows[i : i + chunk])
 
     logger.info("📊 daily_metrics: upserted %d rows", total)
+
+    # Also sync weight entries to body_weight_log, skipping dates that have
+    # a manual entry (so the user's manually-logged weight is never overwritten).
+    weight_records = [
+        {"date": r["date"], "weight_kg": r["weight_kg"]}
+        for r in records
+        if r.get("date") and r.get("weight_kg") is not None
+    ]
+    _sync_garmin_weight(sb, uid, weight_records)
+
     return total
+
+
+def _sync_garmin_weight(sb, uid: str, weight_records: list[dict]) -> None:
+    """Upsert Garmin-sourced weight entries, never overwriting manual entries."""
+    if not weight_records:
+        return
+
+    dates = [r["date"] for r in weight_records]
+
+    # Fetch existing entries to protect manual ones
+    existing_resp = (
+        sb.table("body_weight_log")
+        .select("date, source")
+        .eq("user_id", uid)
+        .in_("date", dates)
+        .execute()
+    )
+    manual_dates = {
+        row["date"]
+        for row in (existing_resp.data or [])
+        if row.get("source") == "manual"
+    }
+
+    rows = [
+        {"user_id": uid, "date": r["date"], "weight_kg": r["weight_kg"], "source": "garmin"}
+        for r in weight_records
+        if r["date"] not in manual_dates
+    ]
+    if not rows:
+        return
+
+    sb.table("body_weight_log").upsert(rows, on_conflict="user_id,date").execute()
+    logger.info("⚖️  body_weight_log: synced %d Garmin weight entries", len(rows))
 
 
 def write_weekly_review(

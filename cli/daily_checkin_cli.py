@@ -172,11 +172,18 @@ async def run_daily_from_config(config_path: Path) -> None:
     # Snapshot schedule BEFORE the check-in so we can diff afterward
     old_scheduled_days: list[dict] = storage.load_json("cli_user", "scheduled_days") or []
 
+    supabase_user_id = os.environ.get("SUPABASE_USER_ID") or None
+    if not supabase_user_id:
+        logger.warning(
+            "SUPABASE_USER_ID not set — nutrition targets/recommendations will not be written to Supabase"
+        )
+
     result = await run_daily_checkin(
         user_id="cli_user",
         athlete_name=athlete_name,
         yesterday_activities=yesterday_activities,
         storage=storage,
+        supabase_user_id=supabase_user_id,
     )
 
     if error := result.get("error"):

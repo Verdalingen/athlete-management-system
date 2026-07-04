@@ -10,6 +10,10 @@ from services.ai.langgraph.nodes.activity_summarizer_node import activity_summar
 from services.ai.langgraph.nodes.formatter_node import formatter_node
 from services.ai.langgraph.nodes.metrics_expert_node import metrics_expert_node
 from services.ai.langgraph.nodes.metrics_summarizer_node import metrics_summarizer_node
+from services.ai.langgraph.nodes.lifestyle_expert_node import lifestyle_expert_node
+from services.ai.langgraph.nodes.lifestyle_summarizer_node import lifestyle_summarizer_node
+from services.ai.langgraph.nodes.nutrition_expert_node import nutrition_expert_node
+from services.ai.langgraph.nodes.nutrition_summarizer_node import nutrition_summarizer_node
 from services.ai.langgraph.nodes.orchestrator_node import master_orchestrator_node
 from services.ai.langgraph.nodes.physiology_expert_node import physiology_expert_node
 from services.ai.langgraph.nodes.physiology_summarizer_node import physiology_summarizer_node
@@ -28,10 +32,14 @@ def create_analysis_workflow():
     workflow.add_node("metrics_summarizer", metrics_summarizer_node)
     workflow.add_node("physiology_summarizer", physiology_summarizer_node)
     workflow.add_node("activity_summarizer", activity_summarizer_node)
+    workflow.add_node("nutrition_summarizer", nutrition_summarizer_node)
+    workflow.add_node("lifestyle_summarizer", lifestyle_summarizer_node)
 
     workflow.add_node("metrics_expert", metrics_expert_node)
     workflow.add_node("physiology_expert", physiology_expert_node)
     workflow.add_node("activity_expert", activity_expert_node)
+    workflow.add_node("nutrition_expert", nutrition_expert_node)
+    workflow.add_node("lifestyle_expert", lifestyle_expert_node)
 
     workflow.add_node("master_orchestrator", master_orchestrator_node)
     workflow.add_node("synthesis", synthesis_node)
@@ -41,17 +49,26 @@ def create_analysis_workflow():
     workflow.add_edge(START, "metrics_summarizer")
     workflow.add_edge(START, "physiology_summarizer")
     workflow.add_edge(START, "activity_summarizer")
+    workflow.add_edge(START, "nutrition_summarizer")
+    workflow.add_edge(START, "lifestyle_summarizer")
 
     workflow.add_edge("metrics_summarizer", "metrics_expert")
     workflow.add_edge("physiology_summarizer", "physiology_expert")
     workflow.add_edge("activity_summarizer", "activity_expert")
+    workflow.add_edge("nutrition_summarizer", "nutrition_expert")
+    workflow.add_edge("lifestyle_summarizer", "lifestyle_expert")
 
-    workflow.add_edge(["metrics_expert", "physiology_expert", "activity_expert"], "master_orchestrator")
+    workflow.add_edge(
+        ["metrics_expert", "physiology_expert", "activity_expert", "nutrition_expert", "lifestyle_expert"],
+        "master_orchestrator",
+    )
 
     workflow.add_edge("master_orchestrator", "synthesis")
     workflow.add_edge("master_orchestrator", "metrics_expert")
     workflow.add_edge("master_orchestrator", "physiology_expert")
     workflow.add_edge("master_orchestrator", "activity_expert")
+    workflow.add_edge("master_orchestrator", "nutrition_expert")
+    workflow.add_edge("master_orchestrator", "lifestyle_expert")
 
     workflow.add_edge("synthesis", "formatter")
     workflow.add_edge("formatter", "plot_resolution")
@@ -59,7 +76,7 @@ def create_analysis_workflow():
 
     checkpointer = MemorySaver()
     app = workflow.compile(checkpointer=checkpointer)
-    logger.info("Created complete LangGraph analysis workflow with 2-stage architecture (3 summarizers + 3 experts + synthesis + formatting)")
+    logger.info("Created complete LangGraph analysis workflow: 5 summarizers + 5 experts + synthesis + formatting")
 
     return app
 

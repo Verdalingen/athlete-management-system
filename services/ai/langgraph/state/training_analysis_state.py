@@ -1,15 +1,23 @@
 from typing import Annotated, Any
 
 from langgraph.graph import MessagesState
-from services.ai.langgraph.schemas import ActivityExpertOutputs, MetricsExpertOutputs, PhysiologyExpertOutputs
+from services.ai.langgraph.schemas import (
+    ActivityExpertOutputs,
+    LifestyleExpertOutputs,
+    MetricsExpertOutputs,
+    NutritionExpertOutputs,
+    PhysiologyExpertOutputs,
+)
 
 
 class TrainingAnalysisState(MessagesState):
     user_id: str
     athlete_name: str
     garmin_data: dict[str, Any]
+    mfp_data: dict[str, Any] | None
     analysis_context: str
     planning_context: str
+    athlete_memory: str | None
 
     competitions: list[dict[str, Any]]
     current_date: dict[str, str]
@@ -23,15 +31,21 @@ class TrainingAnalysisState(MessagesState):
     metrics_summary: str | None
     physiology_summary: str | None
     activity_summary: str | None
+    nutrition_summary: str | None
+    lifestyle_summary: str | None
 
     metrics_outputs: MetricsExpertOutputs | None
     activity_outputs: ActivityExpertOutputs | None
     physiology_outputs: PhysiologyExpertOutputs | None
+    nutrition_outputs: NutritionExpertOutputs | None
+    lifestyle_outputs: LifestyleExpertOutputs | None
 
     synthesis_result: str | None
 
     season_plan: str | None
     weekly_plan: str | None
+    nutrition_plan: str | None
+    race_strategy: str | None
     strength_sessions: list[dict[str, Any]] | None
     scheduled_days: list[dict[str, Any]] | None
 
@@ -40,6 +54,7 @@ class TrainingAnalysisState(MessagesState):
 
     analysis_html: str | None
     planning_html: str | None
+    nutrition_html: str | None
     plot_resolution_stats: dict[str, Any] | None
 
     plots: Annotated[list[dict], lambda x, y: x + y]
@@ -55,6 +70,8 @@ class TrainingAnalysisState(MessagesState):
     metrics_expert_messages: Annotated[list, lambda x, y: (x or []) + y]
     activity_expert_messages: Annotated[list, lambda x, y: (x or []) + y]
     physiology_expert_messages: Annotated[list, lambda x, y: (x or []) + y]
+    nutrition_expert_messages: Annotated[list, lambda x, y: (x or []) + y]
+    lifestyle_expert_messages: Annotated[list, lambda x, y: (x or []) + y]
     season_planner_messages: Annotated[list, lambda x, y: (x or []) + y]
     weekly_planner_messages: Annotated[list, lambda x, y: (x or []) + y]
 
@@ -63,8 +80,10 @@ def create_initial_state(
     user_id: str,
     athlete_name: str,
     garmin_data: dict[str, Any],
+    mfp_data: dict[str, Any] | None = None,
     analysis_context: str = "",
     planning_context: str = "",
+    athlete_memory: str | None = None,
     competitions: list[dict[str, Any]] | None = None,
     current_date: dict[str, str] | None = None,
     week_dates: list[dict[str, str]] | None = None,
@@ -79,8 +98,10 @@ def create_initial_state(
         user_id=user_id,
         athlete_name=athlete_name,
         garmin_data=garmin_data,
+        mfp_data=mfp_data,
         analysis_context=analysis_context,
         planning_context=planning_context,
+        athlete_memory=athlete_memory,
         competitions=competitions or [],
         current_date=current_date or {},
         week_dates=week_dates or [],
@@ -93,18 +114,25 @@ def create_initial_state(
         metrics_summary=None,
         physiology_summary=None,
         activity_summary=None,
+        nutrition_summary=None,
+        lifestyle_summary=None,
         metrics_outputs=None,
         activity_outputs=None,
         physiology_outputs=None,
+        nutrition_outputs=None,
+        lifestyle_outputs=None,
         synthesis_result=None,
         season_plan=None,
         weekly_plan=None,
+        nutrition_plan=None,
+        race_strategy=None,
         strength_sessions=None,
         scheduled_days=None,
         synthesis_complete=False,
         season_plan_complete=False,
         analysis_html=None,
         planning_html=None,
+        nutrition_html=None,
         plot_resolution_stats=None,
         plots=[],
         plot_storage_data={},
@@ -115,6 +143,8 @@ def create_initial_state(
         metrics_expert_messages=[],
         activity_expert_messages=[],
         physiology_expert_messages=[],
+        nutrition_expert_messages=[],
+        lifestyle_expert_messages=[],
         season_planner_messages=[],
         weekly_planner_messages=[],
         messages=[],

@@ -12,7 +12,13 @@ from services.ai.langgraph.nodes.data_integration_node import data_integration_n
 from services.ai.langgraph.nodes.formatter_node import formatter_node
 from services.ai.langgraph.nodes.metrics_expert_node import metrics_expert_node
 from services.ai.langgraph.nodes.metrics_summarizer_node import metrics_summarizer_node
+from services.ai.langgraph.nodes.lifestyle_expert_node import lifestyle_expert_node
+from services.ai.langgraph.nodes.lifestyle_summarizer_node import lifestyle_summarizer_node
+from services.ai.langgraph.nodes.nutrition_expert_node import nutrition_expert_node
+from services.ai.langgraph.nodes.nutrition_planner_node import nutrition_planner_node
+from services.ai.langgraph.nodes.nutrition_summarizer_node import nutrition_summarizer_node
 from services.ai.langgraph.nodes.orchestrator_node import master_orchestrator_node
+from services.ai.langgraph.nodes.race_strategy_node import race_strategy_node
 from services.ai.langgraph.nodes.physiology_expert_node import physiology_expert_node
 from services.ai.langgraph.nodes.physiology_summarizer_node import physiology_summarizer_node
 from services.ai.langgraph.nodes.plan_formatter_node import plan_formatter_node
@@ -110,10 +116,14 @@ def create_integrated_analysis_and_planning_workflow():
     workflow.add_node("metrics_summarizer", metrics_summarizer_node)
     workflow.add_node("physiology_summarizer", physiology_summarizer_node)
     workflow.add_node("activity_summarizer", activity_summarizer_node)
+    workflow.add_node("nutrition_summarizer", nutrition_summarizer_node)
+    workflow.add_node("lifestyle_summarizer", lifestyle_summarizer_node)
 
     workflow.add_node("metrics_expert", metrics_expert_node)
     workflow.add_node("physiology_expert", physiology_expert_node)
     workflow.add_node("activity_expert", activity_expert_node)
+    workflow.add_node("nutrition_expert", nutrition_expert_node)
+    workflow.add_node("lifestyle_expert", lifestyle_expert_node)
 
     workflow.add_node("synthesis", synthesis_node)
     workflow.add_node("formatter", formatter_node)
@@ -123,6 +133,8 @@ def create_integrated_analysis_and_planning_workflow():
     workflow.add_node("master_orchestrator", master_orchestrator_node)
     workflow.add_node("data_integration", data_integration_node)
     workflow.add_node("weekly_planner", weekly_planner_node)
+    workflow.add_node("nutrition_planner", nutrition_planner_node)
+    workflow.add_node("race_strategy", race_strategy_node)
     workflow.add_node("plan_formatter", plan_formatter_node)
 
     workflow.add_node("finalize", lambda state: state, defer=True)
@@ -130,12 +142,19 @@ def create_integrated_analysis_and_planning_workflow():
     workflow.add_edge(START, "metrics_summarizer")
     workflow.add_edge(START, "physiology_summarizer")
     workflow.add_edge(START, "activity_summarizer")
+    workflow.add_edge(START, "nutrition_summarizer")
+    workflow.add_edge(START, "lifestyle_summarizer")
 
     workflow.add_edge("metrics_summarizer", "metrics_expert")
     workflow.add_edge("physiology_summarizer", "physiology_expert")
     workflow.add_edge("activity_summarizer", "activity_expert")
+    workflow.add_edge("nutrition_summarizer", "nutrition_expert")
+    workflow.add_edge("lifestyle_summarizer", "lifestyle_expert")
 
-    workflow.add_edge(["metrics_expert", "physiology_expert", "activity_expert"], "master_orchestrator")
+    workflow.add_edge(
+        ["metrics_expert", "physiology_expert", "activity_expert", "nutrition_expert", "lifestyle_expert"],
+        "master_orchestrator",
+    )
 
     # Master orchestrator uses ONLY Command(goto=...) for dynamic routing
     # NO unconditional edges from orchestrator - it routes dynamically based on stage
@@ -146,9 +165,12 @@ def create_integrated_analysis_and_planning_workflow():
     # Season planner routes back to orchestrator for HITL handling
     workflow.add_edge("season_planner", "master_orchestrator")
 
-    # Data integration → weekly planner → orchestrator
+    # Data integration → weekly planner → nutrition planner + race strategy (parallel) → plan_formatter
     workflow.add_edge("data_integration", "weekly_planner")
+    workflow.add_edge("weekly_planner", "nutrition_planner")
+    workflow.add_edge("weekly_planner", "race_strategy")
     workflow.add_edge("weekly_planner", "master_orchestrator")
+    workflow.add_edge(["nutrition_planner", "race_strategy"], "plan_formatter")
 
     workflow.add_edge("plot_resolution", "finalize")
     workflow.add_edge("plan_formatter", "finalize")
@@ -157,8 +179,8 @@ def create_integrated_analysis_and_planning_workflow():
     checkpointer = MemorySaver()
     app = workflow.compile(checkpointer=checkpointer)
     logger.info(
-        "Created integrated analysis + planning workflow with parallel architecture: "
-        "3 summarizers → 3 experts → [analysis branch (synthesis/formatter/plots) || planning branch (season/data_integration/weekly/plan_formatter)] → finalize"
+        "Created integrated analysis + planning workflow: "
+        "5 summarizers → 5 experts → [analysis branch || planning branch (season/weekly/nutrition_planner/race_strategy/plan_formatter)] → finalize"
     )
 
     return app

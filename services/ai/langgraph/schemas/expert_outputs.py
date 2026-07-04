@@ -42,3 +42,11 @@ class ActivityExpertOutputs(ExpertOutputBase):
 
 class PhysiologyExpertOutputs(ExpertOutputBase):
     pass
+
+
+class NutritionExpertOutputs(ExpertOutputBase):
+    pass
+
+
+class LifestyleExpertOutputs(ExpertOutputBase):
+    pass
