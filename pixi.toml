@@ -17,6 +17,9 @@ typing_extensions = ">=4.13.0"
 garmin-ai-coach = { path = ".", editable = true }
 keyring = ">=25.0"
 garminconnect = ">=0.2.30, <0.3"
+# myfitnesspal is an optional soft dependency — install manually if needed:
+# pip install myfitnesspal
+# Note: requires lxml which doesn't currently build on Python 3.13
 anthropic = ">=0.71.0, <0.72"
 typing-extensions = ">=4.13.0"  # pydantic-core 2.33+ requires Sentinel which landed in 4.13
 supabase = ">=2.15.0"
