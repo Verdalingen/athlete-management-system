@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import type { ReplanJob, ReplanJobType } from "@/app/actions/replan";
 import type { ScheduledDay } from "@/lib/types";
+import { SESSION_COLOR, SESSION_LABEL } from "@/lib/session-theme";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -13,13 +14,6 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_COLOR: Record<string, string> = {
   pending: "var(--amber)", running: "var(--cyan)", done: "var(--green)", error: "var(--red)",
-};
-const SESSION_DOT: Record<string, string> = {
-  run: "var(--cyan)", strength: "var(--accent)", race: "var(--red)", cross: "var(--amber)",
-};
-
-const SESSION_LABEL: Record<string, string> = {
-  run: "Run", strength: "Strength", race: "Race", cross: "Cross-train",
 };
 
 function toDateStr(d: Date): string {
@@ -41,6 +35,19 @@ function timeAgo(iso: string): string {
   if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// Renders nothing on the server and on the client's first paint (so SSR and hydration always
+// match), then fills in the live "X ago" label client-side once mounted — avoids the hydration
+// mismatch that comes from computing a time-since-now value during render.
+function TimeAgo({ iso }: { iso: string }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    setLabel(timeAgo(iso));
+    const id = setInterval(() => setLabel(timeAgo(iso)), 30000);
+    return () => clearInterval(id);
+  }, [iso]);
+  return <>{label}</>;
 }
 
 function formatRescheduleComment(
@@ -141,7 +148,7 @@ function CalendarPicker({
               const isToday    = ds === todayISO;
               const isSelected = selectedDates.includes(ds);
               const session    = sessionMap.get(ds);
-              const dotColor   = session && !session.is_rest ? SESSION_DOT[session.session_type] : null;
+              const dotColor   = session && !session.is_rest ? SESSION_COLOR[session.session_type] : null;
 
               let bg = "rgba(255,255,255,.04)";
               let border = "1px solid rgba(255,255,255,.06)";
@@ -202,7 +209,7 @@ function CalendarPicker({
           </div>
           {[...new Set(scheduledDays.filter(s => !s.is_rest).map(s => s.session_type))].map(type => (
             <div key={type} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: SESSION_DOT[type] ?? "var(--dim)" }} />
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: SESSION_COLOR[type] ?? "var(--dim)" }} />
               {SESSION_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1))}
             </div>
           ))}
@@ -233,6 +240,7 @@ function CalendarPicker({
 const MODAL_CONFIG: Record<ReplanJobType, {
   title: string;
   cost: string;
+  time: string;
   description: string;
   commentPlaceholder: string;
   confirmLabel: string;
@@ -241,6 +249,7 @@ const MODAL_CONFIG: Record<ReplanJobType, {
   daily: {
     title: "Reschedule",
     cost: "~$0.02",
+    time: "~30s",
     description: "Mark dates you missed or will be constrained, then add a note. The coach will decide what to reschedule or drop.",
     commentPlaceholder: "Optional note — what happened, or what constraints are coming up? (e.g. sick, travel, limited time)",
     confirmLabel: "Queue Reschedule",
@@ -249,6 +258,7 @@ const MODAL_CONFIG: Record<ReplanJobType, {
   replan: {
     title: "Check-In",
     cost: "~$0.20",
+    time: "~2-3 min",
     description: "Reads 14 days of Garmin data and uses AI to re-plan the next 6 weeks, adapting to what was actually completed while staying true to the season plan. Weeks beyond that window are preserved unchanged.",
     commentPlaceholder: "Optional note — how has training been since last check-in? Fatigue, injuries, upcoming constraints…",
     confirmLabel: "Queue Check-In",
@@ -257,6 +267,7 @@ const MODAL_CONFIG: Record<ReplanJobType, {
   seasonal: {
     title: "New Season",
     cost: "~$1–3",
+    time: "~7-10 min",
     description: "Runs the full AI pipeline — expert analysis, new HTML reports, and a completely new season plan for the next training block. Use when your current season ends or after a major shift in goals.",
     commentPlaceholder: "Optional note — goals or focus areas for the new season…",
     confirmLabel: "Start New Season",
@@ -432,7 +443,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
               <button className="btn-secondary" onClick={closeModal}>Cancel</button>
               <button className={modal.confirmClass} onClick={confirm}>
                 {modal.confirmLabel}
-                <span style={{ fontSize: 11, opacity: .65, marginLeft: 8 }}>{modal.cost}</span>
+                <span style={{ fontSize: 11, opacity: .65, marginLeft: 8 }}>{modal.cost} · {modal.time}</span>
               </button>
             </div>
           </div>
@@ -479,7 +490,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
                       {job.type === "daily" ? "Reschedule" : job.type === "replan" ? "Check-In" : "New Season"}
                     </span>
                     <span style={{ color: "var(--dim)" }}>·</span>
-                    <span style={{ color: "var(--dim)" }}>{timeAgo(job.created_at)}</span>
+                    <span style={{ color: "var(--dim)" }}><TimeAgo iso={job.created_at} /></span>
                     {job.error_message && (
                       <span style={{ color: "var(--red)", fontSize: 11 }} title={job.error_message}>
                         — {job.error_message.slice(0, 60)}

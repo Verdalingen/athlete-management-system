@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { saveProfileStep } from "@/app/actions/athlete-profile";
 import type { AthleteProfile } from "@/app/actions/athlete-profile";
+import type { WeightGoalDirection, RecurringSessionRequest, SessionRequestDayOfWeek, SessionRequestType, SessionRequestImportance } from "@/lib/types";
 import { storeGarminCredentials, deleteGarminCredentials } from "@/app/actions/garmin-credentials";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -10,26 +11,27 @@ import { storeGarminCredentials, deleteGarminCredentials } from "@/app/actions/g
 type Event = { name: string; date: string; priority: string; target_time: string };
 
 const EMPTY: AthleteProfile = {
-  primary_goal_type: "", primary_goal_detail: "", secondary_goals: "",
+  primary_goal_type: "", primary_goal_detail: "", weight_goal_direction: "maintain", secondary_goals: "",
   goal_timeline: "", events: [],
   training_years_strength: "", training_years_cardio: "", sport_background: "",
   sessions_per_week: null, hours_per_week: null,
   bench_1rm_kg: null, squat_1rm_kg: null, deadlift_1rm_kg: null,
   run_5k_time: "", run_10k_time: "", other_benchmarks: "",
   available_days: [], session_duration_mins: null, gym_access: null,
-  equipment_notes: "", schedule_notes: "",
+  equipment_notes: "", schedule_notes: "", recurring_session_requests: [],
   current_injuries: "", injury_history: "", exercises_to_avoid: "", health_notes: "",
   preferred_style: "", training_enjoyments: "", training_dislikes: "",
   indoor_outdoor: "", additional_notes: "", meal_variety_preference: "balanced",
-  generated_analysis_context: "", generated_planning_context: "",
+  country: "", grocery_stores_notes: "",
+  generated_analysis_context: "",
   setup_completed: false,
 };
 
 const DAYS    = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY_VALS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
-const STEP_LABELS = ["Goals", "Background", "Schedule", "Health", "Preferences", "Garmin"];
-const STEP_ICONS  = ["ti-target", "ti-barbell", "ti-calendar", "ti-heart-rate-monitor", "ti-adjustments", "ti-device-watch"];
+const STEP_LABELS = ["Goals", "Background", "Schedule", "Preferred Sessions", "Health", "Preferences", "Garmin"];
+const STEP_ICONS  = ["ti-target", "ti-barbell", "ti-calendar", "ti-repeat", "ti-heart-rate-monitor", "ti-adjustments", "ti-device-watch"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +107,13 @@ function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<Athle
           { value: "aesthetics", label: "Aesthetics",        desc: "Body composition, muscle growth, or physique goals." },
           { value: "hybrid",     label: "Hybrid athlete",    desc: "Pursuing strength and endurance concurrently." },
           { value: "fitness",    label: "General fitness",   desc: "Health, conditioning, and longevity without a specific target." },
+        ]}
+      />
+      <RadioGroup label="Weight goal" value={data.weight_goal_direction} onChange={v => set({ weight_goal_direction: v as WeightGoalDirection })}
+        options={[
+          { value: "lose",     label: "Lose weight",     desc: "Train in a caloric deficit while preserving strength and muscle." },
+          { value: "maintain", label: "Maintain weight",  desc: "Keep body weight stable while improving performance or composition." },
+          { value: "gain",     label: "Gain weight",      desc: "Train in a caloric surplus to support muscle or strength growth." },
         ]}
       />
       <Field>
@@ -285,6 +294,89 @@ function ScheduleStep({ data, set }: { data: AthleteProfile; set: (p: Partial<At
   );
 }
 
+const SESSION_REQUEST_DAY_OPTS: Array<{ value: SessionRequestDayOfWeek | ""; label: string }> = [
+  { value: "",          label: "No specific day" },
+  { value: "monday",    label: "Monday" },
+  { value: "tuesday",   label: "Tuesday" },
+  { value: "wednesday", label: "Wednesday" },
+  { value: "thursday",  label: "Thursday" },
+  { value: "friday",    label: "Friday" },
+  { value: "saturday",  label: "Saturday" },
+  { value: "sunday",    label: "Sunday" },
+];
+
+const SESSION_REQUEST_TYPE_OPTS: Array<{ value: SessionRequestType; label: string }> = [
+  { value: "run",      label: "Run" },
+  { value: "strength", label: "Strength" },
+  { value: "cross",    label: "Cross-train" },
+  { value: "other",    label: "Other" },
+];
+
+function PreferredSessionsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  function addRequest() {
+    set({
+      recurring_session_requests: [
+        ...data.recurring_session_requests,
+        { id: crypto.randomUUID(), label: "", day_of_week: null, session_type: "run", description: "", importance: "nice_to_have" },
+      ],
+    });
+  }
+  function updateRequest(i: number, patch: Partial<RecurringSessionRequest>) {
+    set({ recurring_session_requests: data.recurring_session_requests.map((r, j) => j === i ? { ...r, ...patch } : r) });
+  }
+  function removeRequest(i: number) {
+    set({ recurring_session_requests: data.recurring_session_requests.filter((_, j) => j !== i) });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <Field>
+        <Label>Recurring sessions you want planned in<Opt /></Label>
+        <Hint>Specific sessions you want the coach to build the week around — e.g. a Sunday long run or a Tuesday leg day. Leave empty if you&apos;re happy for the coach to decide everything.</Hint>
+        {data.recurring_session_requests.map((req, i) => (
+          <div key={req.id} className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Session {i + 1}</span>
+              <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeRequest(i)}>Remove</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field><Label>Label</Label><input className="input" placeholder="e.g. Sunday Long Run" value={req.label} onChange={e => updateRequest(i, { label: e.target.value })} /></Field>
+              <Field>
+                <Label>Day</Label>
+                <select className="select-input" value={req.day_of_week ?? ""} onChange={e => updateRequest(i, { day_of_week: (e.target.value || null) as SessionRequestDayOfWeek | null })}>
+                  {SESSION_REQUEST_DAY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field>
+                <Label>Session type</Label>
+                <select className="select-input" value={req.session_type} onChange={e => updateRequest(i, { session_type: e.target.value as SessionRequestType })}>
+                  {SESSION_REQUEST_TYPE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
+              <Field>
+                <Label>Importance</Label>
+                <select className="select-input" value={req.importance} onChange={e => updateRequest(i, { importance: e.target.value as SessionRequestImportance })}>
+                  <option value="must">Always try to include</option>
+                  <option value="nice_to_have">Include when possible</option>
+                </select>
+              </Field>
+            </div>
+            <Field>
+              <Label>What should it look like<Opt /></Label>
+              <textarea className="textarea" style={{ minHeight: 50 }}
+                placeholder="e.g. Easy pace, 90+ minutes, building toward marathon distance"
+                value={req.description} onChange={e => updateRequest(i, { description: e.target.value })} />
+            </Field>
+          </div>
+        ))}
+        <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start" }} onClick={addRequest}>
+          <i className="ti ti-plus" style={{ marginRight: 6 }} />Add session
+        </button>
+      </Field>
+    </div>
+  );
+}
+
 function HealthStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -353,6 +445,20 @@ function PreferencesStep({ data, set }: { data: AthleteProfile; set: (p: Partial
           { value: "high",     label: "High variety", desc: "A different meal for almost every slot." },
         ]}
       />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <Field>
+          <Label>Country<Opt /></Label>
+          <Hint>Helps the coach suggest ingredients that are actually available where you shop.</Hint>
+          <input className="input" placeholder="e.g. Norway"
+            value={data.country} onChange={e => set({ country: e.target.value })} />
+        </Field>
+        <Field>
+          <Label>Grocery stores<Opt /></Label>
+          <Hint>What kind of stores do you have access to?</Hint>
+          <input className="input" placeholder="e.g. Standard grocery stores, and some international stores"
+            value={data.grocery_stores_notes} onChange={e => set({ grocery_stores_notes: e.target.value })} />
+        </Field>
+      </div>
       <Field>
         <Label>What do you enjoy about training?</Label>
         <Hint>Types of sessions, movements, or feelings you genuinely look forward to.</Hint>
@@ -496,11 +602,11 @@ function ContextPreview({ label, text }: { label: string; text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial: AthleteProfile | null; devProfileStale?: boolean; garminEmail?: string | null }) {
-  const hasContext = !!(initial?.generated_analysis_context || initial?.generated_planning_context);
+  const hasContext = !!initial?.generated_analysis_context;
 
   const [mode, setMode] = useState<"review" | "wizard">(hasContext ? "review" : "wizard");
   const [step, setStep] = useState(1);
-  const [maxStep, setMaxStep] = useState(hasContext ? 6 : 1);
+  const [maxStep, setMaxStep] = useState(hasContext ? 7 : 1);
   const [data, setData] = useState<AthleteProfile>(initial ?? EMPTY);
   const [isDirty, setIsDirty] = useState(false);
   const [profileStale, setProfileStale] = useState(devProfileStale ?? false);
@@ -516,11 +622,12 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
 
   function getStepPartial(s: number): Partial<AthleteProfile> {
     const keys: (keyof AthleteProfile)[][] = [
-      ["primary_goal_type", "primary_goal_detail", "secondary_goals", "goal_timeline", "events"],
+      ["primary_goal_type", "primary_goal_detail", "weight_goal_direction", "secondary_goals", "goal_timeline", "events"],
       ["training_years_strength", "training_years_cardio", "sport_background", "sessions_per_week", "hours_per_week", "bench_1rm_kg", "squat_1rm_kg", "deadlift_1rm_kg", "run_5k_time", "run_10k_time", "other_benchmarks"],
       ["available_days", "session_duration_mins", "gym_access", "equipment_notes", "schedule_notes"],
+      ["recurring_session_requests"],
       ["current_injuries", "injury_history", "exercises_to_avoid", "health_notes"],
-      ["preferred_style", "training_enjoyments", "training_dislikes", "indoor_outdoor", "additional_notes", "meal_variety_preference"],
+      ["preferred_style", "training_enjoyments", "training_dislikes", "indoor_outdoor", "additional_notes", "meal_variety_preference", "country", "grocery_stores_notes"],
     ];
     const partial: Partial<AthleteProfile> = {};
     for (const k of (keys[s - 1] ?? [])) {
@@ -531,24 +638,18 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
 
   async function handleNext() {
     setError(null);
-    if (step === 6) {
+    if (step === 7) {
       setMode("review");
-      if (isDirty && (data.generated_analysis_context || data.generated_planning_context)) setProfileStale(true);
+      if (isDirty && data.generated_analysis_context) setProfileStale(true);
       setIsDirty(false);
       return;
     }
     startSave(async () => {
       const result = await saveProfileStep(getStepPartial(step));
       if (result.error) { setError(result.error); return; }
-      if (step === 5) {
-        const next = 6;
-        setStep(next);
-        setMaxStep(m => Math.max(m, next));
-      } else {
-        const next = step + 1;
-        setStep(next);
-        setMaxStep(m => Math.max(m, next));
-      }
+      const next = step + 1;
+      setStep(next);
+      setMaxStep(m => Math.max(m, next));
     });
   }
 
@@ -562,14 +663,13 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Generation failed");
-      const { analysisContext, planningContext } = await res.json();
+      const { analysisContext } = await res.json();
       const result = await saveProfileStep({
         generated_analysis_context: analysisContext,
-        generated_planning_context: planningContext,
         setup_completed: true,
       });
       if (result.error) throw new Error(result.error);
-      setData(d => ({ ...d, generated_analysis_context: analysisContext, generated_planning_context: planningContext, setup_completed: true }));
+      setData(d => ({ ...d, generated_analysis_context: analysisContext, setup_completed: true }));
       setIsDirty(false);
       setProfileStale(false);
     } catch {
@@ -586,7 +686,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
       const result = await saveProfileStep(getStepPartial(step));
       if (result.error) { setError(result.error); return; }
       setIsDirty(false);
-      if (data.generated_analysis_context || data.generated_planning_context) setProfileStale(true);
+      if (data.generated_analysis_context) setProfileStale(true);
       setMode("review");
     });
   }
@@ -596,7 +696,6 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
     startSave(async () => {
       const result = await saveProfileStep({
         generated_analysis_context: data.generated_analysis_context,
-        generated_planning_context: data.generated_planning_context,
       });
       if (result.error) { setError(result.error); return; }
       setIsDirty(false);
@@ -607,7 +706,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
   // ── Review mode (default) ──────────────────────────────────────────────────
 
   if (mode === "review") {
-    const hasCtx = !!(data.generated_analysis_context || data.generated_planning_context);
+    const hasCtx = !!data.generated_analysis_context;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
@@ -634,7 +733,36 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         {hasCtx && !showText && (
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16, background: "rgba(255,255,255,.03)" }}>
             <ContextPreview label="Analysis context"  text={data.generated_analysis_context} />
-            <ContextPreview label="Planning context"  text={data.generated_planning_context} />
+          </div>
+        )}
+
+        {/* Recurring session requests preview — these aren't part of the narrative above; they're
+            sent to the coach as explicit constraints, built fresh from this saved data every time
+            a plan is generated. Shown here so it's clear they're actually being used. */}
+        {data.recurring_session_requests.length > 0 && (
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12, background: "rgba(255,255,255,.03)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "var(--dim)", textTransform: "uppercase" }}>
+              Recurring Session Requests
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
+              Sent to the coach as explicit requirements every time a plan is generated — separate from the coaching context above.
+            </div>
+            {data.recurring_session_requests.map(req => (
+              <div key={req.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{req.label || "Untitled session"}</span>
+                  <span className="badge" style={{ fontSize: 10 }}>
+                    {req.day_of_week ? req.day_of_week.charAt(0).toUpperCase() + req.day_of_week.slice(1) : "No specific day"}
+                  </span>
+                  <span className={`badge${req.importance === "must" ? " badge-accent" : ""}`} style={{ fontSize: 10 }}>
+                    {req.importance === "must" ? "Always include" : "Include when possible"}
+                  </span>
+                </div>
+                {req.description && (
+                  <div style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "pre-wrap" }}>{req.description}</div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
@@ -647,13 +775,6 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
               <textarea className="textarea" style={{ minHeight: 240, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6 }}
                 value={data.generated_analysis_context}
                 onChange={e => { setData(d => ({ ...d, generated_analysis_context: e.target.value })); setIsDirty(true); }} />
-            </Field>
-            <Field>
-              <Label>Planning context</Label>
-              <Hint>Operational constraints — treated as non-negotiable by the session planner.</Hint>
-              <textarea className="textarea" style={{ minHeight: 240, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6 }}
-                value={data.generated_planning_context}
-                onChange={e => { setData(d => ({ ...d, generated_planning_context: e.target.value })); setIsDirty(true); }} />
             </Field>
             {isDirty && (
               <div style={{ display: "flex", gap: 8 }}>
@@ -703,6 +824,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
     "What are you training for?",
     "Your athletic background",
     "Schedule & equipment",
+    "Preferred sessions",
     "Health & limitations",
     "Training preferences",
     "Connect Garmin",
@@ -711,6 +833,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
     "Your goals are the foundation of every decision the coach makes.",
     "Help the coach understand where you are starting from.",
     "When and where you train shapes what's possible.",
+    "Specific sessions the coach should plan the week around.",
     "Any limitations the coach should know about.",
     "A plan you'll actually stick to beats a perfect plan you hate.",
     "Sync your training data, health metrics, and performance trends.",
@@ -761,12 +884,13 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
 
       {/* Step content */}
       <div className="card" style={{ marginBottom: 24 }}>
-        {step === 1 && <GoalsStep          data={data} set={patch} />}
-        {step === 2 && <BackgroundStep     data={data} set={patch} />}
-        {step === 3 && <ScheduleStep       data={data} set={patch} />}
-        {step === 4 && <HealthStep         data={data} set={patch} />}
-        {step === 5 && <PreferencesStep    data={data} set={patch} />}
-        {step === 6 && <GarminConnectStep  initialEmail={garminEmail} />}
+        {step === 1 && <GoalsStep             data={data} set={patch} />}
+        {step === 2 && <BackgroundStep        data={data} set={patch} />}
+        {step === 3 && <ScheduleStep          data={data} set={patch} />}
+        {step === 4 && <PreferredSessionsStep data={data} set={patch} />}
+        {step === 5 && <HealthStep            data={data} set={patch} />}
+        {step === 6 && <PreferencesStep       data={data} set={patch} />}
+        {step === 7 && <GarminConnectStep     initialEmail={garminEmail} />}
       </div>
 
       {/* Error */}
@@ -779,19 +903,17 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
           <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />
           {step === 1 ? "Overview" : "Back"}
         </button>
-        <span style={{ fontSize: 12, color: "var(--dim)" }}>Step {step} of 6</span>
+        <span style={{ fontSize: 12, color: "var(--dim)" }}>Step {step} of 7</span>
         <div style={{ display: "flex", gap: 8 }}>
-          {step < 6 && (
+          {step < 7 && (
             <button className="btn-secondary" onClick={handleSaveExit} disabled={saving}>
               {saving ? "Saving…" : "Save & exit"}
             </button>
           )}
           <button className="btn-primary" onClick={handleNext} disabled={saving}>
-            {saving ? "Saving…" : step === 6
+            {saving ? "Saving…" : step === 7
               ? <>Finish <i className="ti ti-check" style={{ marginLeft: 6 }} /></>
-              : step === 5
-                ? <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>
-                : <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>}
+              : <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>}
           </button>
         </div>
       </div>

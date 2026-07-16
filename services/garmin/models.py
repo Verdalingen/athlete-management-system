@@ -17,6 +17,9 @@ class ExtractionConfig:
     activities_range: int = TimeRange.RECENT.value
     metrics_range: int = TimeRange.EXTENDED.value
     include_detailed_activities: bool = True
+    # With include_detailed_activities, fetch only the activity-list endpoint and
+    # skip per-activity detail calls (splits, sets, weather) — much cheaper.
+    activity_summaries_only: bool = False
     include_metrics: bool = True
     include_mindfulness: bool = True
     include_long_term_trends: bool = True
@@ -173,7 +176,7 @@ class TrainingStatus:
 @dataclass
 class GarminData:
     user_profile: UserProfile | None = None
-    daily_stats: DailyStats | None = None
+    daily_stats: list[DailyStats] | None = None  # one entry per day in the metrics range
     recent_activities: list[Activity] | None = None
     all_activities: list[Activity] | None = None
     physiological_markers: PhysiologicalMarkers | None = None

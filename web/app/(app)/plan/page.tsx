@@ -1,11 +1,13 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, formatShort } from "@/lib/dates";
 import { parseWeekGoals, parseDayMeta } from "@/lib/plan-parser";
-import type { Plan, ScheduledDay, StrengthSession } from "@/lib/types";
+import { buildStrengthMap, getWeightRecommendation, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
+import type { Plan, ScheduledDay, StrengthSession, CompletedActivity } from "@/lib/types";
 import { PlanCalendar } from "./PlanCalendar";
 import type { DayData } from "./PlanCalendar";
 import { ReplanPanel } from "./ReplanPanel";
 import { getReplanJobs } from "@/app/actions/replan";
+import { getAthleteProfile } from "@/app/actions/athlete-profile";
 
 // ── Markdown parsers ──────────────────────────────────────────────────────────
 
@@ -51,14 +53,22 @@ export default async function PlanPage() {
   const plan: Plan | null = planRes.data?.[0] ?? null;
   const planId = plan?.id ?? null;
 
-  const [daysRes, strengthRes, replanJobs] = await Promise.all([
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+
+  const [daysRes, strengthRes, activitiesRes, replanJobs, athleteProfile, completedSetsRes] = await Promise.all([
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).order("date")
       : Promise.resolve({ data: [] }),
     planId
       ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId).order("date")
       : Promise.resolve({ data: [] }),
+    plan
+      ? sb.from("completed_activities").select("*").eq("user_id", uid).gte("date", plan.start_date).lte("date", plan.end_date)
+      : Promise.resolve({ data: [] }),
     getReplanJobs(),
+    getAthleteProfile(),
+    sb.from("completed_exercise_sets").select("exercise_id, date, reps, weight_kg, prescribed_reps_min")
+      .eq("user_id", uid).gte("date", sixtyDaysAgo).order("date", { ascending: false }),
   ]);
 
   if (!plan) {
@@ -75,28 +85,39 @@ export default async function PlanPage() {
     d => d.date >= plan.start_date && d.date <= plan.end_date
   );
 
-  // Enrich each day with purpose/adaptation parsed from plan markdown
+  // Completed Garmin activities, grouped by date
+  const activityMap: Record<string, CompletedActivity[]> = {};
+  for (const a of (activitiesRes.data ?? []) as CompletedActivity[]) {
+    (activityMap[a.date] ??= []).push(a);
+  }
+
+  // Enrich each day with purpose/adaptation parsed from plan markdown + completed activities
   const dayMap: Record<string, DayData> = Object.fromEntries(
     allDays.map(d => {
       const meta = parseDayMeta(plan.markdown, d.date);
-      return [d.date, { ...d, purpose: meta.purpose, adaptation: meta.adaptation }];
+      return [d.date, { ...d, purpose: meta.purpose, adaptation: meta.adaptation, completedActivities: activityMap[d.date] ?? [] }];
     })
   );
 
   // Strength sessions indexed by date, exercises sorted by display_order
-  const strengthMap: Record<string, StrengthSession> = Object.fromEntries(
-    (strengthRes.data ?? [])
-      .filter((s: { date: string }) => s.date >= plan.start_date && s.date <= plan.end_date)
-      .map((s: StrengthSession & { exercises: { display_order: number }[] }) => [
-        s.date,
-        {
-          ...s,
-          exercises: (s.exercises ?? []).sort(
-            (a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order
-          ),
-        },
-      ])
+  const strengthMap: Record<string, StrengthSession> = buildStrengthMap(
+    (strengthRes.data ?? []).filter((s: { date: string }) => s.date >= plan.start_date && s.date <= plan.end_date)
   );
+
+  // Weight recommendation per exercise_id, from actual completed performance history —
+  // supersedes the 1RM-formula estimate wherever real data exists for that specific exercise.
+  const completedSetsByExercise = new Map<string, CompletedSetRow[]>();
+  for (const row of completedSetsRes.data ?? []) {
+    if (!row.exercise_id) continue;
+    if (!completedSetsByExercise.has(row.exercise_id)) completedSetsByExercise.set(row.exercise_id, []);
+    completedSetsByExercise.get(row.exercise_id)!.push({
+      date: row.date, reps: row.reps, weight_kg: row.weight_kg, prescribed_reps_min: row.prescribed_reps_min,
+    });
+  }
+  const weightRecommendations: Record<string, WeightRecommendation> = {};
+  for (const [exerciseId, sets] of completedSetsByExercise) {
+    weightRecommendations[exerciseId] = getWeightRecommendation(sets);
+  }
 
   const meta      = parseMeta(plan.markdown, plan.start_date, plan.end_date);
   const weekGoals = parseWeekGoals(plan.markdown);
@@ -191,6 +212,8 @@ export default async function PlanPage() {
           dayMap={dayMap}
           strengthMap={strengthMap}
           today={today}
+          bench1RMKg={athleteProfile?.bench_1rm_kg}
+          weightRecommendations={weightRecommendations}
         />
       </section>
 

@@ -5,33 +5,29 @@
 <dict>
   <!-- Unique identifier for this agent -->
   <key>Label</key>
-  <string>com.garmin-ai-coach.sync-kpis</string>
+  <string>com.garmin-ai-coach.process-queue</string>
 
-  <!-- Run the sync script via bash (launchd ignores shebangs) -->
+  <!-- Run the queue-processing script via bash (launchd ignores shebangs) -->
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
     <string>-l</string>
-    <string>/Users/adrianwalderhaug-johnsen/Documents/garmin-ai-coach/scripts/sync_kpis.sh</string>
+    <string>/Users/adrianwalderhaug-johnsen/Documents/garmin-ai-coach/scripts/process_queue.sh</string>
   </array>
 
-  <!-- Fire once on login/load -->
+  <!-- Fire once on login/load, so an already-queued job gets picked up immediately -->
   <key>RunAtLoad</key>
   <true/>
 
-  <!-- Fire every 30 minutes as a trigger opportunity. The CLI's internal
-       KPI_SYNC_MIN_INTERVAL (2h) is the actual authority on whether work happens —
-       this just needs to fire more often than that so a sync isn't missed for long
-       after the minimum interval elapses. Cheap no-op (stamp-file check only) when
-       skipped. -->
+  <!-- Then poll every 90 seconds — cheap no-op when the queue is empty -->
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>90</integer>
 
   <!-- Write stdout/stderr to log files for debugging -->
   <key>StandardOutPath</key>
-  <string>/Users/adrianwalderhaug-johnsen/.garmin-ai-coach-kpi-sync.log</string>
+  <string>/Users/adrianwalderhaug-johnsen/.garmin-ai-coach-process-queue.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/adrianwalderhaug-johnsen/.garmin-ai-coach-kpi-sync.log</string>
+  <string>/Users/adrianwalderhaug-johnsen/.garmin-ai-coach-process-queue.log</string>
 
   <!-- Keep environment clean -->
   <key>EnvironmentVariables</key>

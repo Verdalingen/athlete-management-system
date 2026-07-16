@@ -17,6 +17,7 @@ class TrainingAnalysisState(MessagesState):
     mfp_data: dict[str, Any] | None
     analysis_context: str
     planning_context: str
+    recurring_session_requests: list[dict[str, Any]] | None
     athlete_memory: str | None
 
     competitions: list[dict[str, Any]]
@@ -83,6 +84,7 @@ def create_initial_state(
     mfp_data: dict[str, Any] | None = None,
     analysis_context: str = "",
     planning_context: str = "",
+    recurring_session_requests: list[dict[str, Any]] | None = None,
     athlete_memory: str | None = None,
     competitions: list[dict[str, Any]] | None = None,
     current_date: dict[str, str] | None = None,
@@ -101,6 +103,7 @@ def create_initial_state(
         mfp_data=mfp_data,
         analysis_context=analysis_context,
         planning_context=planning_context,
+        recurring_session_requests=recurring_session_requests or [],
         athlete_memory=athlete_memory,
         competitions=competitions or [],
         current_date=current_date or {},

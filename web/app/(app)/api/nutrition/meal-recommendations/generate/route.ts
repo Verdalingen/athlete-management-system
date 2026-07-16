@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       sb.from("nutrition_daily_targets").select("*").eq("user_id", uid).gte("date", startDate).lte("date", endDate),
       sb.from("nutrition_targets").select("*").eq("user_id", uid),
       sb.from("scheduled_days").select("date,is_rest,is_key,focus,description").eq("user_id", uid).gte("date", startDate).lte("date", endDate),
-      sb.from("athlete_profile").select("meal_variety_preference").eq("user_id", uid).maybeSingle(),
+      sb.from("athlete_profile").select("meal_variety_preference,country,grocery_stores_notes").eq("user_id", uid).maybeSingle(),
       sb.from("nutrition_diary")
         .select("date,meal_type,food_name")
         .eq("user_id", uid)
@@ -51,6 +51,11 @@ export async function POST(req: NextRequest) {
     ]);
 
     const variety = (profileRes.data?.meal_variety_preference as string) ?? "balanced";
+    const country = (profileRes.data?.country as string) || "";
+    const groceryStoresNotes = (profileRes.data?.grocery_stores_notes as string) || "";
+    const locationText = country || groceryStoresNotes
+      ? [country && `Country: ${country}`, groceryStoresNotes && `Store access: ${groceryStoresNotes}`].filter(Boolean).join(" | ")
+      : "Not specified — assume standard Western grocery store availability.";
     const templatesRes = await sb
       .from("meal_templates")
       .select(
@@ -133,6 +138,10 @@ ${daysText}
 
 ## Athlete profile
 ${athleteMemory}
+
+## Athlete location & grocery access
+${locationText}
+Only recommend ingredients that would realistically be available given this — avoid uncommon imported items unless international stores were mentioned.
 
 ## Saved meal ideas
 ${savedMealsText}

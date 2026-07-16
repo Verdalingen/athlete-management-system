@@ -1,23 +1,11 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
-import { todayISO, weekBounds, formatShort, formatDuration, daysBetween } from "@/lib/dates";
+import { todayISO, weekBounds, formatShort, formatDuration } from "@/lib/dates";
 import { parseWeekGoals, parseDayMeta, currentWeekGoal } from "@/lib/plan-parser";
+import { buildStrengthMap, formatReps, isBarbellBench, estimateBenchWeight, getWeightRecommendation, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
+import { SESSION_COLOR, SESSION_BADGE } from "@/lib/session-theme";
 import type { ScheduledDay, StrengthSession, Plan } from "@/lib/types";
 import { WorkoutStructure } from "@/lib/workout-structure";
-
-const TYPE_COLOR: Record<string, string> = {
-  strength: "var(--accent)",
-  run:      "var(--cyan)",
-  race:     "var(--red)",
-  cross:    "var(--amber)",
-  rest:     "var(--dim)",
-};
-
-const TYPE_BADGE: Record<string, string> = {
-  strength: "badge badge-accent",
-  run:      "badge badge-cyan",
-  race:     "badge badge-red",
-  cross:    "badge badge-amber",
-};
+import { getAthleteProfile } from "@/app/actions/athlete-profile";
 
 const FULL_WEEKDAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
@@ -38,7 +26,9 @@ export default async function WeekPage() {
   const plan: Plan | null = planRes.data?.[0] ?? null;
   const planId = plan?.id ?? null;
 
-  const [daysRes, sessionsRes] = await Promise.all([
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+
+  const [daysRes, sessionsRes, athleteProfile, completedSetsRes] = await Promise.all([
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId)
           .gte("date", start).lte("date", end).order("date")
@@ -47,19 +37,30 @@ export default async function WeekPage() {
       ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId)
           .gte("date", start).lte("date", end).order("date")
       : Promise.resolve({ data: [] }),
+    getAthleteProfile(),
+    sb.from("completed_exercise_sets").select("exercise_id, date, reps, weight_kg, prescribed_reps_min")
+      .eq("user_id", uid).gte("date", sixtyDaysAgo).order("date", { ascending: false }),
   ]);
+  const bench1RMKg = athleteProfile?.bench_1rm_kg;
 
   const days: ScheduledDay[] = daysRes.data ?? [];
 
   // Map date → strength session
-  const sessionMap = new Map<string, StrengthSession>();
-  for (const s of (sessionsRes.data ?? [])) {
-    sessionMap.set(s.date, {
-      ...s,
-      exercises: (s.exercises ?? []).sort(
-        (a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order
-      ),
+  const sessionMap: Record<string, StrengthSession> = buildStrengthMap(sessionsRes.data);
+
+  // Weight recommendation per exercise_id, from actual completed performance history —
+  // supersedes the 1RM-formula estimate wherever real data exists for that specific exercise.
+  const completedSetsByExercise = new Map<string, CompletedSetRow[]>();
+  for (const row of completedSetsRes.data ?? []) {
+    if (!row.exercise_id) continue;
+    if (!completedSetsByExercise.has(row.exercise_id)) completedSetsByExercise.set(row.exercise_id, []);
+    completedSetsByExercise.get(row.exercise_id)!.push({
+      date: row.date, reps: row.reps, weight_kg: row.weight_kg, prescribed_reps_min: row.prescribed_reps_min,
     });
+  }
+  const weightRecommendations: Record<string, WeightRecommendation> = {};
+  for (const [exerciseId, sets] of completedSetsByExercise) {
+    weightRecommendations[exerciseId] = getWeightRecommendation(sets);
   }
 
   // Parse week goal and per-day PURPOSE/ADAPTATION from markdown
@@ -73,7 +74,7 @@ export default async function WeekPage() {
   // Week stats
   const trainingDays = days.filter(d => !d.is_rest);
   const keyDays = days.filter(d => d.is_key);
-  const totalSecs = [...sessionMap.values()].reduce((s, ss) => s + ss.estimated_duration_secs, 0);
+  const totalSecs = Object.values(sessionMap).reduce((s, ss) => s + ss.estimated_duration_secs, 0);
 
   if (!days.length) {
     return (
@@ -115,9 +116,9 @@ export default async function WeekPage() {
         {days.map(d => {
           const isToday = d.date === today;
           const isPast = d.date < today;
-          const session = sessionMap.get(d.date);
+          const session = sessionMap[d.date];
           const meta = dayMetas[d.date];
-          const accentColor = TYPE_COLOR[d.session_type] ?? "var(--dim)";
+          const accentColor = SESSION_COLOR[d.session_type] ?? "var(--dim)";
 
           return (
             <div
@@ -146,7 +147,7 @@ export default async function WeekPage() {
                 {/* Badges */}
                 {!d.is_rest && (
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
-                    <span className={TYPE_BADGE[d.session_type] ?? "badge"}>{d.session_type}</span>
+                    <span className={SESSION_BADGE[d.session_type] ?? "badge"}>{d.session_type}</span>
                     {d.is_key && (
                       <span className="badge badge-amber">
                         <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />Key session
@@ -191,11 +192,35 @@ export default async function WeekPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {session.exercises.map(ex => (
+                      {session.exercises.map(ex => {
+                        const rec = weightRecommendations[ex.id];
+                        const hasRealData = rec != null && rec.action !== "no_data" && rec.weight != null;
+                        const estWeight = !hasRealData && bench1RMKg != null && isBarbellBench(ex.garmin_category, ex.display_name)
+                          ? estimateBenchWeight(bench1RMKg, ex.reps_min, ex.reps_max)
+                          : null;
+                        return (
                         <tr key={ex.id}>
-                          <td style={{ fontWeight: 600 }}>{ex.display_name}</td>
+                          <td style={{ fontWeight: 600 }}>
+                            {ex.display_name}
+                            {hasRealData && (
+                              <div
+                                style={{
+                                  fontSize: 10, marginTop: 2, fontWeight: 400,
+                                  color: rec.action === "increase" ? "var(--green)" : rec.action === "decrease" ? "var(--red)" : "var(--dim)",
+                                }}
+                                title={rec.note}
+                              >
+                                {rec.action === "increase" ? "↑" : rec.action === "decrease" ? "↓" : "→"} {rec.weight} kg
+                              </div>
+                            )}
+                            {estWeight != null && (
+                              <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 400, marginTop: 2 }}>
+                                ~{estWeight} kg est.
+                              </div>
+                            )}
+                          </td>
                           <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
-                            {ex.sets}×{ex.reps}
+                            {ex.sets}×{formatReps(ex.reps_min, ex.reps_max)}
                           </td>
                           <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
                             {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
@@ -204,7 +229,8 @@ export default async function WeekPage() {
                             {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

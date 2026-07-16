@@ -4,6 +4,7 @@ import { SetupWizard } from "../SetupWizard";
 const MOCK_PROFILE = {
   primary_goal_type: "hybrid",
   primary_goal_detail: "Sub-10 min 3000m and 140kg bench press by end of 2026",
+  weight_goal_direction: "maintain" as const,
   secondary_goals: "Build balanced upper-body aesthetics",
   goal_timeline: "End of 2026",
   events: [],
@@ -33,14 +34,13 @@ const MOCK_PROFILE = {
   indoor_outdoor: "outdoor_pref",
   additional_notes: "I respond well to clear structure and numbers.",
   meal_variety_preference: "balanced",
+  country: "Norway",
+  grocery_stores_notes: "Standard grocery stores, and some international stores",
   generated_analysis_context: `ATHLETE PROFILE — HYBRID (STRENGTH + ENDURANCE)
 Adrian, 26. Goal: sub-10 min 3000m and 140kg bench press by end of 2026.
 Training age: 3-5 years strength, 1-2 years running. Currently 4 sessions/week.
 Bench 1RM: 115kg. 5k: 23:00. Strong foundation, clear dual-modality targets.`,
-  generated_planning_context: `PLANNING CONSTRAINTS
-Available days: Mon, Tue, Thu, Fri (4 sessions). Session cap: 90 min.
-Gym access: yes. Cardio preference: outdoor first, indoor fallback.
-No current injuries. Session volume is a baseline — coach may expand with readiness.`,
+  recurring_session_requests: [],
   setup_completed: true,
 };
 

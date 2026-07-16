@@ -10,6 +10,23 @@ try:
     from garth.exc import GarthHTTPError as _GarthHTTPError
 except ImportError:
     _GarthHTTPError = None  # type: ignore[assignment,misc]
+try:
+    # garminconnect's connectapi() wraps GarthHTTPError/requests.HTTPError into its own
+    # exception hierarchy (e.g. 4xx -> GarminConnectConnectionError), so these need to be
+    # caught explicitly too — otherwise a single flaky/rate-limited endpoint crashes the
+    # whole extraction instead of being skipped like other per-metric API failures.
+    from garminconnect import (
+        GarminConnectConnectionError as _GCConnectionError,
+        GarminConnectTooManyRequestsError as _GCTooManyRequestsError,
+    )
+    # GarminConnectAuthenticationError is deliberately NOT in this tuple: bad or
+    # expired credentials must abort the extraction loudly instead of every call
+    # being skipped and the run "succeeding" with an empty dataset.
+    _GARMINCONNECT_ERRORS: tuple[type[Exception], ...] = (
+        _GCConnectionError, _GCTooManyRequestsError,
+    )
+except ImportError:
+    _GARMINCONNECT_ERRORS = ()
 
 from .client import GarminConnectClient
 from .models import (
@@ -194,20 +211,36 @@ class TriathlonCoachDataExtractor(DataExtractor):
         self.garmin.connect(email, password)
         self._training_status_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._training_status_cache_max = 1024
+        # get_sleep_data is needed per-day by both recovery indicators and daily
+        # stats over the same date range — cache it so each date is fetched once.
+        self._sleep_cache: dict[str, dict[str, Any]] = {}
 
     def _call_api(self, fn: Callable[..., T], *args, default: Any, what: str) -> Any:
         try:
             result = fn(*args)
             return result if result is not None else default
         except Exception as exc:
-            # Catch garth's own HTTP error type (not a subclass of requests.HTTPError)
+            # Catch garth's own HTTP error type (not a subclass of requests.HTTPError),
+            # garminconnect's own wrapped exception hierarchy (connectapi() re-wraps
+            # GarthHTTPError/requests.HTTPError into GarminConnectConnectionError etc.),
             # as well as standard requests errors and other runtime failures.
             is_http = isinstance(exc, (requests.HTTPError, requests.RequestException))
             is_garth = _GarthHTTPError is not None and isinstance(exc, _GarthHTTPError)
-            if is_http or is_garth or isinstance(exc, (RuntimeError, TypeError, ValueError)):
+            is_garminconnect = isinstance(exc, _GARMINCONNECT_ERRORS)
+            if is_http or is_garth or is_garminconnect or isinstance(exc, (RuntimeError, TypeError, ValueError)):
                 logger.warning("API call skipped (%s): %s", type(exc).__name__, what)
                 return default
             raise
+
+    def _get_sleep_data_cached(self, date_iso: str) -> dict[str, Any]:
+        if date_iso not in self._sleep_cache:
+            self._sleep_cache[date_iso] = self._call_api(
+                self.garmin.client.get_sleep_data,
+                date_iso,
+                default={},
+                what=f"get_sleep_data({date_iso})",
+            ) or {}
+        return self._sleep_cache[date_iso]
 
     def _training_status_cached(self, day_iso: str) -> dict[str, Any]:
         cache = self._training_status_cache
@@ -330,13 +363,14 @@ class TriathlonCoachDataExtractor(DataExtractor):
 
         data: dict[str, Any] = {
             "user_profile": self.get_user_profile(),
-            "daily_stats": self.get_daily_stats(date_ranges["metrics"]["end"]),
         }
 
         if getattr(config, "include_detailed_activities", True):
-            data["recent_activities"] = self.get_recent_activities(
-                date_ranges["activities"]["start"], date_ranges["activities"]["end"]
-            )
+            astart, aend = date_ranges["activities"]["start"], date_ranges["activities"]["end"]
+            if getattr(config, "activity_summaries_only", False):
+                data["recent_activities"] = self.get_activity_summaries(astart, aend)
+            else:
+                data["recent_activities"] = self.get_recent_activities(astart, aend)
 
         if getattr(config, "include_metrics", True):
             mstart, mend = date_ranges["metrics"]["start"], date_ranges["metrics"]["end"]
@@ -345,6 +379,7 @@ class TriathlonCoachDataExtractor(DataExtractor):
                     "physiological_markers": self.get_physiological_markers(mstart, mend),
                     "body_metrics": self.get_body_metrics(mstart, mend),
                     "recovery_indicators": self.get_recovery_indicators(mstart, mend),
+                    "daily_stats": self.get_daily_stats(mstart, mend),
                     "training_status": self.get_training_status(mend),
                     "vo2_max_history": self.get_vo2_max_history(mstart, mend),
                     "training_load_history": self.get_training_load_history(mstart, mend),
@@ -409,48 +444,58 @@ class TriathlonCoachDataExtractor(DataExtractor):
             wake_time=sleep_data.get("wakeTime"),
         )
 
-    def get_daily_stats(self, date_obj: date) -> DailyStats:
-        raw_data: dict[str, Any] = self._call_api(
-            self.garmin.client.get_stats,
-            date_obj.isoformat(),
-            default={},
-            what=f"get_stats({date_obj})",
-        )
+    def get_daily_stats(self, start_date: date, end_date: date) -> list[DailyStats]:
+        processed_data: list[DailyStats] = []
 
-        sleep_hours = self.get_latest_sleep_duration(date_obj)
-        sleep_seconds = _to_int((sleep_hours or 0) * 3600) if sleep_hours is not None else None
+        for current_date in _daterange(start_date, end_date):
+            raw_data: dict[str, Any] = self._call_api(
+                self.garmin.client.get_stats,
+                current_date.isoformat(),
+                default={},
+                what=f"get_stats({current_date})",
+            )
 
-        return DailyStats(
-            date=raw_data.get("calendarDate") or date_obj.isoformat(),
-            total_steps=_to_int(raw_data.get("totalSteps")),
-            total_distance_meters=_to_float(raw_data.get("totalDistanceMeters")),
-            total_calories=_to_int(raw_data.get("totalKilocalories")),
-            active_calories=_to_int(raw_data.get("activeKilocalories")),
-            bmr_calories=_to_int(raw_data.get("bmrKilocalories")),
-            wellness_start_time=raw_data.get("wellnessStartTimeLocal"),
-            wellness_end_time=raw_data.get("wellnessEndTimeLocal"),
-            duration_in_hours=self.safe_divide_and_round(
-                _to_float(raw_data.get("durationInMilliseconds")),
-                3_600_000,
-            ),
-            min_heart_rate=_to_int(raw_data.get("minHeartRate")),
-            max_heart_rate=_to_int(raw_data.get("maxHeartRate")),
-            resting_heart_rate=_to_int(raw_data.get("restingHeartRate")),
-            average_stress_level=_to_int(raw_data.get("avgWakingRespirationValue"))  # kept original mapping
-            if raw_data.get("averageStressLevel") is None
-            else _to_int(raw_data.get("averageStressLevel")),
-            max_stress_level=_to_int(raw_data.get("maxStressLevel")),
-            stress_duration_seconds=_to_int(raw_data.get("stressDuration")),
-            sleeping_seconds=sleep_seconds,
-            sleeping_hours=sleep_hours,
-            respiration_average=_to_float(
-                raw_data.get("avgWakingRespirationValue") or raw_data.get("avgRespirationRate")
-            ),
-            respiration_highest=_to_float(
-                raw_data.get("highestRespirationValue") or raw_data.get("maxRespirationRate")
-            ),
-            respiration_lowest=_to_float(raw_data.get("lowestRespirationValue") or raw_data.get("minRespirationRate")),
-        )
+            daily_sleep = _dg(self._get_sleep_data_cached(current_date.isoformat()), "dailySleepDTO", {}) or {}
+            sleep_hours = self.safe_divide_and_round(daily_sleep.get("sleepTimeSeconds"), 3600)
+            sleep_seconds = _to_int((sleep_hours or 0) * 3600) if sleep_hours is not None else None
+
+            processed_data.append(
+                DailyStats(
+                    date=raw_data.get("calendarDate") or current_date.isoformat(),
+                    total_steps=_to_int(raw_data.get("totalSteps")),
+                    total_distance_meters=_to_float(raw_data.get("totalDistanceMeters")),
+                    total_calories=_to_int(raw_data.get("totalKilocalories")),
+                    active_calories=_to_int(raw_data.get("activeKilocalories")),
+                    bmr_calories=_to_int(raw_data.get("bmrKilocalories")),
+                    wellness_start_time=raw_data.get("wellnessStartTimeLocal"),
+                    wellness_end_time=raw_data.get("wellnessEndTimeLocal"),
+                    duration_in_hours=self.safe_divide_and_round(
+                        _to_float(raw_data.get("durationInMilliseconds")),
+                        3_600_000,
+                    ),
+                    min_heart_rate=_to_int(raw_data.get("minHeartRate")),
+                    max_heart_rate=_to_int(raw_data.get("maxHeartRate")),
+                    resting_heart_rate=_to_int(raw_data.get("restingHeartRate")),
+                    average_stress_level=_to_int(raw_data.get("avgWakingRespirationValue"))  # kept original mapping
+                    if raw_data.get("averageStressLevel") is None
+                    else _to_int(raw_data.get("averageStressLevel")),
+                    max_stress_level=_to_int(raw_data.get("maxStressLevel")),
+                    stress_duration_seconds=_to_int(raw_data.get("stressDuration")),
+                    sleeping_seconds=sleep_seconds,
+                    sleeping_hours=sleep_hours,
+                    respiration_average=_to_float(
+                        raw_data.get("avgWakingRespirationValue") or raw_data.get("avgRespirationRate")
+                    ),
+                    respiration_highest=_to_float(
+                        raw_data.get("highestRespirationValue") or raw_data.get("maxRespirationRate")
+                    ),
+                    respiration_lowest=_to_float(
+                        raw_data.get("lowestRespirationValue") or raw_data.get("minRespirationRate")
+                    ),
+                )
+            )
+
+        return processed_data
 
     # --------- Activities ---------
 
@@ -528,6 +573,47 @@ class TriathlonCoachDataExtractor(DataExtractor):
                 wkt_step_index=_to_int(s.get("wktStepIndex")),
             ))
         return result
+
+    def get_activity_summaries(self, start_date: date, end_date: date) -> list[Activity]:
+        """Summary-level activities from the single list endpoint — no per-activity
+        detail calls. Enough for completed-activity syncing and day-level review;
+        laps, HR zones, exercise sets, and weather stay unpopulated.
+        """
+        activities = self._call_api(
+            self.garmin.client.get_activities_by_date,
+            start_date.isoformat(), end_date.isoformat(),
+            default=[],
+            what=f"get_activities_by_date({start_date}, {end_date})",
+        ) or []
+
+        summaries: list[Activity] = []
+        for activity in activities:
+            if not isinstance(activity, Mapping):
+                continue
+            activity_id = activity.get("activityId") or activity.get("activityUUID")
+            if not activity_id:
+                continue
+            summaries.append(
+                Activity(
+                    activity_id=activity_id,
+                    activity_type=self.extract_activity_type(activity),
+                    activity_name=activity.get("activityName"),
+                    start_time=self.extract_start_time(activity),
+                    summary=ActivitySummary(
+                        distance=_to_float(activity.get("distance")),
+                        duration=_to_int(activity.get("duration")),
+                        moving_duration=_to_int(activity.get("movingDuration")),
+                        elevation_gain=_to_float(activity.get("elevationGain")),
+                        average_speed=_to_float(activity.get("averageSpeed")),
+                        max_speed=_to_float(activity.get("maxSpeed")),
+                        calories=_to_int(activity.get("calories")),
+                        average_hr=_to_int(activity.get("averageHR")),
+                        max_hr=_to_int(activity.get("maxHR")),
+                        activity_training_load=_to_int(activity.get("activityTrainingLoad")),
+                    ),
+                )
+            )
+        return summaries
 
     def get_recent_activities(self, start_date: date, end_date: date) -> list[Activity]:
         logger.info("Fetching activities between %s and %s", start_date, end_date)
@@ -996,12 +1082,7 @@ class TriathlonCoachDataExtractor(DataExtractor):
         processed_data: list[RecoveryIndicators] = []
 
         for current_date in _daterange(start_date, end_date):
-            sleep_data: dict[str, Any] = self._call_api(
-                self.garmin.client.get_sleep_data,
-                current_date.isoformat(),
-                default={},
-                what=f"get_sleep_data({current_date})"
-            )
+            sleep_data: dict[str, Any] = self._get_sleep_data_cached(current_date.isoformat())
 
             stress_data: dict[str, Any] = self._call_api(
                 self.garmin.client.get_stress_data,
@@ -1318,8 +1399,10 @@ class TriathlonCoachDataExtractor(DataExtractor):
             default=[],
             what="get_personal_record",
         )
+        if not isinstance(raw, list):
+            return []
         result: list[dict[str, Any]] = []
-        for pr in raw or []:
+        for pr in raw:
             if not isinstance(pr, dict):
                 continue
             result.append({

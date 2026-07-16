@@ -4,11 +4,13 @@ import { createServerClient as createSSRClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import type { WeightGoalDirection, RecurringSessionRequest } from "@/lib/types";
 
 export interface AthleteProfile {
   // Goals
   primary_goal_type: string;
   primary_goal_detail: string;
+  weight_goal_direction: WeightGoalDirection;
   secondary_goals: string;
   goal_timeline: string;
   events: Array<{ name: string; date: string; priority: string; target_time: string }>;
@@ -30,6 +32,8 @@ export interface AthleteProfile {
   gym_access: boolean | null;
   equipment_notes: string;
   schedule_notes: string;
+  // Preferred sessions
+  recurring_session_requests: RecurringSessionRequest[];
   // Health
   current_injuries: string;
   injury_history: string;
@@ -42,9 +46,10 @@ export interface AthleteProfile {
   indoor_outdoor: string;
   additional_notes: string;
   meal_variety_preference: string;
+  country: string;
+  grocery_stores_notes: string;
   // Generated context
   generated_analysis_context: string;
-  generated_planning_context: string;
   setup_completed: boolean;
 }
 
@@ -85,6 +90,16 @@ export async function saveProfileStep(
       p_category: "preferences",
       p_key: "meal_variety",
       p_value: partial.meal_variety_preference,
+      p_confidence: 100,
+      p_source: "user_stated",
+    });
+  }
+  if (partial.weight_goal_direction) {
+    await sb().rpc("upsert_athlete_memory", {
+      p_user_id: uid,
+      p_category: "goals",
+      p_key: "weight_direction",
+      p_value: partial.weight_goal_direction,
       p_confidence: 100,
       p_source: "user_stated",
     });

@@ -21,14 +21,19 @@ Rules:
 - Do NOT output a full HTML document (no <!doctype>, <html>, <head>, <body>, <style>).
 - Do NOT wrap output in markdown code fences.
 - Use ONLY the CSS classes listed in the reference below.
-- Preserve ALL workout details, dates, zones, and adaptations.
+- Preserve ALL workout details, dates, zones, adaptations, AND the Season Plan's Programming
+  Methodology reasoning (the athlete's main educational content — do not summarize or shorten it).
 - Section 1 — Season overview: use .card and .prose for high-level phases.
-- Section 2 — 4-week plan: use .week-block + .week-grid + .day-cell for each week.
+- Section 2 — Programming Methodology: use .card and .prose. Preserve this section IN FULL —
+  every named periodization approach, its stated trade-off, the chosen approach and rationale,
+  and the accessory-work confirmation sentence. Do not condense multi-sentence reasoning into a
+  single bullet. This is the athlete's primary educational content for this page.
+- Section 3 — 4-week plan: use .week-block + .week-grid + .day-cell for each week.
   * Add class "key-session" to hard workout days, "rest-day" to full rest days.
   * Inside each .day-cell: .day-name (Mon), .day-date (date), .day-focus (1-2 words),
     .day-workout (session description), .day-adaptation (if-tired note).
   * Add a .day-check with <input type="checkbox"> so the user can tick completed sessions.
-- Section 3 — Intensity zones table: use <table> with <th>/<td>.
+- Section 4 — Intensity zones table: use <table> with <th>/<td>.
 
 """ + CSS_CLASS_REFERENCE
 
@@ -49,9 +54,16 @@ Return ONLY the inner HTML that goes between <main class="page"> and </main>.
 
 Required structure:
 1. <div class="section"> — Season Plan Overview (phases, goals, key constraints)
-2. <div class="section"> — Intensity Zones (table)
+2. <div class="section"> — Programming Methodology (use .card + .prose; preserve this section's
+   reasoning IN FULL — every approach named, its trade-off, the chosen approach and why, and the
+   accessory-work confirmation sentence — this is the athlete's main educational content, do not
+   summarize it away)
 3. <div class="section"> per week (Week 1 … Week 4), each with a .week-grid of 7 .day-cell elements
-4. Include checkboxes on every session day so the user can track completion
+4. <div class="section"> — Intensity Zones (table)
+5. Include checkboxes on every session day so the user can track completion
+
+Preserve ALL workout details, notation, focus words, adaptation notes, AND the Programming
+Methodology reasoning in full — it is not optional supplementary content, it is a required section.
 
 Preserve ALL workout details, notation, focus words, and adaptation notes."""
 

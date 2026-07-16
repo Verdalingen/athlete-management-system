@@ -10,6 +10,7 @@ function formatProfileForPrompt(p: AthleteProfile): string {
   lines.push("=== GOALS ===");
   lines.push(`Primary goal type: ${p.primary_goal_type || "not specified"}`);
   lines.push(`Primary goal detail: ${p.primary_goal_detail || "not specified"}`);
+  lines.push(`Weight goal: ${p.weight_goal_direction || "maintain"}`);
   if (p.secondary_goals) lines.push(`Secondary goals: ${p.secondary_goals}`);
   if (p.goal_timeline) lines.push(`Target timeline: ${p.goal_timeline}`);
   if (p.events?.length) {
@@ -61,47 +62,41 @@ const SYSTEM = `You are an elite sports coach generating a structured athlete br
 
 Your output will be fed directly into an AI planning agent that generates personalised training plans. Write with precision and authority — like a coach briefing a colleague, not a marketing document. Be specific, opinionated, and actionable.
 
-Generate two text blocks separated by the exact delimiter "---PLANNING_CONTEXT---":
+Write a comprehensive briefing covering goals, background, current fitness level, injury/health considerations, and training preferences. Use clear section headers. This is used to understand WHO the athlete is and WHAT they're trying to achieve. Do NOT include periodisation or phasing recommendations — the planning agent handles that independently using Garmin activity data. Do NOT restate scheduling constraints, session-length limits, equipment, or exercises to avoid as operational rules — those are handled deterministically elsewhere; focus purely on the athlete's narrative context.
 
-BLOCK 1 — ANALYSIS CONTEXT:
-A comprehensive briefing covering goals, background, current fitness level, injury/health considerations, and training preferences. Use clear section headers. This is used to understand WHO the athlete is and WHAT they're trying to achieve. Do NOT include periodisation or phasing recommendations — the planning agent handles that independently using Garmin activity data.
-
-BLOCK 2 — PLANNING CONTEXT:
-Specific operational rules for generating training sessions. Cover: session structure, intensity/RIR rules, rest periods, scheduling constraints (available days, session length), equipment limitations, exercises to avoid, and cardio preferences. Written as a concrete numbered or bulleted list the plan generator treats as non-negotiable.
-
-Critical rules for BLOCK 2:
-- "Current weekly sessions" is a baseline descriptor only — do NOT use it as a maximum session cap.
-- If session_duration_mins is 120 (or "No limit"), write: "No session duration constraint — coach determines optimal length per session."
-- Do not set any hard cap on weekly training frequency unless the athlete explicitly stated a hard limit.
-- Cardio preference "outdoor_pref" means outdoor by default, indoor acceptable as fallback — do not restrict to outdoor only.
-
-Do not add preambles, disclaimers, or closing remarks. Start BLOCK 1 immediately. Ensure BLOCK 2 is complete — do not cut off mid-sentence.`;
+Do not add preambles, disclaimers, or closing remarks. Start immediately with the briefing.`;
 
 export async function POST(req: NextRequest) {
-  const profile: AthleteProfile = await req.json();
-  const profileText = formatProfileForPrompt(profile);
+  try {
+    const profile: AthleteProfile = await req.json();
+    const profileText = formatProfileForPrompt(profile);
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 3000,
-    system: SYSTEM,
-    messages: [{ role: "user", content: `Athlete profile:\n\n${profileText}` }],
-  });
+    const message = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 2000,
+      system: SYSTEM,
+      messages: [{ role: "user", content: `Athlete profile:\n\n${profileText}` }],
+    });
 
-  const raw = (message.content[0] as { type: string; text: string }).text;
-  const splitIdx = raw.indexOf("---PLANNING_CONTEXT---");
+    const textBlock = message.content.find(
+      (block): block is { type: "text"; text: string; citations: null } => block.type === "text"
+    );
+    if (!textBlock) {
+      console.error("[generate-context] No text block in Claude response:", {
+        stop_reason: message.stop_reason,
+        content_types: message.content.map(b => b.type),
+      });
+      return NextResponse.json(
+        { error: `Coach returned no text content (stop_reason: ${message.stop_reason}). Try again.` },
+        { status: 502 }
+      );
+    }
 
-  let analysisContext: string;
-  let planningContext: string;
-
-  if (splitIdx !== -1) {
-    analysisContext = raw.slice(0, splitIdx).trim();
-    planningContext = raw.slice(splitIdx + "---PLANNING_CONTEXT---".length).trim();
-  } else {
-    // Fallback: put everything in analysis
-    analysisContext = raw.trim();
-    planningContext = "";
+    const analysisContext = textBlock.text.trim();
+    return NextResponse.json({ analysisContext });
+  } catch (err) {
+    console.error("[generate-context] Failed:", err);
+    const e = err as { message?: string };
+    return NextResponse.json({ error: e?.message ?? String(err) }, { status: 500 });
   }
-
-  return NextResponse.json({ analysisContext, planningContext });
 }

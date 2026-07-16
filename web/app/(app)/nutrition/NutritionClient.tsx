@@ -5,6 +5,7 @@ import { BarcodeScanner } from "./BarcodeScanner";
 import { PhotoFoodCapture } from "./PhotoFoodCapture";
 import { WeekStrip } from "./WeekStrip";
 import { WeightCard } from "./WeightCard";
+import { EnergyBalanceCard } from "./EnergyBalanceCard";
 import { CustomFoodModal, type CustomFood } from "./CustomFoodModal";
 import { MealBuilderModal, type MealTemplate, type MealDraft } from "./MealBuilderModal";
 import { MealManagerModal } from "./MealManagerModal";
@@ -12,6 +13,7 @@ import { WeeklyMealPlanModal } from "./WeeklyMealPlanModal";
 import { QuantityInput } from "./QuantityInput";
 import type { Portion } from "./useQuantityInput";
 import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
+import { todayISO } from "@/lib/dates";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -286,10 +288,6 @@ function nextDate(iso: string): string {
   const d = new Date(iso + "T12:00:00");
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function pct(val: number, max: number) {
@@ -1567,6 +1565,9 @@ export function NutritionClient({
 
           {/* Body weight */}
           <WeightCard date={date} />
+
+          {/* Energy balance: Garmin expenditure vs logged intake */}
+          <EnergyBalanceCard date={date} caloriesEaten={totals.calories} />
 
           {/* Totals summary */}
           {totals.calories > 0 && (

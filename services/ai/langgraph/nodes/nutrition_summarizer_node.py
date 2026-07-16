@@ -55,17 +55,17 @@ def extract_nutrition_data(state: TrainingAnalysisState) -> dict:
     garmin_data = state["garmin_data"]
     mfp_data = state.get("mfp_data") or {}
 
-    recovery_indicators = garmin_data.get("recovery_indicators", [])
+    daily_stats = garmin_data.get("daily_stats") or []
     caloric_expenditure = [
         {
-            "date": ind.get("date"),
-            "total_calories_burned": ind.get("total_calories"),
-            "active_calories": ind.get("active_calories"),
-            "bmr_calories": ind.get("bmr_calories"),
-            "sleeping_hours": ind.get("sleeping_hours"),
+            "date": ds.get("date"),
+            "total_calories_burned": ds.get("total_calories"),
+            "active_calories": ds.get("active_calories"),
+            "bmr_calories": ds.get("bmr_calories"),
+            "sleeping_hours": ds.get("sleeping_hours"),
         }
-        for ind in recovery_indicators
-        if any(ind.get(k) is not None for k in ("total_calories", "active_calories", "bmr_calories"))
+        for ds in daily_stats
+        if any(ds.get(k) is not None for k in ("total_calories", "active_calories", "bmr_calories"))
     ]
 
     return {
@@ -74,7 +74,6 @@ def extract_nutrition_data(state: TrainingAnalysisState) -> dict:
             "caloric_expenditure": caloric_expenditure,
             "body_battery": garmin_data.get("body_battery", []),
             "training_load_history": garmin_data.get("training_load_history", []),
-            "daily_stats_snapshot": garmin_data.get("daily_stats", {}),
         },
         "myfitnesspal": mfp_data if mfp_data else "NOT AVAILABLE — athlete has not connected MyFitnessPal",
     }

@@ -8,7 +8,10 @@ Usage (called after any extraction):
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, Any]]:
@@ -93,4 +96,111 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
         if d:
             row(d)["weight_kg"] = entry.get("weight")
 
+    # ── Daily caloric expenditure (Garmin get_stats, per-day list) ─────────────
+    for entry in garmin_data.get("daily_stats") or []:
+        d = entry.get("date")
+        if d:
+            r = row(d)
+            r["total_calories"] = entry.get("total_calories")
+            r["active_calories"] = entry.get("active_calories")
+            r["bmr_calories"] = entry.get("bmr_calories")
+
     return list(by_date.values())
+
+
+def build_completed_activity_records(garmin_data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert a GarminData dict's recent_activities into flat rows for completed_activities.
+
+    One row per activity (not per day — multiple activities can share a date).
+    """
+    records: list[dict[str, Any]] = []
+    for a in garmin_data.get("recent_activities") or []:
+        activity_id = a.get("activity_id")
+        start_time = a.get("start_time")
+        if not activity_id or not start_time:
+            continue
+        summary = a.get("summary") or {}
+        records.append({
+            "activity_id": activity_id,
+            # Handles both "YYYY-MM-DD HH:MM:SS" and ISO "T"-separated start_time forms.
+            "date": start_time[:10],
+            "activity_type": a.get("activity_type"),
+            "activity_name": a.get("activity_name"),
+            "duration_secs": summary.get("duration"),
+            "distance_meters": summary.get("distance"),
+            "avg_heart_rate": summary.get("average_hr"),
+            "max_heart_rate": summary.get("max_hr"),
+            "calories": summary.get("calories"),
+            "activity_training_load": summary.get("activity_training_load"),
+        })
+    return records
+
+
+def build_completed_exercise_set_records(
+    garmin_data: dict[str, Any],
+    planned_sessions_by_date: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Match completed Garmin exercise sets back to the specific planned exercise that produced
+    them, for autoregulated weight progression (each bench variant — paused, close-grip,
+    touch-and-go — tracks its own performance history instead of sharing one 1RM-derived number).
+
+    Matching is positional, not by Garmin's wktStepIndex field — that field's exact indexing
+    semantics (global across the workout vs. local to a repeat group) are undocumented and haven't
+    been verified against a real completed session. Instead: for each date with both a completed
+    activity carrying exercise_sets and a planned strength session, walk the planned exercises in
+    display_order and consume that many ACTIVE completed sets per exercise, sequentially. This
+    assumes the athlete performs the pushed workout's exercises in the planned order without
+    skipping — true if following the watch-guided workout as intended, but will misattribute sets
+    if exercises are done out of order or with extra/fewer sets than planned.
+    garmin_category is checked as a sanity guard: if any set in a positional block doesn't match
+    the expected category, that whole block is skipped (logged) rather than written, since a
+    mismatch means the positional assumption broke down for this session.
+
+    planned_sessions_by_date: {date: [exercise dicts sorted by display_order, each with 'id',
+    'garmin_category', 'display_name', 'sets', 'reps_min', 'reps_max']} — the currently-planned
+    exercises for each date, as stored in Supabase.
+    """
+    records: list[dict[str, Any]] = []
+    for act in garmin_data.get("recent_activities") or []:
+        exercise_sets = act.get("exercise_sets")
+        start_time = act.get("start_time")
+        if not exercise_sets or not start_time:
+            continue
+        act_date = start_time[:10]
+        planned = planned_sessions_by_date.get(act_date)
+        if not planned:
+            continue
+
+        active_sets = [s for s in exercise_sets if s.get("set_type") == "ACTIVE"]
+        cursor = 0
+        for ex in planned:
+            n = ex.get("sets") or 0
+            block = active_sets[cursor:cursor + n]
+            cursor += n
+            if not block:
+                continue
+            expected_cat = ex.get("garmin_category")
+            if expected_cat and any(
+                (s.get("exercise_category") or "").upper() != expected_cat.upper() for s in block
+            ):
+                logger.warning(
+                    "Skipping completed-set match for %s on %s — category mismatch "
+                    "(expected %s); positional matching assumption likely broke down this session",
+                    ex.get("display_name"), act_date, expected_cat,
+                )
+                continue
+            for i, s in enumerate(block):
+                if s.get("reps") is None or s.get("weight_kg") is None:
+                    continue
+                records.append({
+                    "date": act_date,
+                    "exercise_id": ex.get("id"),
+                    "display_name": ex.get("display_name"),
+                    "garmin_category": expected_cat,
+                    "set_index": i,
+                    "reps": s["reps"],
+                    "weight_kg": s["weight_kg"],
+                    "prescribed_reps_min": ex.get("reps_min"),
+                    "prescribed_reps_max": ex.get("reps_max"),
+                })
+    return records

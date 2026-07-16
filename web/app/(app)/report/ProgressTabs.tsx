@@ -586,7 +586,14 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
   const { min: niceMin, max: niceMax, ticks: yTickVals } = niceAxis(effMin, effMax);
   const niceRange = niceMax - niceMin || 1;
 
-  const xS = (i: number) => PAD.left + (i / Math.max(points.length - 1, 1)) * plotW;
+  // Bar dimensions — inset the bar scale so the outer edges of the first/last bar
+  // align with the plot boundary instead of overflowing past it (mirrors PMCChart).
+  const barW = Math.max(2, plotW / points.length * 0.65);
+  const barPlotW = plotW - barW;
+
+  const xS = (i: number) => isBar
+    ? PAD.left + barW / 2 + (i / Math.max(points.length - 1, 1)) * barPlotW
+    : PAD.left + (i / Math.max(points.length - 1, 1)) * plotW;
   const yS = (v: number) => PAD.top + plotH - ((v - niceMin) / niceRange) * plotH;
   const yC = (v: number) => Math.max(PAD.top, Math.min(PAD.top + plotH, yS(v)));
   const zeroY = yC(0);
@@ -598,9 +605,6 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
   const xTickCount = Math.min(8, points.length);
   const xTickIdxs = Array.from({ length: xTickCount }, (_, i) =>
     Math.round(i * (points.length - 1) / (xTickCount - 1)));
-
-  // Bar dimensions
-  const barW = Math.max(2, plotW / points.length * 0.65);
 
   // Anomaly detection: find points where value is > 2 SD from mean (illness/spike flags)
   const mean = dataVals.reduce((a, b) => a + b, 0) / dataVals.length;

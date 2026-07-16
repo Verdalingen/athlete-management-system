@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
 
     // ── Phase 1: Claude identifies foods and estimates portions ───────────
     const message = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       max_tokens: 1400,
       messages: [{
         role: "user",

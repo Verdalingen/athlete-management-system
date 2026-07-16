@@ -16,7 +16,7 @@ export default async function ProgressPage() {
 
     sb
       .from("daily_metrics")
-      .select("date, ctl, atl, tsb, acwr, ramp_7d, vo2max_running, vo2max_cycling, rhr, hrv_overnight, sleep_score, sleep_hours, body_battery, weight_kg, stress_avg")
+      .select("date, ctl, atl, tsb, acwr, ramp_7d, vo2max_running, vo2max_cycling, rhr, hrv_overnight, sleep_score, sleep_hours, body_battery, weight_kg, stress_avg, total_calories")
       .eq("user_id", uid)
       .order("date", { ascending: true })
       .limit(365),
@@ -287,6 +287,13 @@ export default async function ProgressPage() {
         label: "Body Weight",
         unit: "kg", color: "#94a3b8", decimals: 1,
         data: dailyRows.map(r => ({ date: r.date, value: r.weight_kg ?? null })),
+      },
+
+      // ── Calories burned (Garmin measured daily expenditure) ─────────────
+      {
+        label: "Calories Burned",
+        unit: "kcal", color: "#fb7185", decimals: 0, chartType: "bar",
+        data: dailyRows.map(r => ({ date: r.date, value: r.total_calories ?? null })),
       },
     ];
   } else {

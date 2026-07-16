@@ -88,22 +88,36 @@ class TestTriathlonCoachDataExtractorCharacterization:
             "userData": {"gender": "male", "weight": 70000},
             "userSleep": {"sleepTime": "22:00"}
         }
+
+        result = extractor.extract_data(ExtractionConfig(include_detailed_activities=False, include_metrics=False))
+
+        assert hasattr(result, "user_profile")
+        assert result.user_profile is not None
+        assert result.user_profile.gender == "male"
+        # daily_stats belongs to the metrics block and is skipped when metrics are off
+        assert result.daily_stats is None
+
+    @patch("services.garmin.data_extractor.GarminConnectClient")
+    def test_get_daily_stats_returns_per_day_list(self, mock_client):
+        mock_instance = Mock()
+        mock_client.return_value = mock_instance
+        extractor = TriathlonCoachDataExtractor("test@example.com", "password")
+
         mock_instance.client.get_stats.return_value = {
             "calendarDate": "2025-01-01",
-            "totalSteps": 10000
+            "totalSteps": 10000,
+            "totalKilocalories": 2500,
         }
         mock_instance.client.get_sleep_data.return_value = {
             "dailySleepDTO": {"sleepTimeSeconds": 28800}
         }
 
-        result = extractor.extract_data(ExtractionConfig(include_detailed_activities=False, include_metrics=False))
+        stats = extractor.get_daily_stats(date(2025, 1, 1), date(2025, 1, 3))
 
-        assert hasattr(result, "user_profile")
-        assert hasattr(result, "daily_stats")
-        assert result.user_profile is not None
-        assert result.user_profile.gender == "male"
-        assert result.daily_stats is not None
-        assert result.daily_stats.total_steps == 10000
+        assert len(stats) == 3
+        assert all(s.total_steps == 10000 for s in stats)
+        assert stats[0].total_calories == 2500
+        assert stats[0].sleeping_hours == 8.0
 
     def test_activity_summary_extraction_structure(self):
         result = TriathlonCoachDataExtractor.__new__(TriathlonCoachDataExtractor)._extract_activity_summary({

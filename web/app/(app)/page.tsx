@@ -1,8 +1,12 @@
 import type React from "react";
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO, weekBounds, formatLong, formatShort, formatWeekday, formatDuration, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
+import { parseDayMeta } from "@/lib/plan-parser";
+import { buildStrengthMap, formatReps, getWeightRecommendation, isBarbellBench, estimateBenchWeight, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
+import { SESSION_BADGE } from "@/lib/session-theme";
 import type { Plan, ScheduledDay, StrengthSession } from "@/lib/types";
 import { DashboardActions } from "./DashboardActions";
+import { WeekAtGlanceStrip } from "./WeekAtGlanceStrip";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
 
 function fmtTime(totalSecs: number): string {
@@ -10,26 +14,6 @@ function fmtTime(totalSecs: number): string {
   const s = totalSecs % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
-
-const SESSION_DOT: Record<string, string> = {
-  strength: "var(--accent)",
-  run:      "var(--cyan)",
-  race:     "var(--red)",
-  cross:    "var(--amber)",
-  swim:     "var(--blue)",
-  bike:     "var(--green)",
-  rest:     "var(--dim)",
-};
-
-const SESSION_TYPE_BADGE: Record<string, string> = {
-  strength: "badge badge-accent",
-  run:      "badge badge-cyan",
-  race:     "badge badge-red",
-  cross:    "badge badge-amber",
-  swim:     "badge badge-blue",
-  bike:     "badge badge-green",
-  rest:     "badge",
-};
 
 export default async function DashboardPage() {
   const today = todayISO();
@@ -41,15 +25,17 @@ export default async function DashboardPage() {
   const plan: Plan | null = planRes.data?.[0] ?? null;
   const planId = plan?.id ?? null;
 
-  const [dayRes, sessRes, weekRes, nextKeyRes, metricsRes, lastCheckinRes, athleteProfile] = await Promise.all([
+  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+
+  const [dayRes, weekRes, weekSessRes, nextKeyRes, metricsRes, lastCheckinRes, athleteProfile, completedSetsRes] = await Promise.all([
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("date", today).limit(1)
       : Promise.resolve({ data: [] }),
     planId
-      ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId).eq("date", today).limit(1)
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).gte("date", weekStart).lte("date", weekEnd).order("date")
       : Promise.resolve({ data: [] }),
     planId
-      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).gte("date", weekStart).lte("date", weekEnd).order("date")
+      ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId).gte("date", weekStart).lte("date", weekEnd)
       : Promise.resolve({ data: [] }),
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("is_key", true).gt("date", today).order("date").limit(1)
@@ -57,20 +43,35 @@ export default async function DashboardPage() {
     sb.from("analyses").select("bench_e1rm_kg, predicted_5k_secs, kpis, personal_records, report_date").eq("user_id", uid).order("report_date", { ascending: false }).limit(1),
     sb.from("replan_jobs").select("completed_at").eq("user_id", uid).eq("type", "replan").eq("status", "done").order("completed_at", { ascending: false }).limit(1),
     getAthleteProfile(),
+    sb.from("completed_exercise_sets").select("exercise_id, date, reps, weight_kg, prescribed_reps_min")
+      .eq("user_id", uid).gte("date", sixtyDaysAgo).order("date", { ascending: false }),
   ]);
 
   const today_day: ScheduledDay | null = dayRes.data?.[0] ?? null;
   const weekDays: ScheduledDay[] = weekRes.data ?? [];
   const nextKey: ScheduledDay | null = nextKeyRes.data?.[0] ?? null;
 
-  let session: StrengthSession | null = null;
-  if (sessRes.data?.[0]) {
-    session = {
-      ...sessRes.data[0],
-      exercises: (sessRes.data[0].exercises ?? []).sort(
-        (a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order
-      ),
-    };
+  // Week strength sessions + purpose/adaptation, for today's session card and the
+  // "Week at a glance" strip's click-to-detail modal (the week range contains today).
+  const weekStrengthMap: Record<string, StrengthSession> = buildStrengthMap(weekSessRes.data);
+  const session: StrengthSession | null = weekStrengthMap[today] ?? null;
+  const weekDayMetas = Object.fromEntries(
+    weekDays.map(d => [d.date, parseDayMeta(plan?.markdown ?? "", d.date)])
+  );
+
+  // Weight recommendation per exercise_id, from actual completed performance history —
+  // supersedes the 1RM-formula estimate wherever real data exists for that specific exercise.
+  const completedSetsByExercise = new Map<string, CompletedSetRow[]>();
+  for (const row of completedSetsRes.data ?? []) {
+    if (!row.exercise_id) continue;
+    if (!completedSetsByExercise.has(row.exercise_id)) completedSetsByExercise.set(row.exercise_id, []);
+    completedSetsByExercise.get(row.exercise_id)!.push({
+      date: row.date, reps: row.reps, weight_kg: row.weight_kg, prescribed_reps_min: row.prescribed_reps_min,
+    });
+  }
+  const weightRecommendations: Record<string, WeightRecommendation> = {};
+  for (const [exerciseId, sets] of completedSetsByExercise) {
+    weightRecommendations[exerciseId] = getWeightRecommendation(sets);
   }
 
   const meso = plan
@@ -153,7 +154,7 @@ export default async function DashboardPage() {
                   </p>
                 )}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span className={SESSION_TYPE_BADGE[today_day.session_type] ?? "badge"}>
+                  <span className={SESSION_BADGE[today_day.session_type] ?? "badge"}>
                     {today_day.session_type}
                   </span>
                   {session && (
@@ -175,11 +176,35 @@ export default async function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {session.exercises.map((ex) => (
+                    {session.exercises.map((ex) => {
+                      const rec = weightRecommendations[ex.id];
+                      const hasRealData = rec != null && rec.action !== "no_data" && rec.weight != null;
+                      const estWeight = !hasRealData && athleteProfile?.bench_1rm_kg != null && isBarbellBench(ex.garmin_category, ex.display_name)
+                        ? estimateBenchWeight(athleteProfile.bench_1rm_kg, ex.reps_min, ex.reps_max)
+                        : null;
+                      return (
                       <tr key={ex.id}>
-                        <td style={{ fontWeight: 600 }}>{ex.display_name}</td>
+                        <td style={{ fontWeight: 600 }}>
+                          {ex.display_name}
+                          {hasRealData && (
+                            <div
+                              style={{
+                                fontSize: 10, marginTop: 2, fontWeight: 400,
+                                color: rec.action === "increase" ? "var(--green)" : rec.action === "decrease" ? "var(--red)" : "var(--dim)",
+                              }}
+                              title={rec.note}
+                            >
+                              {rec.action === "increase" ? "↑" : rec.action === "decrease" ? "↓" : "→"} {rec.weight} kg
+                            </div>
+                          )}
+                          {estWeight != null && (
+                            <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 400, marginTop: 2 }}>
+                              ~{estWeight} kg est.
+                            </div>
+                          )}
+                        </td>
                         <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
-                          {ex.sets}×{ex.reps}
+                          {ex.sets}×{formatReps(ex.reps_min, ex.reps_max)}
                         </td>
                         <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
                           {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
@@ -188,7 +213,8 @@ export default async function DashboardPage() {
                           {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -295,27 +321,7 @@ export default async function DashboardPage() {
       {/* ── Week at a glance ─────────────────────────────────────────────── */}
       <section className="section">
         <h2 className="section-title">Week at a glance</h2>
-        <div className="week-strip">
-          {weekDays.map((d) => {
-            const isToday = d.date === today;
-            const cls = [
-              "strip-cell",
-              d.is_key ? "key-session" : "",
-              isToday ? "today-cell" : "",
-              d.is_rest ? "rest-day" : "",
-            ].filter(Boolean).join(" ");
-            return (
-              <div key={d.id} className={cls}>
-                <div className="strip-day">{formatWeekday(d.date)}</div>
-                <div
-                  className="strip-dot"
-                  style={{ background: SESSION_DOT[d.session_type] ?? "var(--dim)" }}
-                />
-                <div className="strip-focus">{d.focus ?? (d.is_rest ? "Rest" : d.session_type)}</div>
-              </div>
-            );
-          })}
-        </div>
+        <WeekAtGlanceStrip weekDays={weekDays} strengthMap={weekStrengthMap} dayMetas={weekDayMetas} today={today} bench1RMKg={athleteProfile?.bench_1rm_kg} weightRecommendations={weightRecommendations} />
       </section>
 
       {/* ── Goals ────────────────────────────────────────────────────────── */}
@@ -545,7 +551,7 @@ export default async function DashboardPage() {
                       {formatPrValue(pr.type, pr.value)}
                     </td>
                     <td style={{ textAlign: "right", fontSize: 12, color: "var(--dim)" }}>
-                      {pr.pr_start_time_local ? formatShort(pr.pr_start_time_local.slice(0, 10)) : "—"}
+                      {formatPrDate(pr.pr_start_time_local)}
                     </td>
                   </tr>
                 ))}
@@ -769,8 +775,11 @@ function formatLTPace(minPerKm: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function formatPrType(type: string | null): string {
-  if (!type) return "—";
+function formatPrType(type: string | number | null): string {
+  // Garmin's raw personal-records API returns a numeric, undocumented typeId
+  // (not a descriptive string) — there's no reliable public mapping for it, so
+  // rather than guess and risk mislabeling a real record, show a generic label.
+  if (type == null || typeof type !== "string") return "Personal Record";
   return type
     .replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
@@ -778,9 +787,9 @@ function formatPrType(type: string | null): string {
     .replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function formatPrValue(type: string | null, value: number | null): string {
+function formatPrValue(type: string | number | null, value: number | null): string {
   if (value == null) return "—";
-  const t = (type ?? "").toLowerCase();
+  const t = typeof type === "string" ? type.toLowerCase() : "";
   if (t.includes("time") || t.includes("duration")) {
     return fmtRaceTime(Math.round(value));
   }
@@ -793,5 +802,16 @@ function formatPrValue(type: string | null, value: number | null): string {
   if (t.includes("elevation") || t.includes("ascent")) {
     return `${value.toFixed(0)} m`;
   }
-  return String(value);
+  // Unknown/numeric type — unit unknown, so show a plain formatted number
+  // rather than guessing units.
+  return value % 1 === 0 ? value.toLocaleString() : value.toFixed(2);
+}
+
+function formatPrDate(raw: string | number | null): string {
+  // Garmin returns this as an epoch-ms number for some record types and an
+  // ISO string for others — normalize both through Date before formatting.
+  if (raw == null) return "—";
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) return "—";
+  return formatShort(date.toISOString().slice(0, 10));
 }

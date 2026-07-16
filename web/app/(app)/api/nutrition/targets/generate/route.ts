@@ -94,6 +94,7 @@ Guidelines:
 - Fiber: 25–35g across all day types
 - Water: 35–40ml/kg + 500–1000ml per hour of training on hard days
 - Reflect the athlete's goals (e.g. muscle gain = higher protein + slight surplus)
+- If the athlete's profile states a weight goal direction: "lose" → target a ~300-500 kcal deficit on easy/rest days; "gain" → target a ~300-500 kcal surplus on hard/default days; "maintain" → keep net weekly balance close to zero
 - TSB < -20 suggests heavy load: increase carbs/calories on hard days
 - TSB > +10 suggests taper/low load: can reduce slightly
 

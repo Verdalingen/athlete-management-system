@@ -1,14 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { formatShort, formatDuration } from "@/lib/dates";
-import type { ScheduledDay, StrengthSession } from "@/lib/types";
-import { WorkoutStructure } from "@/lib/workout-structure";
+import type { StrengthSession } from "@/lib/types";
+import type { WeightRecommendation } from "@/lib/strength";
+import { SessionDetailModal, type DayData } from "../SessionDetailModal";
+import { SESSION_LABEL, SESSION_COLOR } from "@/lib/session-theme";
 
-export interface DayData extends ScheduledDay {
-  purpose: string;
-  adaptation: string;
-}
+export type { DayData };
 
 interface CalDay {
   iso: string | null;
@@ -17,87 +15,6 @@ interface CalDay {
 
 const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_HEADERS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const FULL_WEEKDAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-
-const SESSION_COLOR: Record<string, string> = {
-  strength: "var(--accent)",
-  run:      "var(--cyan)",
-  race:     "var(--red)",
-  cross:    "var(--amber)",
-  rest:     "var(--dim)",
-};
-
-function parseDurationLabel(description: string | null): string | null {
-  if (!description) return null;
-
-  // No intervals — show the leading duration exactly as written
-  if (!/[×x]/i.test(description)) {
-    const m = description.match(/^(\d+(?:-\d+)?)\s*min/i);
-    return m ? `${m[1]} min` : null;
-  }
-
-  let total = 0;
-
-  // Grouped intervals: N×(Xmin work, Ymin rec, ...)
-  let rest = description;
-  let hasGrouped = false;
-  for (const bm of description.matchAll(/(\d+)\s*[×x]\s*\(([^)]+)\)/gi)) {
-    hasGrouped = true;
-    const reps = parseInt(bm[1]);
-    let inner = 0;
-    for (const im of bm[2].matchAll(/(\d+(?:\.\d+)?)\s*min/gi))
-      inner += parseFloat(im[1]);
-    total += reps * inner;
-    rest = rest.replace(bm[0], "");
-  }
-  if (hasGrouped) {
-    // Add any standalone Xmin values outside the blocks (warm-up, cool-down, etc.)
-    for (const m of rest.matchAll(/(\d+(?:\.\d+)?)\s*min/gi))
-      total += parseFloat(m[1]);
-    return `~${Math.round(total)} min`;
-  }
-
-  // Simple: N min base + A×Bmin work (C min/s rec)
-  const base = description.match(/^(\d+)(?:-(\d+))?\s*min/i);
-  if (base) {
-    const lo = parseInt(base[1]), hi = base[2] ? parseInt(base[2]) : lo;
-    total += (lo + hi) / 2;
-  }
-  const iv = description.match(/(\d+)\s*[×x]\s*(\d+(?:\.\d+)?)\s*min/i);
-  if (iv) {
-    const reps = parseInt(iv[1]), work = parseFloat(iv[2]);
-    total += reps * work;
-    // Recovery per rep: (Cmin ...) or (Cs ...)
-    const rec = description.match(/\((\d+(?:\.\d+)?)\s*(min|s)\b/i);
-    if (rec) {
-      const v = parseFloat(rec[1]);
-      total += reps * (rec[2].toLowerCase() === "s" ? v / 60 : v);
-    }
-  }
-
-  return total > 0 ? `~${Math.round(total)} min` : null;
-}
-
-const SESSION_LABEL: Record<string, string> = {
-  strength: "Strength",
-  run:      "Run",
-  race:     "Race",
-  cross:    "Cross-train",
-};
-
-const TYPE_BADGE: Record<string, string> = {
-  strength: "badge badge-accent",
-  run:      "badge badge-cyan",
-  race:     "badge badge-red",
-  cross:    "badge badge-amber",
-};
-
-const TYPE_COLOR: Record<string, string> = {
-  strength: "var(--accent)",
-  run:      "var(--cyan)",
-  race:     "var(--red)",
-  cross:    "var(--amber)",
-};
 
 function buildMonthCells(year: number, month: number): CalDay[] {
   const first = new Date(year, month, 1);
@@ -124,23 +41,22 @@ function monthsInRange(start: string, end: string): { year: number; month: numbe
   return months;
 }
 
-function getWeekday(iso: string): string {
-  return FULL_WEEKDAY[new Date(iso + "T12:00:00Z").getUTCDay()];
-}
-
-
 export function PlanCalendar({
   startDate,
   endDate,
   dayMap,
   strengthMap,
   today,
+  bench1RMKg,
+  weightRecommendations,
 }: {
   startDate: string;
   endDate: string;
   dayMap: Record<string, DayData>;
   strengthMap: Record<string, StrengthSession>;
   today: string;
+  bench1RMKg?: number | null;
+  weightRecommendations?: Record<string, WeightRecommendation>;
 }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -174,11 +90,12 @@ export function PlanCalendar({
                     const isSelected = cell.iso === selectedDate;
                     const cls = [
                       "cal-day",
-                      d               ? "has-session" : "",
-                      d?.is_key       ? "is-key"      : "",
-                      d?.is_rest      ? "is-rest"     : "",
-                      isToday         ? "is-today"    : "",
-                      isPast && !isToday ? "is-past"  : "",
+                      d               ? "has-session"  : "",
+                      d?.is_key       ? "is-key"       : "",
+                      d?.is_rest      ? "is-rest"      : "",
+                      d?.completedActivities?.length ? "is-completed" : "",
+                      isToday         ? "is-today"     : "",
+                      isPast && !isToday ? "is-past"   : "",
                     ].filter(Boolean).join(" ");
 
                     return (
@@ -196,7 +113,7 @@ export function PlanCalendar({
                         {d && !d.is_rest && (
                           <>
                             <div className="cal-focus">{d.focus ?? d.session_type}</div>
-                            <div className="cal-dot" style={{ background: SESSION_COLOR[d.session_type] ?? "var(--dim)" }} />
+                            <div className="cal-dot" style={{ background: d.completedActivities?.length ? "var(--green)" : (SESSION_COLOR[d.session_type] ?? "var(--dim)") }} />
                           </>
                         )}
                       </div>
@@ -228,161 +145,18 @@ export function PlanCalendar({
                   Key session
                 </div>
               )}
+              {Object.values(dayMap).some(d => d.completedActivities?.length) && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
+                  Completed
+                </div>
+              )}
             </div>
           );
         })()}
       </div>
 
-      {/* ── Modal overlay ── */}
-      {selected && (
-        <div
-          onClick={() => setSelectedDate(null)}
-          style={{
-            position: "fixed", inset: 0, zIndex: 200,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "24px 16px",
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="card"
-            style={{
-              width: "100%", maxWidth: 580,
-              maxHeight: "85vh", overflowY: "auto",
-              borderLeft: `3px solid ${selected.is_rest ? "transparent" : (TYPE_COLOR[selected.session_type] ?? "var(--dim)")}`,
-              display: "flex", flexDirection: "column", gap: 0,
-            }}
-          >
-            {/* ── Header ── */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".8px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
-                  {getWeekday(selected.date)} · {formatShort(selected.date)}
-                </div>
-                <h2 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0 }}>
-                  {selected.is_rest ? "Rest Day" : (selected.focus ?? selected.session_type)}
-                </h2>
-                {selectedStrength?.name && (
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
-                    {selectedStrength.name}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setSelectedDate(null)}
-                aria-label="Close"
-                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 24, lineHeight: 1, padding: "0 0 0 16px", marginTop: -2, flexShrink: 0 }}
-              >
-                ×
-              </button>
-            </div>
-
-            {!selected.is_rest && (
-              <>
-                {/* ── Badges ── */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                  <span className={TYPE_BADGE[selected.session_type] ?? "badge"}>
-                    {SESSION_LABEL[selected.session_type] ?? selected.session_type}
-                  </span>
-                  {selected.is_key && (
-                    <span className="badge badge-amber">
-                      <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />Key session
-                    </span>
-                  )}
-                  {selectedStrength ? (
-                    <span className="badge badge-blue">
-                      <i className="ti ti-clock" style={{ marginRight: 4 }} />
-                      {formatDuration(selectedStrength.estimated_duration_secs)}
-                    </span>
-                  ) : (() => {
-                    const dur = parseDurationLabel(selected.description);
-                    return dur ? (
-                      <span className="badge badge-blue">
-                        <i className="ti ti-clock" style={{ marginRight: 4 }} />
-                        {dur}
-                      </span>
-                    ) : null;
-                  })()}
-                  {selectedStrength?.garmin_workout_id && (
-                    <span className="badge badge-green">
-                      <i className="ti ti-check" style={{ marginRight: 4 }} />
-                      Garmin
-                    </span>
-                  )}
-                </div>
-
-                {/* ── Workout structure (non-strength only) ── */}
-                {selected.description && selected.session_type !== "strength" && (
-                  <div style={{ marginBottom: 16 }}>
-                    <WorkoutStructure description={selected.description} />
-                  </div>
-                )}
-
-                {/* ── Exercise table ── */}
-                {selectedStrength && selectedStrength.exercises.length > 0 && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
-                      Exercises · {selectedStrength.exercises.length} movements
-                    </div>
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Exercise</th>
-                          <th style={{ width: 64, textAlign: "center" }}>Sets × Reps</th>
-                          <th style={{ width: 60, textAlign: "center" }}>Rest</th>
-                          <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedStrength.exercises.map((ex) => (
-                          <tr key={ex.id}>
-                            <td>
-                              <span style={{ fontWeight: 600 }}>{ex.display_name}</span>
-                            </td>
-                            <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)" }}>
-                              {ex.sets}×{ex.reps}
-                            </td>
-                            <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
-                              {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
-                            </td>
-                            <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
-                              {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* ── Purpose & Adaptation ── */}
-                {(selected.purpose || selected.adaptation) && (
-                  <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-                    {selected.purpose && (
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
-                          Purpose
-                        </div>
-                        <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{selected.purpose}</div>
-                      </div>
-                    )}
-                    {selected.adaptation && (
-                      <div style={{ background: "rgba(255,180,0,.06)", border: "1px solid rgba(255,180,0,.15)", borderRadius: 8, padding: "10px 14px" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>
-                          If you&apos;re tired
-                        </div>
-                        <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{selected.adaptation}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <SessionDetailModal day={selected} strengthSession={selectedStrength} onClose={() => setSelectedDate(null)} bench1RMKg={bench1RMKg} weightRecommendations={weightRecommendations} />
     </div>
   );
 }

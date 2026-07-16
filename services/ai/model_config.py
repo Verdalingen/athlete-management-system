@@ -106,14 +106,14 @@ class ModelSelector:
         ),
         # Anthropic Models
         "claude-sonnet": ModelConfiguration(
-            name="claude-sonnet-4-6",
+            name="claude-sonnet-5",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-sonnet-4-6",
+            openrouter_name="anthropic/claude-sonnet-5",
         ),
         "claude-sonnet-thinking": ModelConfiguration(
-            name="claude-sonnet-4-6",
+            name="claude-sonnet-5",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-sonnet-4-6",
+            openrouter_name="anthropic/claude-sonnet-5",
         ),
         "claude-haiku": ModelConfiguration(
             name="claude-haiku-4-5-20251001",
@@ -132,14 +132,14 @@ class ModelSelector:
         ),
         # Legacy aliases kept for backwards compatibility
         "claude-4": ModelConfiguration(
-            name="claude-sonnet-4-6",
+            name="claude-sonnet-5",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-sonnet-4-6",
+            openrouter_name="anthropic/claude-sonnet-5",
         ),
         "claude-4-thinking": ModelConfiguration(
-            name="claude-sonnet-4-6",
+            name="claude-sonnet-5",
             base_url="https://api.anthropic.com",
-            openrouter_name="anthropic/claude-sonnet-4-6",
+            openrouter_name="anthropic/claude-sonnet-5",
         ),
         "claude-3-haiku": ModelConfiguration(
             name="claude-haiku-4-5-20251001",
