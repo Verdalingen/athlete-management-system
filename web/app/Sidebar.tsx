@@ -10,17 +10,18 @@ const NAV = [
   { href: "/plan",       label: "Plan",      icon: "ti-route" },
   { href: "/nutrition",  label: "Nutrition", icon: "ti-salad" },
   { href: "/report",     label: "Progress",  icon: "ti-trending-up" },
-  { href: "/profile",    label: "Profile",   icon: "ti-user" },
 ];
 
-function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+const BOTTOM_ITEM = { href: "/profile", label: "Settings", icon: "ti-settings" };
+
+function NavItems({ items, onNavigate }: { items: typeof NAV; onNavigate?: () => void }) {
   const pathname = usePathname();
   function isActive(href: string) {
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }
   return (
     <>
-      {NAV.map(({ href, label, icon }) => (
+      {items.map(({ href, label, icon }) => (
         <Link
           key={href}
           href={href}
@@ -81,9 +82,12 @@ export function Sidebar() {
         </div>
 
         <nav className="sb-nav">
-          <NavItems />
+          <NavItems items={NAV} />
         </nav>
 
+        <div className="sb-bottom">
+          <NavItems items={[BOTTOM_ITEM]} />
+        </div>
       </aside>
 
       {/* ── Mobile: top bar ── */}
@@ -123,9 +127,12 @@ export function Sidebar() {
         </div>
 
         <nav className="sb-nav">
-          <NavItems onNavigate={() => setMobileOpen(false)} />
+          <NavItems items={NAV} onNavigate={() => setMobileOpen(false)} />
         </nav>
 
+        <div className="sb-bottom">
+          <NavItems items={[BOTTOM_ITEM]} onNavigate={() => setMobileOpen(false)} />
+        </div>
       </div>
     </>
   );

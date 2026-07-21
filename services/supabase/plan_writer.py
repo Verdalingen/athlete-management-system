@@ -107,6 +107,8 @@ def upsert_daily_metrics_batch(
         "rhr", "hrv_overnight", "sleep_score", "sleep_hours", "sleep_deep_h",
         "sleep_rem_h", "stress_avg", "body_battery", "weight_kg",
         "total_calories", "active_calories", "bmr_calories",
+        # Sickness Watch signals (see web/DESIGN.md)
+        "respiration_avg", "sleep_stress_avg", "body_battery_overnight_gain",
     }
 
     rows = []

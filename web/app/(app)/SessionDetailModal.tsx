@@ -5,6 +5,7 @@ import type { ScheduledDay, StrengthSession, CompletedActivity } from "@/lib/typ
 import { formatReps, isBarbellBench, estimateBenchWeight, type WeightRecommendation } from "@/lib/strength";
 import { WorkoutStructure } from "@/lib/workout-structure";
 import { SESSION_LABEL, SESSION_BADGE, SESSION_COLOR } from "@/lib/session-theme";
+import { formatDurationLabel } from "@/lib/duration";
 
 export interface DayData extends ScheduledDay {
   purpose: string;
@@ -16,80 +17,6 @@ const FULL_WEEKDAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday
 
 function getWeekday(iso: string): string {
   return FULL_WEEKDAY[new Date(iso + "T12:00:00Z").getUTCDay()];
-}
-
-// Sums every duration token in `text`: "M:SSmin" ("2:30min" = 2m30s, which a naive \d+min
-// match misreads as a whole 30 minutes), plain minutes ("2.5min"), and bare seconds
-// ("90s"/"30sec", common in recovery notation like "90s jog r").
-function sumMinuteTokens(text: string): number {
-  let total = 0;
-  for (const m of text.matchAll(/(\d+):(\d+)\s*min|(\d+(?:\.\d+)?)\s*min|(\d+(?:\.\d+)?)\s*s(?:ec)?\b/gi)) {
-    if (m[1] !== undefined) total += parseInt(m[1]) + parseInt(m[2]) / 60;
-    else if (m[3] !== undefined) total += parseFloat(m[3]);
-    else if (m[4] !== undefined) total += parseFloat(m[4]) / 60;
-  }
-  return total;
-}
-
-// Estimates work-segment duration from "Xkm @ M:SS-M:SS/km" or "Xm @ M:SS-M:SS/km" notation,
-// for interval formats that specify distance+pace instead of an explicit minute duration.
-function estimateDistancePaceMinutes(text: string): number {
-  let total = 0;
-  for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*(km|m)\b\s*@\s*(\d+):(\d+)(?:-(\d+):(\d+))?\s*\/km/gi)) {
-    const rawDistance = parseFloat(m[1]);
-    const distanceKm = m[2].toLowerCase() === "km" ? rawDistance : rawDistance / 1000;
-    const paceLowSec = parseInt(m[3]) * 60 + parseInt(m[4]);
-    const paceHighSec = m[5] !== undefined ? parseInt(m[5]) * 60 + parseInt(m[6]) : paceLowSec;
-    total += distanceKm * ((paceLowSec + paceHighSec) / 2 / 60);
-  }
-  return total;
-}
-
-function parseDurationLabel(description: string | null): string | null {
-  if (!description) return null;
-
-  // Grouped intervals: N×(...) blocks, e.g. "5x(1km @3:50-4:00/km, 2:30min r)"
-  let total = 0;
-  let rest = description;
-  let hasGrouped = false;
-  for (const bm of description.matchAll(/(\d+)\s*[×x]\s*\(([^)]+)\)/gi)) {
-    hasGrouped = true;
-    const reps = parseInt(bm[1]);
-    const inner = sumMinuteTokens(bm[2]) + estimateDistancePaceMinutes(bm[2]);
-    total += reps * inner;
-    rest = rest.replace(bm[0], "");
-  }
-  if (hasGrouped) {
-    // Add any standalone duration/distance segments outside the blocks (warm-up, cool-down, etc.)
-    total += sumMinuteTokens(rest) + estimateDistancePaceMinutes(rest);
-    return total > 0 ? `~${Math.round(total)} min` : null;
-  }
-
-  // Legacy shorthand without parens: "A×Bmin work (Crec)"
-  const iv = description.match(/(\d+)\s*[×x]\s*(\d+(?:\.\d+)?)\s*min/i);
-  if (iv) {
-    const reps = parseInt(iv[1]), work = parseFloat(iv[2]);
-    total += reps * work;
-    // Recovery per rep: (Cmin ...) or (Cs ...)
-    const rec = description.match(/\((\d+(?:\.\d+)?)\s*(min|s)\b/i);
-    if (rec) {
-      const v = parseFloat(rec[1]);
-      total += reps * (rec[2].toLowerCase() === "s" ? v / 60 : v);
-    }
-    return total > 0 ? `~${Math.round(total)} min` : null;
-  }
-
-  // No intervals: a single bare "Nmin" / "N-Mmin" duration (no other segments) is shown
-  // exactly as written; anything with multiple duration/distance segments (warm-up + main +
-  // cool-down, etc.) is summed and marked approximate.
-  const minMatches = [...description.matchAll(/(\d+(?:-\d+)?)\s*min/gi)];
-  const hasDistance = /\d+(?:\.\d+)?\s*km\b/i.test(description);
-  if (minMatches.length === 1 && !hasDistance) {
-    return `${minMatches[0][1]} min`;
-  }
-
-  const sum = sumMinuteTokens(description) + estimateDistancePaceMinutes(description);
-  return sum > 0 ? `~${Math.round(sum)} min` : null;
 }
 
 export function SessionDetailModal({
@@ -180,7 +107,7 @@ export function SessionDetailModal({
                   {formatDuration(strengthSession.estimated_duration_secs)}
                 </span>
               ) : (() => {
-                const dur = parseDurationLabel(day.description);
+                const dur = formatDurationLabel(day.description);
                 return dur ? (
                   <span className="badge badge-blue">
                     <i className="ti ti-clock" style={{ marginRight: 4 }} />

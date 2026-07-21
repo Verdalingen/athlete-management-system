@@ -1,18 +1,45 @@
 import type React from "react";
-import { createServerClient, getUserId } from "@/lib/supabase-server";
-import { todayISO, weekBounds, formatLong, formatShort, formatWeekday, formatDuration, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
+import { createServerClient, getUserId, getUserFirstName } from "@/lib/supabase-server";
+import { todayISO, weekBounds, formatLong, formatShort, formatWeekday, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
 import { parseDayMeta } from "@/lib/plan-parser";
-import { buildStrengthMap, formatReps, getWeightRecommendation, isBarbellBench, estimateBenchWeight, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
-import { SESSION_BADGE } from "@/lib/session-theme";
-import type { Plan, ScheduledDay, StrengthSession } from "@/lib/types";
+import { buildStrengthMap, getWeightRecommendation, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
+import type { CompletedActivity, Plan, ScheduledDay, StrengthSession } from "@/lib/types";
 import { DashboardActions } from "./DashboardActions";
-import { WeekAtGlanceStrip } from "./WeekAtGlanceStrip";
+import { MiniMonthCalendar } from "./MiniMonthCalendar";
+import { RecentSessionsList } from "./RecentSessionsList";
+import { TodaySessionCard, TODAY_SESSION_CARD_HEIGHT } from "./TodaySessionCard";
+import { WeeklyMacrosCard } from "./WeeklyMacrosCard";
+import { SicknessWatchCard } from "./SicknessWatchCard";
+import type { DayData } from "./SessionDetailModal";
+import { FitnessTrendChart } from "./FitnessTrendChart";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
 
 function fmtTime(totalSecs: number): string {
   const m = Math.floor(totalSecs / 60);
   const s = totalSecs % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function greeting(hour: number, name: string): string {
+  const part = hour < 5 ? "night" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+  return `Good ${part}, ${name}`;
+}
+
+// Maps a `var(--x)` color token to its `-rgb` companion for use inside rgba().
+// Concatenating a hex-alpha suffix onto a var() (e.g. `${"var(--green)"}18`)
+// produces an invalid CSS string the browser silently drops — found live on
+// the ReadinessStrip pills and the Goals priority badge, both rendering with
+// zero background/border despite the code intending a tinted chip.
+const RGB_VAR: Record<string, string> = {
+  "var(--green)": "var(--green-rgb)",
+  "var(--cyan)": "var(--cyan-rgb)",
+  "var(--amber)": "var(--amber-rgb)",
+  "var(--red)": "var(--red-rgb)",
+  "var(--accent)": "var(--accent-rgb)",
+  "var(--blue)": "var(--blue-rgb)",
+};
+function rgbVar(colorToken: string): string {
+  return RGB_VAR[colorToken] ?? "var(--dim-rgb, 124,138,144)";
 }
 
 export default async function DashboardPage() {
@@ -26,8 +53,17 @@ export default async function DashboardPage() {
   const planId = plan?.id ?? null;
 
   const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+  const heatmapWindowStart = new Date(Date.now() - 182 * 86400000).toISOString().slice(0, 10);
+  const fitnessTrendStart = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  const sicknessWindowStart = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10);
 
-  const [dayRes, weekRes, weekSessRes, nextKeyRes, metricsRes, lastCheckinRes, athleteProfile, completedSetsRes] = await Promise.all([
+  // Window for the dashboard's MiniMonthCalendar (prev/current/next month, so
+  // its prev/next arrows work against already-fetched data with no extra round trip).
+  const todayDateObj = new Date(today + "T00:00:00");
+  const calWindowStart = new Date(todayDateObj.getFullYear(), todayDateObj.getMonth() - 1, 1).toISOString().slice(0, 10);
+  const calWindowEnd = new Date(todayDateObj.getFullYear(), todayDateObj.getMonth() + 2, 0).toISOString().slice(0, 10);
+
+  const [dayRes, weekRes, weekSessRes, nextKeyRes, metricsRes, lastCheckinRes, athleteProfile, completedSetsRes, completedActivitiesRes, firstName, fitnessTrendRes, calDaysRes, calStrengthRes, weekMacrosRes, sicknessRes] = await Promise.all([
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("date", today).limit(1)
       : Promise.resolve({ data: [] }),
@@ -40,24 +76,108 @@ export default async function DashboardPage() {
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("is_key", true).gt("date", today).order("date").limit(1)
       : Promise.resolve({ data: [] }),
-    sb.from("analyses").select("bench_e1rm_kg, predicted_5k_secs, kpis, personal_records, report_date").eq("user_id", uid).order("report_date", { ascending: false }).limit(1),
+    sb.from("analyses").select("bench_e1rm_kg, predicted_5k_secs, kpis, report_date").eq("user_id", uid).order("report_date", { ascending: false }).limit(1),
     sb.from("replan_jobs").select("completed_at").eq("user_id", uid).eq("type", "replan").eq("status", "done").order("completed_at", { ascending: false }).limit(1),
     getAthleteProfile(),
     sb.from("completed_exercise_sets").select("exercise_id, date, reps, weight_kg, prescribed_reps_min")
       .eq("user_id", uid).gte("date", sixtyDaysAgo).order("date", { ascending: false }),
+    sb.from("completed_activities").select("*").eq("user_id", uid).gte("date", heatmapWindowStart).lte("date", today),
+    getUserFirstName(),
+    sb.from("daily_metrics").select("date, ctl, atl").eq("user_id", uid).gte("date", fitnessTrendStart).order("date", { ascending: true }),
+    planId
+      ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).gte("date", calWindowStart).lte("date", calWindowEnd).order("date")
+      : Promise.resolve({ data: [] }),
+    planId
+      ? sb.from("strength_sessions").select("*, exercises(*)").eq("user_id", uid).eq("plan_id", planId).gte("date", calWindowStart).lte("date", calWindowEnd)
+      : Promise.resolve({ data: [] }),
+    sb.from("nutrition_diary").select("date, calories, protein_g, carbs_g, fat_g")
+      .eq("user_id", uid).neq("meal_type", "water").gte("date", weekStart).lte("date", weekEnd),
+    sb.from("daily_metrics").select("date, hrv_overnight, rhr, respiration_avg, sleep_stress_avg, body_battery_overnight_gain")
+      .eq("user_id", uid).gte("date", sicknessWindowStart).order("date", { ascending: true }),
   ]);
+
+  const completedActivities: CompletedActivity[] = completedActivitiesRes.data ?? [];
+  const fitnessTrendData = (fitnessTrendRes.data ?? []) as { date: string; ctl: number | null; atl: number | null }[];
 
   const today_day: ScheduledDay | null = dayRes.data?.[0] ?? null;
   const weekDays: ScheduledDay[] = weekRes.data ?? [];
   const nextKey: ScheduledDay | null = nextKeyRes.data?.[0] ?? null;
 
-  // Week strength sessions + purpose/adaptation, for today's session card and the
-  // "Week at a glance" strip's click-to-detail modal (the week range contains today).
+  // Week strength sessions, for today's session card (the week range contains today).
   const weekStrengthMap: Record<string, StrengthSession> = buildStrengthMap(weekSessRes.data);
   const session: StrengthSession | null = weekStrengthMap[today] ?? null;
-  const weekDayMetas = Object.fromEntries(
-    weekDays.map(d => [d.date, parseDayMeta(plan?.markdown ?? "", d.date)])
+
+  // Weekly macro totals per day (Mon–Sun), for WeeklyMacrosCard — aggregated in JS
+  // since Supabase JS has no GROUP BY, same pattern as /api/nutrition/trends.
+  const macrosByDate = new Map<string, { calories: number; protein_g: number; carbs_g: number; fat_g: number }>();
+  for (const row of weekMacrosRes.data ?? []) {
+    const existing = macrosByDate.get(row.date) ?? { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
+    existing.calories += row.calories ?? 0;
+    existing.protein_g += row.protein_g ?? 0;
+    existing.carbs_g += row.carbs_g ?? 0;
+    existing.fat_g += row.fat_g ?? 0;
+    macrosByDate.set(row.date, existing);
+  }
+  const weeklyMacros = Array.from({ length: 7 }, (_, i) => {
+    // Manually formatted (not .toISOString()) — toISOString() converts to UTC,
+    // which silently shifts the date back a day in timezones ahead of UTC
+    // (e.g. CEST), the same trap buildMonthCells() in lib/calendar.ts avoids.
+    const date = new Date(weekStart + "T00:00:00");
+    date.setDate(date.getDate() + i);
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return { date: iso, ...(macrosByDate.get(iso) ?? { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }) };
+  });
+
+  // Prev/current/next month of scheduled days + completed activities, for the
+  // dashboard's MiniMonthCalendar — same DayData shape SessionDetailModal expects.
+  const calActivityMap: Record<string, CompletedActivity[]> = {};
+  for (const a of completedActivities) (calActivityMap[a.date] ??= []).push(a);
+  const calDayMap: Record<string, DayData> = Object.fromEntries(
+    ((calDaysRes.data ?? []) as ScheduledDay[]).map(d => {
+      const meta = parseDayMeta(plan?.markdown ?? "", d.date);
+      return [d.date, { ...d, purpose: meta.purpose, adaptation: meta.adaptation, completedActivities: calActivityMap[d.date] ?? [] }];
+    })
   );
+  const calStrengthMap: Record<string, StrengthSession> = buildStrengthMap(calStrengthRes.data);
+
+  // Sickness watch — five signals, each compared against their own personal
+  // 28-day baseline (mean ± 1 SD). No single metric alone is a reliable
+  // early-illness signal, but 2+ moving off-baseline together is a real
+  // pattern wearables (Whoop, Oura) lean on — see SicknessWatchCard.
+  // Body Battery is scored on its overnight *recharge* (wake level minus
+  // sleep-start level), not the raw end-of-day number — a single absolute
+  // reading doesn't say much on its own, since it's just wherever the level
+  // happened to land relative to whatever the day's activity was.
+  const sicknessRows: {
+    date: string;
+    hrv_overnight: number | null;
+    rhr: number | null;
+    respiration_avg: number | null;
+    sleep_stress_avg: number | null;
+    body_battery_overnight_gain: number | null;
+  }[] = sicknessRes.data ?? [];
+  const sicknessLatest = sicknessRows[sicknessRows.length - 1] ?? null;
+  const sicknessBaselineRows = sicknessRows.slice(0, -1); // exclude today so it can't skew its own baseline
+  function baselineStats(values: (number | null)[]): { mean: number; std: number } | null {
+    const nums = values.filter((v): v is number => v != null);
+    if (nums.length < 7) return null; // not enough history for a meaningful SD
+    const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+    const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / nums.length;
+    return { mean, std: Math.sqrt(variance) };
+  }
+  function sicknessSignal(label: string, value: number | null, unit: string, baseline: { mean: number; std: number } | null, direction: "above" | "below") {
+    const flagged = value != null && baseline != null
+      ? (direction === "below" ? value < baseline.mean - baseline.std : value > baseline.mean + baseline.std)
+      : false;
+    return { label, value, unit, baselineMean: baseline?.mean ?? null, direction, flagged };
+  }
+  const sicknessSignals = [
+    sicknessSignal("HRV (overnight)", sicknessLatest?.hrv_overnight ?? null, "ms", baselineStats(sicknessBaselineRows.map(r => r.hrv_overnight)), "below"),
+    sicknessSignal("Resting HR", sicknessLatest?.rhr ?? null, "bpm", baselineStats(sicknessBaselineRows.map(r => r.rhr)), "above"),
+    sicknessSignal("Respiration Rate", sicknessLatest?.respiration_avg ?? null, "br/min", baselineStats(sicknessBaselineRows.map(r => r.respiration_avg)), "above"),
+    sicknessSignal("Sleep Stress", sicknessLatest?.sleep_stress_avg ?? null, "/100", baselineStats(sicknessBaselineRows.map(r => r.sleep_stress_avg)), "above"),
+    sicknessSignal("Body Battery Recharge", sicknessLatest?.body_battery_overnight_gain ?? null, "pts", baselineStats(sicknessBaselineRows.map(r => r.body_battery_overnight_gain)), "below"),
+  ];
 
   // Weight recommendation per exercise_id, from actual completed performance history —
   // supersedes the 1RM-formula estimate wherever real data exists for that specific exercise.
@@ -107,9 +227,6 @@ export default async function DashboardPage() {
   const predicted5kSecs: number | null = latestMetrics?.predicted_5k_secs ?? null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kpis: Record<string, any> | null = latestMetrics?.kpis ?? null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const personalRecords: Record<string, any>[] | null = latestMetrics?.personal_records ?? null;
-  const kpiAsOf: string | null = kpis?.as_of ?? latestMetrics?.report_date ?? null;
 
   // Upcoming events from athlete profile (sorted by date, future only)
   const events = (athleteProfile?.events ?? [])
@@ -126,107 +243,104 @@ export default async function DashboardPage() {
   return (
     <div className="page">
 
-      {/* ── Readiness strip ──────────────────────────────────────────────── */}
-      {kpis && <ReadinessStrip kpis={kpis} />}
+      {/* ── Row 1: greeting + readiness + today's session (left column),
+          month calendar + This Week stacked (right column). Stacking two
+          cards on the right instead of pairing 1:1 gets the two columns'
+          natural heights close enough that align-items: start reads as
+          "aligned" without resorting to grid-stretch padding — see
+          DESIGN.md for why forced stretch was rejected here. ── */}
+      <div className="dashboard-hero-grid">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.5px", marginBottom: 4 }}>
+              {greeting(new Date().getHours(), firstName)}
+            </h1>
+            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)" }}>
+              {formatLong(today)}
+            </p>
+          </div>
 
-      {/* ── Today's date label ───────────────────────────────────────────── */}
-      <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 10 }}>
-        {formatLong(today)}
-      </p>
+          {kpis && <ReadinessStrip kpis={kpis} />}
 
-      {/* ── Hero: Today's session ────────────────────────────────────────── */}
-      <section>
-        {today_day ? (
-          <div className={`card ${today_day.is_key ? "card-accent" : "card-cyan"}`} style={{ borderLeftWidth: 4 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                {!today_day.is_rest && (
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: today_day.is_key ? "var(--accent)" : "var(--cyan)", marginBottom: 6 }}>
-                    {today_day.session_type}{today_day.is_key ? " · Key session" : ""}
-                  </div>
-                )}
-                <h1 style={{ fontSize: 34, fontWeight: 900, lineHeight: 1.1, marginBottom: 8, letterSpacing: "-.5px" }}>
-                  {today_day.focus ?? (today_day.is_rest ? "Rest Day" : today_day.session_type)}
-                </h1>
-                {today_day.description && !today_day.is_rest && (
-                  <p style={{ fontSize: 14, color: "var(--muted)", marginBottom: 12, lineHeight: 1.55 }}>
-                    {today_day.description}
-                  </p>
-                )}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span className={SESSION_BADGE[today_day.session_type] ?? "badge"}>
-                    {today_day.session_type}
-                  </span>
-                  {session && (
-                    <span className="badge badge-blue">{formatDuration(session.estimated_duration_secs)}</span>
-                  )}
-                </div>
+          {today_day ? (
+            <TodaySessionCard
+              today_day={today_day}
+              session={session}
+              dayData={calDayMap[today] ?? null}
+              bench1RMKg={athleteProfile?.bench_1rm_kg}
+              weightRecommendations={weightRecommendations}
+            />
+          ) : (
+            <div className="card" style={{ height: TODAY_SESSION_CARD_HEIGHT, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: "50%", margin: "0 auto 12px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "rgba(var(--accent-rgb), .10)",
+              }}>
+                <i className="ti ti-moon-stars" style={{ fontSize: 22, color: "var(--accent)" }} aria-hidden="true" />
               </div>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Rest Day</h2>
+              <p style={{ color: "var(--muted)", fontSize: 14 }}>No session planned today. Recover, eat well, sleep.</p>
             </div>
+          )}
 
-            {session && session.exercises.length > 0 && (
-              <div style={{ marginTop: 20 }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Exercise</th>
-                      <th style={{ width: 80, textAlign: "center" }}>Sets × Reps</th>
-                      <th style={{ width: 60, textAlign: "center" }}>Rest</th>
-                      <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {session.exercises.map((ex) => {
-                      const rec = weightRecommendations[ex.id];
-                      const hasRealData = rec != null && rec.action !== "no_data" && rec.weight != null;
-                      const estWeight = !hasRealData && athleteProfile?.bench_1rm_kg != null && isBarbellBench(ex.garmin_category, ex.display_name)
-                        ? estimateBenchWeight(athleteProfile.bench_1rm_kg, ex.reps_min, ex.reps_max)
-                        : null;
-                      return (
-                      <tr key={ex.id}>
-                        <td style={{ fontWeight: 600 }}>
-                          {ex.display_name}
-                          {hasRealData && (
-                            <div
-                              style={{
-                                fontSize: 10, marginTop: 2, fontWeight: 400,
-                                color: rec.action === "increase" ? "var(--green)" : rec.action === "decrease" ? "var(--red)" : "var(--dim)",
-                              }}
-                              title={rec.note}
-                            >
-                              {rec.action === "increase" ? "↑" : rec.action === "decrease" ? "↓" : "→"} {rec.weight} kg
-                            </div>
-                          )}
-                          {estWeight != null && (
-                            <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 400, marginTop: 2 }}>
-                              ~{estWeight} kg est.
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
-                          {ex.sets}×{formatReps(ex.reps_min, ex.reps_max)}
-                        </td>
-                        <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
-                          {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
-                        </td>
-                        <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
-                          {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <div className="card" style={{ marginTop: 0 }}>
+            <div className="card-title" style={{ margin: "0 0 12px" }}>This Week</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <MiniStat
+                label="Season"
+                value={meso ? <>Week {meso.week}<span style={{ fontWeight: 400, fontSize: 13, color: "var(--dim)" }}> /{meso.totalWeeks}</span></> : "No plan"}
+                note={meso ? `${meso.daysLeft}d left` : undefined}
+              />
+              <MiniStat
+                label="Next check-in"
+                value={daysUntilCheckin === null ? "—" : checkinOverdue ? "Due" : `${daysUntilCheckin}d`}
+                valueColor={checkinOverdue ? "var(--amber)" : undefined}
+                note={
+                  daysUntilCheckin === null ? undefined
+                    : checkinOverdue ? (daysSinceCheckin === 0 ? "Today" : `${daysSinceCheckin}d overdue`)
+                    : nextCheckinDate ? formatShort(nextCheckinDate.toISOString().slice(0, 10)) : undefined
+                }
+                noteColor={checkinOverdue ? "var(--amber)" : undefined}
+              />
+              <MiniStat
+                label="This week"
+                value={`${sessionCount} sessions`}
+                note={keyCount > 0 ? `${keyCount} key ${keyCount === 1 ? "session" : "sessions"}` : "No key sessions"}
+              />
+              <MiniStat
+                label="Next key"
+                value={nextKey ? `${formatWeekday(nextKey.date)} · ${formatShort(nextKey.date)}` : "None upcoming"}
+                note={nextKey ? (nextKey.focus ?? nextKey.session_type) : undefined}
+              />
+            </div>
           </div>
-        ) : (
-          <div className="card" style={{ textAlign: "center", padding: "32px 20px" }}>
-            <div style={{ fontSize: 32, marginBottom: 10 }}>☀️</div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Rest Day</h1>
-            <p style={{ color: "var(--muted)", fontSize: 14 }}>No session planned today. Recover, eat well, sleep.</p>
-          </div>
-        )}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <MiniMonthCalendar
+            dayMap={calDayMap}
+            strengthMap={calStrengthMap}
+            today={today}
+            bench1RMKg={athleteProfile?.bench_1rm_kg}
+            weightRecommendations={weightRecommendations}
+          />
+
+          <WeeklyMacrosCard data={weeklyMacros} today={today} />
+        </div>
+      </div>
+
+      {/* ── Row 2: fitness trend (large visual anchor) + recent sessions ──── */}
+      <section className="section">
+        <div className="dashboard-activity-grid">
+          <FitnessTrendChart data={fitnessTrendData} />
+          <RecentSessionsList activities={completedActivities} />
+        </div>
+      </section>
+
+      {/* ── Sickness watch ────────────────────────────────────────────────── */}
+      <section className="section">
+        <SicknessWatchCard signals={sicknessSignals} />
       </section>
 
       {/* ── Action prompts ───────────────────────────────────────────────── */}
@@ -237,97 +351,9 @@ export default async function DashboardPage() {
         planEndDate={plan ? formatShort(plan.end_date) : ""}
       />
 
-      {/* ── Stats row ────────────────────────────────────────────────────── */}
-      <section className="section">
-        <h2 className="section-title">Training Status</h2>
-        <div className="stat-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
-
-          <div className="kpi">
-            <div className="kpi-label">Season</div>
-            {meso ? (
-              <>
-                <div className="kpi-value">
-                  Week {meso.week}<span className="kpi-unit">/ {meso.totalWeeks}</span>
-                </div>
-                <div className="progress-bar">
-                  <div className="progress-fill" style={{ width: `${meso.pct}%`, background: "var(--cyan)" }} />
-                </div>
-                <div className="kpi-note">{meso.daysLeft} days left · ends {formatShort(meso.end)}</div>
-              </>
-            ) : (
-              <div className="kpi-value" style={{ fontSize: 14, color: "var(--dim)" }}>No plan</div>
-            )}
-          </div>
-
-          <div className="kpi">
-            <div className="kpi-label">Next check-in</div>
-            {daysUntilCheckin === null ? (
-              <div className="kpi-value" style={{ fontSize: 14, color: "var(--dim)" }}>—</div>
-            ) : (() => {
-              const pct = Math.min(100, Math.max(0, Math.round(((7 - daysUntilCheckin) / 7) * 100)));
-              const overdue = daysUntilCheckin <= 0;
-              const barColor = overdue ? "var(--amber)" : pct >= 70 ? "var(--amber)" : "var(--cyan)";
-              return (
-                <>
-                  <div className="kpi-value" style={{ color: overdue ? "var(--amber)" : undefined }}>
-                    {overdue ? "Due" : daysUntilCheckin}
-                    {!overdue && <span className="kpi-unit">days</span>}
-                  </div>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${pct}%`, background: barColor }} />
-                  </div>
-                  <div className="kpi-note" style={{ color: overdue ? "var(--amber)" : undefined }}>
-                    {overdue
-                      ? (daysSinceCheckin === 0 ? "Today" : `${daysSinceCheckin}d overdue`)
-                      : nextCheckinDate ? formatShort(nextCheckinDate.toISOString().slice(0, 10)) : ""}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-
-          <div className="kpi">
-            <div className="kpi-label">This week</div>
-            <div className="kpi-value">
-              {sessionCount}<span className="kpi-unit">sessions</span>
-            </div>
-            <div className="kpi-note">
-              {keyCount > 0
-                ? <span className="badge badge-accent">{keyCount} key {keyCount === 1 ? "session" : "sessions"}</span>
-                : <span style={{ color: "var(--dim)" }}>No key sessions</span>
-              }
-            </div>
-          </div>
-
-          <div className="kpi">
-            <div className="kpi-label">Next key session</div>
-            {nextKey ? (
-              <>
-                <div className="kpi-value" style={{ fontSize: 16, fontWeight: 700, marginTop: 4 }}>
-                  {formatWeekday(nextKey.date)} · {formatShort(nextKey.date)}
-                </div>
-                <div className="kpi-note" style={{ marginTop: 6 }}>
-                  {nextKey.focus ?? nextKey.session_type}
-                </div>
-              </>
-            ) : (
-              <div className="kpi-value" style={{ fontSize: 14, color: "var(--dim)" }}>None upcoming</div>
-            )}
-          </div>
-
-        </div>
-      </section>
-
-      {/* ── Week at a glance ─────────────────────────────────────────────── */}
-      <section className="section">
-        <h2 className="section-title">Week at a glance</h2>
-        <WeekAtGlanceStrip weekDays={weekDays} strengthMap={weekStrengthMap} dayMetas={weekDayMetas} today={today} bench1RMKg={athleteProfile?.bench_1rm_kg} weightRecommendations={weightRecommendations} />
-      </section>
-
       {/* ── Goals ────────────────────────────────────────────────────────── */}
       {hasGoals && (
         <section className="section">
-          <h2 className="section-title">Goals</h2>
           <div className="goal-grid">
 
             {/* Event cards from athlete profile */}
@@ -346,8 +372,8 @@ export default async function DashboardPage() {
                     {ev.priority && (
                       <span style={{
                         fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-                        background: `${priorityColor}18`, color: priorityColor,
-                        border: `1px solid ${priorityColor}40`, flexShrink: 0,
+                        background: `rgba(${rgbVar(priorityColor)}, .12)`, color: priorityColor,
+                        border: `1px solid rgba(${rgbVar(priorityColor)}, .32)`, flexShrink: 0,
                       }}>
                         {ev.priority} race
                       </span>
@@ -440,130 +466,6 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      {/* ── Performance KPIs ─────────────────────────────────────────────── */}
-      <section className="section">
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
-          <h2 className="section-title" style={{ margin: 0 }}>Metrics</h2>
-          {kpiAsOf && (
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>
-              as of {formatShort(kpiAsOf)}
-            </span>
-          )}
-        </div>
-
-        {!kpis ? (
-          <div className="card" style={{ color: "var(--dim)", fontSize: 13, textAlign: "center", padding: "20px" }}>
-            No data yet — run the coach analysis to populate metrics.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-            <KpiGroup title="Training Load" defaultOpen>
-              <Kpi label="Chronic Load" sub="28d avg" value={kpis.training_load?.chronic_28d_avg} />
-              <Kpi label="Acute Load" sub="7d sum" value={kpis.training_load?.acute_7d_sum} />
-              <Kpi label="ACWR" sub="uncoupled" value={kpis.training_load?.acwr_uncoupled} badge={acwrBadge(kpis.training_load?.acwr_uncoupled)} decimals={2} />
-              <Kpi label="TSB" sub="balance" value={kpis.training_load?.tsb} badge={tsbBadge(kpis.training_load?.tsb)} signed />
-              <Kpi label="Monotony" sub="7d" value={kpis.training_load?.monotony_7d} badge={monotonyBadge(kpis.training_load?.monotony_7d)} decimals={2} />
-              <Kpi label="Strain" sub="7d" value={kpis.training_load?.strain_7d} decimals={0} />
-              <Kpi label="Ramp Rate" sub="7d chronic Δ" value={kpis.training_load?.ramp_7d} signed decimals={1} />
-            </KpiGroup>
-
-            <KpiGroup title="Readiness" defaultOpen>
-              {kpis.body_battery?.latest != null && (
-                <Kpi label="Body Battery" sub="current" value={kpis.body_battery.latest} unit="%" badge={bodyBatteryBadge(kpis.body_battery.latest)} decimals={0} />
-              )}
-              {kpis.body_battery?.avg_7d != null && (
-                <Kpi label="Body Battery" sub="7d avg" value={kpis.body_battery.avg_7d} unit="%" decimals={0} />
-              )}
-              {kpis.training_readiness?.score != null && (
-                <Kpi label="Training Readiness" sub={kpis.training_readiness.level ?? undefined} value={kpis.training_readiness.score} badge={readinessBadge(kpis.training_readiness.score)} decimals={0} />
-              )}
-              <Kpi label="HRV" sub="7d avg" value={kpis.hrv?.weekly_avg} unit="ms" badge={kpis.hrv?.baseline_low != null ? hrvBadge(kpis.hrv.weekly_avg, kpis.hrv.baseline_low, kpis.hrv.baseline_high) : undefined} decimals={0} />
-              <Kpi label="HRV" sub="last night" value={kpis.hrv?.last_night_avg} unit="ms" decimals={0} />
-              {kpis.hrv?.baseline_low != null && (
-                <Kpi label="HRV Baseline" sub="balanced range" value={`${kpis.hrv.baseline_low}–${kpis.hrv.baseline_high}`} raw />
-              )}
-              <Kpi label="Resting HR" sub="from Garmin" value={kpis.physiological?.rhr} unit="bpm" decimals={0} />
-            </KpiGroup>
-
-            <KpiGroup title="Sleep (7d avg)">
-              <Kpi label="Total" value={kpis.sleep?.avg_total_hours} unit="h" badge={sleepBadge(kpis.sleep?.avg_total_hours)} />
-              <Kpi label="Deep" value={kpis.sleep?.avg_deep_hours} unit="h" />
-              <Kpi label="REM" value={kpis.sleep?.avg_rem_hours} unit="h" />
-              <Kpi label="Score" value={kpis.sleep?.avg_score} unit="/100" decimals={0} />
-              <Kpi label="Overnight HRV" value={kpis.sleep?.avg_overnight_hrv} unit="ms" decimals={0} />
-              <Kpi label="Sleep RHR" value={kpis.sleep?.avg_rhr} unit="bpm" decimals={0} />
-            </KpiGroup>
-
-            <KpiGroup title="Performance">
-              <Kpi label="VO₂max" sub="running" value={kpis.physiological?.vo2max_running} unit="ml/kg/min" />
-              {kpis.physiological?.vo2max_cycling != null && (
-                <Kpi label="VO₂max" sub="cycling" value={kpis.physiological.vo2max_cycling} unit="ml/kg/min" />
-              )}
-              {kpis.physiological?.ftp_watts != null && (
-                <Kpi label="FTP" sub="cycling" value={kpis.physiological.ftp_watts} unit="W" decimals={0} />
-              )}
-              <Kpi label="LT Heart Rate" value={kpis.physiological?.lactate_threshold_hr} unit="bpm" decimals={0} />
-              <Kpi label="LT Pace" value={kpis.physiological?.lactate_threshold_pace_min_per_km != null ? formatLTPace(kpis.physiological.lactate_threshold_pace_min_per_km) : null} unit="/km" raw />
-            </KpiGroup>
-
-            <KpiGroup title="Body">
-              <Kpi label="Weight" value={kpis.body?.weight_kg} unit="kg" />
-              {kpis.body?.weight_change_kg != null && (
-                <Kpi label="Weight Δ" sub="this period" value={kpis.body.weight_change_kg} unit="kg" signed />
-              )}
-              {kpis.body?.hydration_avg_l != null && (
-                <Kpi label="Hydration" sub="daily avg" value={kpis.body.hydration_avg_l} unit="L" />
-              )}
-            </KpiGroup>
-
-            {(kpis.stress?.avg_7d != null || kpis.stress?.max_7d != null) && (
-              <KpiGroup title="Stress (7d)">
-                <Kpi label="Avg Stress" value={kpis.stress.avg_7d} unit="/100" decimals={0} />
-                <Kpi label="Max Stress" value={kpis.stress.max_7d} unit="/100" decimals={0} />
-              </KpiGroup>
-            )}
-
-          </div>
-        )}
-      </section>
-
-      {/* ── Personal Records ─────────────────────────────────────────────── */}
-      {personalRecords && personalRecords.length > 0 && (
-        <section className="section">
-          <h2 className="section-title">Personal Records</h2>
-          <div className="card" style={{ padding: 0 }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Activity</th>
-                  <th style={{ textAlign: "right" }}>Value</th>
-                  <th style={{ textAlign: "right" }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {personalRecords.map((pr, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 600, textTransform: "capitalize" }}>
-                      {formatPrType(pr.type)}
-                    </td>
-                    <td style={{ textAlign: "right", fontFamily: "var(--mono)", fontSize: 12 }}>
-                      {formatPrValue(pr.type, pr.value)}
-                    </td>
-                    <td style={{ textAlign: "right", fontSize: 12, color: "var(--dim)" }}>
-                      {formatPrDate(pr.pr_start_time_local)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p style={{ fontSize: 11, color: "var(--dim)", marginTop: 8 }}>
-            Garmin-tracked personal records · synced from Garmin Connect.
-          </p>
-        </section>
-      )}
-
     </div>
   );
 }
@@ -580,6 +482,13 @@ function ReadinessStrip({ kpis }: { kpis: Record<string, any> }) {
     const label = tsb > 10 ? "Fresh" : tsb > -10 ? "Balanced" : tsb > -30 ? "Building" : "Fatigued";
     const color = tsb > 10 ? "var(--green)" : tsb > -10 ? "var(--cyan)" : tsb > -30 ? "var(--amber)" : "var(--red)";
     pills.push({ label, detail: `TSB ${tsb > 0 ? "+" : ""}${Math.round(tsb)}`, color, icon: "ti-wave-sine" });
+  }
+
+  const acwr = kpis.training_load?.acwr_uncoupled;
+  if (acwr != null) {
+    const label = acwr > 1.5 ? "Danger" : acwr > 1.3 ? "High load" : acwr >= 0.8 ? "ACWR ok" : "Underload";
+    const color = acwr > 1.5 ? "var(--red)" : acwr > 1.3 ? "var(--amber)" : acwr >= 0.8 ? "var(--green)" : "var(--cyan)";
+    pills.push({ label, detail: `ACWR ${acwr.toFixed(2)}`, color, icon: "ti-alert-triangle" });
   }
 
   const readiness = kpis.training_readiness?.score;
@@ -613,15 +522,15 @@ function ReadinessStrip({ kpis }: { kpis: Record<string, any> }) {
   if (pills.length === 0) return null;
 
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 }}>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {pills.map((p, i) => (
         <div
           key={i}
           style={{
             display: "inline-flex", alignItems: "center", gap: 5,
             padding: "4px 10px", borderRadius: 20,
-            background: `${p.color}18`,
-            border: `1px solid ${p.color}40`,
+            background: `rgba(${rgbVar(p.color)}, .12)`,
+            border: `1px solid rgba(${rgbVar(p.color)}, .32)`,
           }}
         >
           <i className={`ti ${p.icon}`} style={{ fontSize: 11, color: p.color }} aria-hidden="true" />
@@ -635,130 +544,30 @@ function ReadinessStrip({ kpis }: { kpis: Record<string, any> }) {
   );
 }
 
-// ── KPI layout helpers ────────────────────────────────────────────────────────
+// ── This Week mini stats (borderless — sits inside a card that already has a
+//    boundary, so another nested bordered box per stat would just be clutter) ──
 
-function KpiGroup({
-  title,
-  children,
-  defaultOpen = false,
-}: {
-  title: string;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  return (
-    <details open={defaultOpen || undefined} style={{ borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--surface)", padding: "12px 16px" }}>
-      <summary style={{
-        listStyle: "none",
-        cursor: "pointer",
-        userSelect: "none",
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "1px",
-        textTransform: "uppercase",
-        color: "var(--dim)",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        outline: "none",
-      }}>
-        <i className="ti ti-chevron-right" style={{ fontSize: 10 }} aria-hidden="true" />
-        {title}
-      </summary>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10, marginTop: 12 }}>
-        {children}
-      </div>
-    </details>
-  );
-}
-
-function Kpi({
-  label, sub, value, unit, badge, signed, decimals = 1, raw,
+function MiniStat({
+  label, value, note, valueColor, noteColor,
 }: {
   label: string;
-  sub?: string;
-  value: number | string | null | undefined;
-  unit?: string;
-  badge?: React.ReactNode;
-  signed?: boolean;
-  decimals?: number;
-  raw?: boolean;
+  value: React.ReactNode;
+  note?: React.ReactNode;
+  valueColor?: string;
+  noteColor?: string;
 }) {
-  const isEmpty = value == null;
-  let display: string;
-  if (raw) {
-    display = value != null ? String(value) : "—";
-  } else if (isEmpty) {
-    display = "—";
-  } else {
-    const num = Number(value);
-    const prefix = signed && num > 0 ? "+" : "";
-    display = `${prefix}${num.toFixed(decimals)}`;
-  }
   return (
-    <div className="kpi">
-      <div className="kpi-label">{label}{sub ? <span style={{ fontWeight: 400, color: "var(--dim)", marginLeft: 4 }}>{sub}</span> : null}</div>
-      <div className="kpi-value" style={{ fontSize: isEmpty ? 14 : undefined, color: isEmpty ? "var(--dim)" : undefined }}>
-        {display}
-        {!isEmpty && unit && <span className="kpi-unit">{unit}</span>}
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".4px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
+        {label}
       </div>
-      {badge && <div className="kpi-note">{badge}</div>}
+      <div style={{ fontSize: 17, fontWeight: 800, color: valueColor, lineHeight: 1.2 }}>{value}</div>
+      {note && <div style={{ fontSize: 11, color: noteColor ?? "var(--muted)", marginTop: 3 }}>{note}</div>}
     </div>
   );
 }
 
-// ── Badge helpers ─────────────────────────────────────────────────────────────
-
-function tsbBadge(tsb: number | null) {
-  if (tsb == null) return null;
-  if (tsb > 10)  return <span className="badge badge-green">Fresh</span>;
-  if (tsb > -10) return <span className="badge badge-blue">Balanced</span>;
-  if (tsb > -30) return <span className="badge badge-amber">Building</span>;
-  return <span className="badge badge-red">Fatigued</span>;
-}
-
-function acwrBadge(acwr: number | null) {
-  if (acwr == null) return null;
-  if (acwr > 1.5)  return <span className="badge badge-red">Danger</span>;
-  if (acwr > 1.3)  return <span className="badge badge-amber">High</span>;
-  if (acwr >= 0.8) return <span className="badge badge-green">Optimal</span>;
-  return <span className="badge badge-blue">Underload</span>;
-}
-
-function monotonyBadge(m: number | null) {
-  if (m == null) return null;
-  if (m > 2.0) return <span className="badge badge-amber">Monotonous</span>;
-  if (m > 1.5) return <span className="badge badge-blue">Moderate</span>;
-  return <span className="badge badge-green">Varied</span>;
-}
-
-function bodyBatteryBadge(v: number | null) {
-  if (v == null) return null;
-  if (v >= 60) return <span className="badge badge-green">Good</span>;
-  if (v >= 40) return <span className="badge badge-amber">Moderate</span>;
-  return <span className="badge badge-red">Depleted</span>;
-}
-
-function readinessBadge(score: number | null) {
-  if (score == null) return null;
-  if (score >= 70) return <span className="badge badge-green">Ready</span>;
-  if (score >= 40) return <span className="badge badge-amber">Moderate</span>;
-  return <span className="badge badge-red">Recover</span>;
-}
-
-function hrvBadge(hrv: number | null, low: number, high: number) {
-  if (hrv == null) return null;
-  if (hrv >= low && hrv <= high) return <span className="badge badge-green">Balanced</span>;
-  if (hrv < low)  return <span className="badge badge-amber">Below baseline</span>;
-  return <span className="badge badge-blue">Above baseline</span>;
-}
-
-function sleepBadge(hours: number | null) {
-  if (hours == null) return null;
-  if (hours >= 7.5) return <span className="badge badge-green">Good</span>;
-  if (hours >= 6)   return <span className="badge badge-amber">Ok</span>;
-  return <span className="badge badge-red">Short</span>;
-}
+// ── KPI layout helpers ────────────────────────────────────────────────────────
 
 function fmtRaceTime(secs: number): string {
   const h = Math.floor(secs / 3600);
@@ -769,49 +578,3 @@ function fmtRaceTime(secs: number): string {
     : `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function formatLTPace(minPerKm: number): string {
-  const m = Math.floor(minPerKm);
-  const s = Math.round((minPerKm - m) * 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatPrType(type: string | number | null): string {
-  // Garmin's raw personal-records API returns a numeric, undocumented typeId
-  // (not a descriptive string) — there's no reliable public mapping for it, so
-  // rather than guess and risk mislabeling a real record, show a generic label.
-  if (type == null || typeof type !== "string") return "Personal Record";
-  return type
-    .replace(/_/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .toLowerCase()
-    .replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function formatPrValue(type: string | number | null, value: number | null): string {
-  if (value == null) return "—";
-  const t = typeof type === "string" ? type.toLowerCase() : "";
-  if (t.includes("time") || t.includes("duration")) {
-    return fmtRaceTime(Math.round(value));
-  }
-  if (t.includes("distance") || t.includes("km") || t.includes("meter")) {
-    return value >= 1000 ? `${(value / 1000).toFixed(2)} km` : `${value} m`;
-  }
-  if (t.includes("speed") || t.includes("pace")) {
-    return `${value.toFixed(2)} m/s`;
-  }
-  if (t.includes("elevation") || t.includes("ascent")) {
-    return `${value.toFixed(0)} m`;
-  }
-  // Unknown/numeric type — unit unknown, so show a plain formatted number
-  // rather than guessing units.
-  return value % 1 === 0 ? value.toLocaleString() : value.toFixed(2);
-}
-
-function formatPrDate(raw: string | number | null): string {
-  // Garmin returns this as an epoch-ms number for some record types and an
-  // ISO string for others — normalize both through Date before formatting.
-  if (raw == null) return "—";
-  const date = new Date(raw);
-  if (isNaN(date.getTime())) return "—";
-  return formatShort(date.toISOString().slice(0, 10));
-}

@@ -12,13 +12,16 @@ export const SESSION_LABEL: Record<string, string> = {
   rest:     "Rest",
 };
 
+// bike intentionally does not use --green: green/red are reserved for good/bad and
+// up/down value judgments (readiness, surplus, PR hit) — a session type is a category,
+// not a judgment, so it gets its own identity color instead.
 export const SESSION_COLOR: Record<string, string> = {
   strength: "var(--accent)",
   run:      "var(--cyan)",
   race:     "var(--red)",
   cross:    "var(--amber)",
   swim:     "var(--blue)",
-  bike:     "var(--green)",
+  bike:     "var(--blue)",
   rest:     "var(--dim)",
 };
 
@@ -28,5 +31,5 @@ export const SESSION_BADGE: Record<string, string> = {
   race:     "badge badge-red",
   cross:    "badge badge-amber",
   swim:     "badge badge-blue",
-  bike:     "badge badge-green",
+  bike:     "badge badge-blue",
 };

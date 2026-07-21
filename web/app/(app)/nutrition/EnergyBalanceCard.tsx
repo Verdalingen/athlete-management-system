@@ -48,8 +48,8 @@ export function EnergyBalanceCard({ date, caloriesEaten }: Props) {
           <span style={{
             fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 8,
             color: isSurplus ? "var(--amber)" : "var(--green)",
-            background: isSurplus ? "rgba(255,204,102,.1)" : "rgba(56,217,150,.1)",
-            border: `1px solid ${isSurplus ? "rgba(255,204,102,.25)" : "rgba(56,217,150,.25)"}`,
+            background: isSurplus ? "rgba(var(--amber-rgb),.10)" : "rgba(var(--green-rgb),.10)",
+            border: `1px solid ${isSurplus ? "rgba(var(--amber-rgb),.25)" : "rgba(var(--green-rgb),.25)"}`,
           }}>
             {isSurplus ? "▲ Surplus" : "▼ Deficit"} {netLabel}
           </span>

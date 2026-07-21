@@ -5,41 +5,37 @@ import type { StrengthSession } from "@/lib/types";
 import type { WeightRecommendation } from "@/lib/strength";
 import { SessionDetailModal, type DayData } from "../SessionDetailModal";
 import { SESSION_LABEL, SESSION_COLOR } from "@/lib/session-theme";
+import { MONTH_NAMES, DAY_HEADERS, buildMonthCells, monthsInRange, type CalDay } from "@/lib/calendar";
+import { estimateDurationMinutes } from "@/lib/duration";
+import { formatDuration } from "@/lib/dates";
+
+// buildMonthCells always returns a Monday-start grid padded to a multiple of
+// 7, so every consecutive 7-cell chunk is exactly one calendar week (Mon-Sun)
+// — reused here to roll up planned minutes per session type per week. A week
+// that straddles two months is deliberately summed independently in each
+// month's grid (its own partial total per month), not unified across them —
+// this is a real calendar, grouped by month, so that week legitimately
+// appears twice, once per month it touches.
+function weekTypeTotals(
+  weekCells: CalDay[],
+  dayMap: Record<string, DayData>,
+  strengthMap: Record<string, StrengthSession>,
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const cell of weekCells) {
+    if (!cell.iso) continue;
+    const d = dayMap[cell.iso];
+    if (!d || d.is_rest) continue;
+    const strength = strengthMap[cell.iso];
+    const minutes = strength
+      ? Math.round(strength.estimated_duration_secs / 60)
+      : estimateDurationMinutes(d.description);
+    if (minutes) totals[d.session_type] = (totals[d.session_type] ?? 0) + minutes;
+  }
+  return totals;
+}
 
 export type { DayData };
-
-interface CalDay {
-  iso: string | null;
-  day: number | null;
-}
-
-const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DAY_HEADERS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-
-function buildMonthCells(year: number, month: number): CalDay[] {
-  const first = new Date(year, month, 1);
-  const last  = new Date(year, month + 1, 0);
-  const leadBlanks = (first.getDay() + 6) % 7;
-  const cells: CalDay[] = [];
-  for (let i = 0; i < leadBlanks; i++) cells.push({ iso: null, day: null });
-  for (let d = 1; d <= last.getDate(); d++) {
-    const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    cells.push({ iso, day: d });
-  }
-  while (cells.length % 7 !== 0) cells.push({ iso: null, day: null });
-  return cells;
-}
-
-function monthsInRange(start: string, end: string): { year: number; month: number }[] {
-  const e = new Date(end);
-  const months: { year: number; month: number }[] = [];
-  const cur = new Date(new Date(start).getFullYear(), new Date(start).getMonth(), 1);
-  while (cur <= e) {
-    months.push({ year: cur.getFullYear(), month: cur.getMonth() });
-    cur.setMonth(cur.getMonth() + 1);
-  }
-  return months;
-}
 
 export function PlanCalendar({
   startDate,
@@ -72,7 +68,7 @@ export function PlanCalendar({
   return (
     <div>
 
-      {/* ── Calendar grid ── */}
+      {/* ── Calendar grid, grouped by month ── */}
       <div>
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
           {months.map(({ year, month }) => {
@@ -82,40 +78,57 @@ export function PlanCalendar({
                 <div className="cal-month-label">{MONTH_NAMES[month]} {year}</div>
                 <div className="cal-grid">
                   {DAY_HEADERS.map(h => <div key={h} className="cal-header">{h}</div>)}
-                  {cells.map((cell, i) => {
-                    if (!cell.iso) return <div key={i} className="cal-day is-blank" />;
-                    const d = dayMap[cell.iso];
-                    const isToday    = cell.iso === today;
-                    const isPast     = cell.iso < today;
-                    const isSelected = cell.iso === selectedDate;
-                    const cls = [
-                      "cal-day",
-                      d               ? "has-session"  : "",
-                      d?.is_key       ? "is-key"       : "",
-                      d?.is_rest      ? "is-rest"      : "",
-                      d?.completedActivities?.length ? "is-completed" : "",
-                      isToday         ? "is-today"     : "",
-                      isPast && !isToday ? "is-past"   : "",
-                    ].filter(Boolean).join(" ");
-
+                  <div className="cal-header" />
+                  {Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7)).map((weekCells, w) => {
+                    const totals = weekTypeTotals(weekCells, dayMap, strengthMap);
+                    const types = Object.keys(totals);
                     return (
-                      <div
-                        key={cell.iso}
-                        className={cls}
-                        onClick={() => toggle(cell.iso!)}
-                        style={{
-                          cursor: d ? "pointer" : "default",
-                          outline: isSelected ? "2px solid var(--accent)" : undefined,
-                          outlineOffset: isSelected ? "1px" : undefined,
-                        }}
-                      >
-                        <div className={`cal-num${isToday ? " today" : ""}`}>{cell.day}</div>
-                        {d && !d.is_rest && (
-                          <>
-                            <div className="cal-focus">{d.focus ?? d.session_type}</div>
-                            <div className="cal-dot" style={{ background: d.completedActivities?.length ? "var(--green)" : (SESSION_COLOR[d.session_type] ?? "var(--dim)") }} />
-                          </>
-                        )}
+                      <div key={w} style={{ display: "contents" }}>
+                        {weekCells.map((cell, i) => {
+                          if (!cell.iso) return <div key={i} className="cal-day is-blank" />;
+                          const d = dayMap[cell.iso];
+                          const isToday    = cell.iso === today;
+                          const isPast     = cell.iso < today;
+                          const isSelected = cell.iso === selectedDate;
+                          const cls = [
+                            "cal-day",
+                            d               ? "has-session"  : "",
+                            d?.is_key       ? "is-key"       : "",
+                            d?.is_rest      ? "is-rest"      : "",
+                            d?.completedActivities?.length ? "is-completed" : "",
+                            isToday         ? "is-today"     : "",
+                            isPast && !isToday ? "is-past"   : "",
+                          ].filter(Boolean).join(" ");
+
+                          return (
+                            <div
+                              key={cell.iso}
+                              className={cls}
+                              onClick={() => toggle(cell.iso!)}
+                              style={{
+                                cursor: d ? "pointer" : "default",
+                                outline: isSelected ? "2px solid var(--accent)" : undefined,
+                                outlineOffset: isSelected ? "1px" : undefined,
+                              }}
+                            >
+                              <div className={`cal-num${isToday ? " today" : ""}`}>{cell.day}</div>
+                              {d && !d.is_rest && (
+                                <>
+                                  <div className="cal-focus">{d.focus ?? d.session_type}</div>
+                                  <div className="cal-dot" style={{ background: d.completedActivities?.length ? "var(--green)" : (SESSION_COLOR[d.session_type] ?? "var(--dim)") }} />
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div className="cal-week-summary">
+                          {types.map(type => (
+                            <span key={type} className="cal-week-summary-item">
+                              <span className="cal-week-summary-dot" style={{ background: SESSION_COLOR[type] ?? "var(--dim)" }} />
+                              {SESSION_LABEL[type] ?? type} {formatDuration(totals[type] * 60)}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     );
                   })}

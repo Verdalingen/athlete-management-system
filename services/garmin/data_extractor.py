@@ -1114,6 +1114,12 @@ class TriathlonCoachDataExtractor(DataExtractor):
                         "avg_overnight_hrv": _to_float(sleep_data.get("avgOvernightHrv")),
                         # 'hrv_status' intentionally omitted as before
                         "resting_heart_rate": _to_int(sleep_data.get("restingHeartRate")),
+                        # Stress measured specifically during the sleep window, distinct from
+                        # the all-day stress.avg_level below — not yet verified against a live
+                        # payload (no existing code in this file reads a sleep-nested stress
+                        # field), so double-check this key is actually populated after the
+                        # first real sync rather than trusting it silently returns non-null.
+                        "stress_avg": _to_int(daily_sleep.get("avgSleepStress")),
                     },
                     stress={
                         "max_level": _to_int(stress_data.get("maxStressLevel")),
@@ -1352,8 +1358,42 @@ class TriathlonCoachDataExtractor(DataExtractor):
             uncouple_days=uncouple_days,
         )
 
+    @staticmethod
+    def _nearest_body_battery_level(readings: list[Any], target_ts: float) -> int | None:
+        """Find the reading in a bodyBatteryValuesArray closest to target_ts.
+
+        Each reading is `[timestamp, level]` (the shape already relied on by
+        the end-of-day extraction below, which is field-tested — `readings[-1][1]`
+        is what's currently rendering real Body Battery values on the dashboard).
+        `target_ts` is assumed to be in the same units as the reading timestamps
+        (unverified — check after the first real sync that overnight_gain values
+        look sane, not e.g. always picking the first/last reading due to a unit
+        mismatch between the sleep timestamp and the body-battery timeline).
+        """
+        best_level: int | None = None
+        best_diff: float | None = None
+        for item in readings:
+            ts = item[0] if isinstance(item, (list, tuple)) and len(item) > 0 else (
+                item.get("timestamp") if isinstance(item, dict) else None
+            )
+            level = item[1] if isinstance(item, (list, tuple)) and len(item) > 1 else (
+                item.get("value") if isinstance(item, dict) else None
+            )
+            if ts is None or level is None:
+                continue
+            diff = abs(float(ts) - target_ts)
+            if best_diff is None or diff < best_diff:
+                best_diff = diff
+                best_level = _to_int(level)
+        return best_level
+
     def get_body_battery(self, start_date: date, end_date: date) -> list[dict[str, Any]]:
-        """Return one entry per day with the end-of-day body battery level."""
+        """Return one entry per day with the end-of-day body battery level, plus
+        the overnight recharge (wake level minus sleep-start level) correlated
+        against that day's sleep window — used by SicknessWatchCard, since a
+        single absolute Body Battery number is far less informative than
+        whether last night's recharge was lower than this person's own norm.
+        """
         raw: Any = self._call_api(
             self.garmin.client.get_body_battery,
             start_date.isoformat(), end_date.isoformat(),
@@ -1366,13 +1406,28 @@ class TriathlonCoachDataExtractor(DataExtractor):
                 continue
             cal_date = day_entry.get("date") or day_entry.get("calendarDate")
             readings = day_entry.get("bodyBatteryValuesArray") or day_entry.get("charged") or []
+            end_of_day = None
+            overnight_gain = None
             if readings and isinstance(readings, list):
                 # Last reading of the day is the end-of-day value
                 last = readings[-1]
                 level = last[1] if isinstance(last, (list, tuple)) and len(last) > 1 else (
                     last.get("value") if isinstance(last, dict) else None
                 )
-                result.append({"date": cal_date, "end_of_day": _to_int(level)})
+                end_of_day = _to_int(level)
+
+                if cal_date:
+                    sleep_data = self._get_sleep_data_cached(cal_date)
+                    daily_sleep = _dg(sleep_data, "dailySleepDTO", {}) or {}
+                    sleep_start = daily_sleep.get("sleepStartTimestampGMT") or daily_sleep.get("sleepStartTimestampLocal")
+                    sleep_end = daily_sleep.get("sleepEndTimestampGMT") or daily_sleep.get("sleepEndTimestampLocal")
+                    if sleep_start is not None and sleep_end is not None:
+                        start_level = self._nearest_body_battery_level(readings, float(sleep_start))
+                        wake_level = self._nearest_body_battery_level(readings, float(sleep_end))
+                        if start_level is not None and wake_level is not None:
+                            overnight_gain = wake_level - start_level
+
+            result.append({"date": cal_date, "end_of_day": end_of_day, "overnight_gain": overnight_gain})
         return result
 
     def get_training_readiness(self, end_date: date) -> dict[str, Any] | None:

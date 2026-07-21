@@ -29,3 +29,24 @@ export async function getUserId(): Promise<string> {
   if (!user) throw new Error("Not authenticated");
   return user.id;
 }
+
+// First name for the dashboard greeting — falls back through OAuth metadata to the
+// email's local part, since there's no dedicated profile "name" field today.
+export async function getUserFirstName(): Promise<string> {
+  const cookieStore = await cookies();
+  const supabase = createSSRClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    }
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  const fullName: string | undefined = user?.user_metadata?.full_name ?? user?.user_metadata?.name;
+  if (fullName) return fullName.split(" ")[0];
+  if (user?.email) return user.email.split("@")[0];
+  return "there";
+}

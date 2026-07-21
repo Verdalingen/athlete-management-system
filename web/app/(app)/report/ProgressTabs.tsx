@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useRef } from "react";
+import type { CompletedActivity } from "@/lib/types";
+import { ActivityHeatmap } from "../ActivityHeatmap";
 
 export interface TrendPoint {
   date: string;
@@ -786,7 +788,7 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
 // ── Main ProgressTabs ─────────────────────────────────────────────────────────
 
 export default function ProgressTabs({
-  weeklyReview, trendSeries, analysisHtml, planningHtml, latestAnalysisDate, events,
+  weeklyReview, trendSeries, analysisHtml, planningHtml, latestAnalysisDate, events, completedActivities,
 }: {
   weeklyReview: { summary_html: string; week_start: string } | null;
   trendSeries: TrendSeries[];
@@ -794,6 +796,7 @@ export default function ProgressTabs({
   planningHtml: string | null;
   latestAnalysisDate: string | null;
   events: RaceEvent[];
+  completedActivities: CompletedActivity[];
 }) {
   const hasAnalysis = !!(analysisHtml || planningHtml);
   const [tab, setTab] = useState<"week" | "trends" | "analysis">("trends");
@@ -855,6 +858,7 @@ export default function ProgressTabs({
         activeSeries.length > 0 ? (
           <>
             {hasPMC && <PMCChart ctlData={ctlSeries!.data} atlData={atlSeries!.data} tsbData={tsbSeries!.data} events={events} />}
+            <ActivityHeatmap activities={completedActivities} />
             <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 12 }}>Colored dots show zone status · click any chart to expand</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
               {gridSeries.map((s, i) => (

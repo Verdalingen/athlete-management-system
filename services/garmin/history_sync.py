@@ -64,11 +64,13 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
         if d and "vo2max_cycling" not in by_date.get(d, {}):
             row(d)["vo2max_cycling"] = entry.get("value")
 
-    # ── Body battery (end-of-day level, typically last 56 days) ───────────────
+    # ── Body battery (end-of-day level + overnight recharge, typically last 56 days) ──
     for entry in garmin_data.get("body_battery") or []:
         d = entry.get("date")
         if d:
-            row(d)["body_battery"] = entry.get("end_of_day")
+            r = row(d)
+            r["body_battery"] = entry.get("end_of_day")
+            r["body_battery_overnight_gain"] = entry.get("overnight_gain")
 
     # ── Recovery indicators: sleep, HRV, RHR, stress (typically last 56 days) ─
     for ri in garmin_data.get("recovery_indicators") or []:
@@ -84,9 +86,10 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
         r["sleep_score"]   = qual.get("overall_score")
         r["sleep_deep_h"]  = dur.get("deep")
         r["sleep_rem_h"]   = dur.get("rem")
-        r["hrv_overnight"] = sleep.get("avg_overnight_hrv")
-        r["rhr"]           = sleep.get("resting_heart_rate")
-        r["stress_avg"]    = stress.get("avg_level")
+        r["hrv_overnight"]   = sleep.get("avg_overnight_hrv")
+        r["rhr"]             = sleep.get("resting_heart_rate")
+        r["stress_avg"]      = stress.get("avg_level")
+        r["sleep_stress_avg"] = sleep.get("stress_avg")
 
     # ── Body weight (from body composition API) ────────────────────────────────
     body_metrics = garmin_data.get("body_metrics") or {}
@@ -96,7 +99,7 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
         if d:
             row(d)["weight_kg"] = entry.get("weight")
 
-    # ── Daily caloric expenditure (Garmin get_stats, per-day list) ─────────────
+    # ── Daily caloric expenditure + respiration (Garmin get_stats, per-day list) ──
     for entry in garmin_data.get("daily_stats") or []:
         d = entry.get("date")
         if d:
@@ -104,6 +107,7 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
             r["total_calories"] = entry.get("total_calories")
             r["active_calories"] = entry.get("active_calories")
             r["bmr_calories"] = entry.get("bmr_calories")
+            r["respiration_avg"] = entry.get("respiration_average")
 
     return list(by_date.values())
 

@@ -1,7 +1,7 @@
 import type React from "react";
 
 export const ZONE_COLOR: Record<string, string> = {
-  Z1: "rgba(255,255,255,.35)",
+  Z1: "var(--dim)",
   Z2: "var(--cyan)",
   Z3: "var(--green)",
   Z4: "var(--amber)",
@@ -33,7 +33,7 @@ export function WorkoutStructure({ description }: { description: string }) {
   if (phases.length === 1) {
     return (
       <div style={{
-        background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)",
+        background: "var(--overlay-2)", border: "1px solid var(--border)",
         borderRadius: 8, padding: "12px 14px",
         fontSize: 13, lineHeight: 1.6, color: "var(--text)",
       }}>
@@ -44,7 +44,7 @@ export function WorkoutStructure({ description }: { description: string }) {
 
   return (
     <div style={{
-      background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)",
+      background: "var(--overlay-1)", border: "1px solid var(--border)",
       borderRadius: 8, overflow: "hidden",
     }}>
       {phases.map((phase, i) => (
@@ -53,12 +53,12 @@ export function WorkoutStructure({ description }: { description: string }) {
           style={{
             display: "flex", alignItems: "center", gap: 12,
             padding: "11px 14px",
-            borderBottom: i < phases.length - 1 ? "1px solid rgba(255,255,255,.06)" : "none",
+            borderBottom: i < phases.length - 1 ? "1px solid var(--border)" : "none",
           }}
         >
           <div style={{
             width: 30, height: 30, borderRadius: 7, flexShrink: 0,
-            background: "rgba(255,255,255,.06)",
+            background: "var(--overlay-3)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <i className={`ti ${phaseIcon(phase)}`} style={{ fontSize: 14, color: "var(--muted)" }} />

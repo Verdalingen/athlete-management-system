@@ -1,12 +1,15 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
+import type { CompletedActivity } from "@/lib/types";
 import ProgressTabs, { type TrendSeries, type ZoneBand, type ZoneLine } from "./ProgressTabs";
 
 export default async function ProgressPage() {
   const sb = createServerClient();
   const uid = await getUserId();
 
-  const [latestRes, dailyMetricsRes, fallbackTrendRes, weeklyReviewRes, athleteProfile] = await Promise.all([
+  const activityHistoryStart = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+
+  const [latestRes, dailyMetricsRes, fallbackTrendRes, weeklyReviewRes, athleteProfile, completedActivitiesRes, benchAndRaceRes] = await Promise.all([
     sb
       .from("analyses")
       .select("analysis_html, planning_html, report_date")
@@ -37,13 +40,31 @@ export default async function ProgressPage() {
       .limit(1),
 
     getAthleteProfile(),
+
+    sb
+      .from("completed_activities")
+      .select("*")
+      .eq("user_id", uid)
+      .gte("date", activityHistoryStart),
+
+    // Long-term strength/race trend — bench_e1rm_kg and predicted_5k_secs are
+    // per-report snapshot columns on `analyses` (same table the dashboard
+    // reads just the latest row from for its Goals cards), so the full
+    // history doubles as a ready-made time series with no new storage.
+    sb
+      .from("analyses")
+      .select("report_date, bench_e1rm_kg, predicted_5k_secs")
+      .eq("user_id", uid)
+      .order("report_date", { ascending: true }),
   ]);
 
   const latest = latestRes.data?.[0] ?? null;
+  const completedActivities: CompletedActivity[] = completedActivitiesRes.data ?? [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dailyRows: Record<string, any>[] = dailyMetricsRes.data ?? [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fallbackRows: { report_date: string; kpis: Record<string, any> }[] = fallbackTrendRes.data ?? [];
+  const benchAndRaceRows: { report_date: string; bench_e1rm_kg: number | null; predicted_5k_secs: number | null }[] = benchAndRaceRes.data ?? [];
   const weeklyReview = weeklyReviewRes.data?.[0] ?? null;
   const events = (athleteProfile?.events ?? []).filter(
     (e: { date: string }) => e.date >= new Date().toISOString().slice(0, 10)
@@ -376,6 +397,23 @@ export default async function ProgressPage() {
     ];
   }
 
+  // ── Bench e1RM (Epley) + predicted 5K — long-term goal trends, independent
+  // of which branch built the series above (they come from `analyses`, not
+  // `daily_metrics`). No manual "enough data" gate here — ProgressTabs
+  // already drops any series with fewer than 3 non-null points
+  // (`activeSeries` filter), so duplicating that threshold here would just
+  // be a second place for it to drift out of sync.
+  trendSeries.push({
+    label: "Bench e1RM (Epley)",
+    unit: "kg", color: "#c084fc", decimals: 1, higherIsBetter: true,
+    data: benchAndRaceRows.map(r => ({ date: r.report_date, value: r.bench_e1rm_kg })),
+  });
+  trendSeries.push({
+    label: "Predicted 5K",
+    unit: "min", color: "#38bdf8", decimals: 1, higherIsBetter: false,
+    data: benchAndRaceRows.map(r => ({ date: r.report_date, value: r.predicted_5k_secs != null ? r.predicted_5k_secs / 60 : null })),
+  });
+
   return (
     <div className="page">
       <div style={{ marginBottom: 24 }}>
@@ -397,6 +435,7 @@ export default async function ProgressPage() {
         planningHtml={latest?.planning_html ?? null}
         latestAnalysisDate={latest?.report_date ?? null}
         events={events}
+        completedActivities={completedActivities}
       />
     </div>
   );
