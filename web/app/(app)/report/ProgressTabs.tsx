@@ -45,10 +45,10 @@ export interface RaceEvent {
 // ── Shared constants ──────────────────────────────────────────────────────────
 
 const SEV: Record<NonNullable<ZoneBand["severity"]>, string> = {
-  optimal: "#22c55e",
-  warning: "#f59e0b",
-  danger:  "#ef4444",
-  neutral: "#94a3b8",
+  optimal: "var(--green)",
+  warning: "var(--amber)",
+  danger:  "var(--red)",
+  neutral: "var(--dim)",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ function getZoneSeverity(value: number | null, bands?: ZoneBand[]): ZoneBand["se
   return b?.severity ?? null;
 }
 
-function getZoneColor(value: number, bands?: ZoneBand[], fallback = "#94a3b8"): string {
+function getZoneColor(value: number, bands?: ZoneBand[], fallback = "var(--dim)"): string {
   const sev = getZoneSeverity(value, bands);
   return sev ? SEV[sev] : fallback;
 }
@@ -85,7 +85,7 @@ function coloredSegments(
   xS: (i: number) => number,
   yS: (v: number) => number,
   bands?: ZoneBand[],
-  fallback = "#94a3b8",
+  fallback = "var(--dim)",
 ): Array<{ d: string; color: string }> {
   return points.slice(0, -1).map((p, i) => ({
     d: `M ${xS(i).toFixed(1)} ${yS(p.value).toFixed(1)} L ${xS(i + 1).toFixed(1)} ${yS(points[i + 1].value).toFixed(1)}`,
@@ -133,7 +133,7 @@ function ZoneBands({
               <text
                 x={plotLeft + 7} y={y1 + Math.min(14, (y2 - y1) / 2 + 4)}
                 fontSize={10} fontWeight={700}
-                fill={band.severity ? SEV[band.severity] : "#94a3b8"}
+                fill={band.severity ? SEV[band.severity] : "var(--dim)"}
                 opacity={0.9}
               >
                 {band.chartLabel}
@@ -156,13 +156,13 @@ function EventMarker({
   return (
     <g>
       <line x1={x} y1={top} x2={x} y2={bottom}
-        stroke={isA ? "#f59e0b" : "#94a3b8"}
+        stroke={isA ? "var(--amber)" : "var(--dim)"}
         strokeWidth={isA ? 1.5 : 1}
         strokeDasharray="5,3" />
       <rect x={x - 1} y={top} width={name.length * 5.5 + 6} height={13}
-        fill={isA ? "#f59e0b22" : "#94a3b822"} rx={2} />
+        fill={isA ? "rgba(var(--amber-rgb),.13)" : "rgba(var(--dim-rgb),.13)"} rx={2} />
       <text x={x + 3} y={top + 9.5} fontSize={9} fontWeight={700}
-        fill={isA ? "#f59e0b" : "#94a3b8"}>
+        fill={isA ? "var(--amber)" : "var(--dim)"}>
         {name.length > 14 ? name.slice(0, 13) + "…" : name}
       </text>
     </g>
@@ -307,10 +307,10 @@ export function PMCChart({
           {hov ? (
             <div style={{ display: "flex", gap: 16, alignItems: "baseline", flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, color: "var(--dim)" }}>{fmtDate(hov.date, true)}</span>
-              {hov.ctl != null && <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: "#60a5fa" }}>CTL {hov.ctl.toFixed(1)}</span>}
-              {hov.atl != null && <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: "#f87171" }}>ATL {hov.atl.toFixed(1)}</span>}
+              {hov.ctl != null && <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: "var(--accent)" }}>CTL {hov.ctl.toFixed(1)}</span>}
+              {hov.atl != null && <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: "var(--red)" }}>ATL {hov.atl.toFixed(1)}</span>}
               {hov.tsb != null && (
-                <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: hovTsbSev ? SEV[hovTsbSev] : "#94a3b8", fontWeight: 700 }}>
+                <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: hovTsbSev ? SEV[hovTsbSev] : "var(--dim)", fontWeight: 700 }}>
                   TSB {hov.tsb > 0 ? "+" : ""}{hov.tsb.toFixed(1)}
                   {hovTsbSev && <span style={{ fontSize: 10, marginLeft: 5, fontFamily: "sans-serif" }}>
                     ({hovTsbSev === "optimal" ? "race-ready" : hovTsbSev === "warning" ? "caution" : "risk"})
@@ -325,10 +325,10 @@ export function PMCChart({
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--muted)", alignItems: "center" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <svg width="20" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#60a5fa" strokeWidth="2.5" /></svg> CTL
+              <svg width="20" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="var(--accent)" strokeWidth="2.5" /></svg> CTL
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <svg width="20" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#f87171" strokeWidth="2" strokeDasharray="4,2" /></svg> ATL
+              <svg width="20" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="var(--red)" strokeWidth="2" strokeDasharray="4,2" /></svg> ATL
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <div style={{ width: 10, height: 10, borderRadius: 2, background: "rgba(34,197,94,0.55)" }} /> TSB+
@@ -377,8 +377,8 @@ export function PMCChart({
             return <EventMarker key={i} x={xS(idx)} name={ev.name} priority={ev.priority} top={TOP_PAD.top} bottom={TOP_PAD.top + topPlotH} />;
           })}
 
-          {ctlLine && <path d={ctlLine} fill="none" stroke="#60a5fa" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
-          {atlLine && <path d={atlLine} fill="none" stroke="#f87171" strokeWidth={2} strokeDasharray="6,3" strokeLinejoin="round" strokeLinecap="round" />}
+          {ctlLine && <path d={ctlLine} fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />}
+          {atlLine && <path d={atlLine} fill="none" stroke="var(--red)" strokeWidth={2} strokeDasharray="6,3" strokeLinejoin="round" strokeLinecap="round" />}
 
           {hoverIdx != null && (() => {
             const hx = xS(hoverIdx);
@@ -387,8 +387,8 @@ export function PMCChart({
               <>
                 <line x1={hx} y1={TOP_PAD.top} x2={hx} y2={TOP_PAD.top + topPlotH}
                   stroke="var(--muted)" strokeWidth={1} strokeDasharray="3,3" opacity={0.4} />
-                {ctlV != null && <circle cx={hx} cy={yL(ctlV)} r={4} fill="#60a5fa" stroke="var(--surface)" strokeWidth={2} />}
-                {atlV != null && <circle cx={hx} cy={yL(atlV)} r={4} fill="#f87171" stroke="var(--surface)" strokeWidth={2} />}
+                {ctlV != null && <circle cx={hx} cy={yL(ctlV)} r={4} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />}
+                {atlV != null && <circle cx={hx} cy={yL(atlV)} r={4} fill="var(--red)" stroke="var(--surface)" strokeWidth={2} />}
               </>
             );
           })()}
@@ -414,7 +414,7 @@ export function PMCChart({
                 stroke="var(--border)" strokeWidth={0.5}
                 strokeDasharray={v === 0 ? undefined : "3,6"} />
               <text x={BOT_PAD.left - 6} y={yTC(v) + 4} textAnchor="end" fontSize={10}
-                fill={v === 0 ? "var(--muted)" : v < 0 ? "#ef4444" : "#22c55e"}
+                fill={v === 0 ? "var(--muted)" : v < 0 ? "var(--red)" : "var(--green)"}
                 fontWeight={v === 0 ? 700 : 400}>
                 {v > 0 ? `+${v}` : v}
               </text>
@@ -426,7 +426,7 @@ export function PMCChart({
 
           {tsbPts.map(p => {
             const bx = tsbXS(p.idx) - barW / 2;
-            const barColor = getZoneColor(p.value, tsbBands, p.value >= 0 ? "#22c55e" : "#ef4444");
+            const barColor = getZoneColor(p.value, tsbBands, p.value >= 0 ? "var(--green)" : "var(--red)");
             const barTop = p.value >= 0 ? yTC(p.value) : tsbZeroY;
             const barBot = p.value >= 0 ? tsbZeroY : yTC(p.value);
             return (
@@ -452,7 +452,7 @@ export function PMCChart({
                 <line x1={hx} y1={BOT_PAD.top} x2={hx} y2={BOT_PAD.top + botPlotH}
                   stroke="var(--muted)" strokeWidth={1} strokeDasharray="3,3" opacity={0.4} />
                 {tsbV != null && <circle cx={hx} cy={yTC(tsbV)} r={4}
-                  fill={hovTsbSev ? SEV[hovTsbSev] : "#94a3b8"} stroke="var(--surface)" strokeWidth={2} />}
+                  fill={hovTsbSev ? SEV[hovTsbSev] : "var(--dim)"} stroke="var(--surface)" strokeWidth={2} />}
               </>
             );
           })()}
@@ -462,7 +462,7 @@ export function PMCChart({
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
         {tsbBands.filter(b => b.label && b.severity).map((b, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 10, height: 10, borderRadius: 2, background: b.severity ? SEV[b.severity] : "#94a3b8", opacity: 0.8 }} />
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: b.severity ? SEV[b.severity] : "var(--dim)", opacity: 0.8 }} />
             <span style={{ fontSize: 10, color: "var(--muted)" }}>TSB: {b.label}</span>
           </div>
         ))}
@@ -493,8 +493,8 @@ function CompactChart({ series, selected, onClick }: { series: TrendSeries; sele
 
   const rising = (delta ?? 0) > 0.01, falling = (delta ?? 0) < -0.01;
   let deltaColor = "var(--dim)";
-  if (series.higherIsBetter === true)  deltaColor = rising ? "#22c55e" : falling ? "#ef4444" : "var(--dim)";
-  if (series.higherIsBetter === false) deltaColor = falling ? "#22c55e" : rising ? "#ef4444" : "var(--dim)";
+  if (series.higherIsBetter === true)  deltaColor = rising ? "var(--green)" : falling ? "var(--red)" : "var(--dim)";
+  if (series.higherIsBetter === false) deltaColor = falling ? "var(--green)" : rising ? "var(--red)" : "var(--dim)";
 
   return (
     <div onClick={onClick} style={{
@@ -656,7 +656,7 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
                 {points.at(-1)?.value.toFixed(dec)}{series.unit ? ` ${series.unit}` : ""}
               </span>
               {" "}· hover to inspect · {points.length} days
-              {anomalyIdxs.length > 0 && <span style={{ color: "#ef4444", marginLeft: 8 }}>· {anomalyIdxs.length} anomalies flagged</span>}
+              {anomalyIdxs.length > 0 && <span style={{ color: "var(--red)", marginLeft: 8 }}>· {anomalyIdxs.length} anomalies flagged</span>}
             </div>
           )}
         </div>
@@ -718,7 +718,7 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
         {/* BAR CHART rendering */}
         {isBar && points.map((p, i) => {
           const bx = xS(i) - barW / 2;
-          const barColor = getZoneColor(p.value, series.zoneBands, p.value >= 0 ? "#22c55e" : "#ef4444");
+          const barColor = getZoneColor(p.value, series.zoneBands, p.value >= 0 ? "var(--green)" : "var(--red)");
           const barTop = p.value >= 0 ? yC(p.value) : zeroY;
           const barBot = p.value >= 0 ? zeroY : yC(p.value);
           return (
@@ -742,9 +742,9 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
           const ax = xS(i), ay = yS(points[i].value);
           return (
             <g key={i}>
-              <circle cx={ax} cy={ay} r={6} fill="rgba(239,68,68,0.15)" stroke="#ef4444" strokeWidth={1.5} />
-              <line x1={ax} y1={ay - 8} x2={ax} y2={ay - 18} stroke="#ef4444" strokeWidth={1.5} />
-              <rect x={ax - 17} y={ay - 30} width={34} height={13} fill="#ef4444" rx={2} />
+              <circle cx={ax} cy={ay} r={6} fill="rgba(var(--red-rgb),.15)" stroke="var(--red)" strokeWidth={1.5} />
+              <line x1={ax} y1={ay - 8} x2={ax} y2={ay - 18} stroke="var(--red)" strokeWidth={1.5} />
+              <rect x={ax - 17} y={ay - 30} width={34} height={13} fill="var(--red)" rx={2} />
               <text x={ax} y={ay - 21} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="white">anomaly</text>
             </g>
           );

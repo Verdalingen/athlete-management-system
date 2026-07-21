@@ -238,7 +238,7 @@ export default async function WeekPage() {
 
               {/* ── Purpose & Adaptation ── */}
               {!d.is_rest && (meta.purpose || meta.adaptation) && (
-                <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                   {meta.purpose && (
                     <div>
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
@@ -248,7 +248,7 @@ export default async function WeekPage() {
                     </div>
                   )}
                   {meta.adaptation && (
-                    <div style={{ background: "rgba(255,180,0,.06)", border: "1px solid rgba(255,180,0,.15)", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ background: "rgba(var(--amber-rgb),.06)", border: "1px solid rgba(var(--amber-rgb),.15)", borderRadius: 8, padding: "10px 14px" }}>
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>
                         If you&apos;re tired
                       </div>

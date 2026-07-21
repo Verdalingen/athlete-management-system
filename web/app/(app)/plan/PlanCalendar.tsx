@@ -154,7 +154,7 @@ export function PlanCalendar({
               ))}
               {hasKey && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(255,204,102,.50)", background: "rgba(255,204,102,.07)" }} />
+                  <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(var(--amber-rgb),.50)", background: "rgba(var(--amber-rgb),.07)" }} />
                   Key session
                 </div>
               )}

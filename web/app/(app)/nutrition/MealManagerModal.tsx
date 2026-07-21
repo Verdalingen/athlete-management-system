@@ -130,7 +130,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
             </button>
             <button
               onClick={onBuild}
-              style={{ background: "rgba(255,204,102,.12)", border: "1px solid rgba(255,204,102,.3)", color: "var(--amber)", borderRadius: 8, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+              style={{ background: "rgba(var(--amber-rgb),.12)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: 8, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
             >
               <i className="ti ti-plus" style={{ fontSize: 13 }} aria-hidden="true" />
               New meal
@@ -167,8 +167,8 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                 style={{
                   flexShrink: 0, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600,
                   cursor: "pointer", border: "1px solid",
-                  background: activeCategory === tab ? "rgba(255,204,102,.15)" : "none",
-                  borderColor: activeCategory === tab ? "rgba(255,204,102,.5)" : "var(--border)",
+                  background: activeCategory === tab ? "rgba(var(--amber-rgb),.15)" : "none",
+                  borderColor: activeCategory === tab ? "rgba(var(--amber-rgb),.5)" : "var(--border)",
                   color: activeCategory === tab ? "var(--amber)" : "var(--dim)",
                 }}
               >
@@ -201,7 +201,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
               <div key={category}>
                 {/* Category section header (only in "All" view with >1 category) */}
                 {activeCategory === "All" && grouped.length > 1 && (
-                  <div style={{ padding: "10px 18px 4px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em", borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,.02)" }}>
+                  <div style={{ padding: "10px 18px 4px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em", borderBottom: "1px solid var(--border)", background: "rgba(var(--overlay-rgb),.02)" }}>
                     {category}
                   </div>
                 )}
@@ -296,7 +296,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                               onClick={() => onLog(meal)}
                               disabled={isLogging || !!loggingMealId}
                               title={activeMealLabel ? `Log 1 serving to ${activeMealLabel}` : "Log 1 serving"}
-                              style={{ background: "rgba(255,204,102,.12)", border: "1px solid rgba(255,204,102,.3)", color: "var(--amber)", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 11, fontWeight: 700, opacity: loggingMealId && !isLogging ? 0.5 : 1 }}
+                              style={{ background: "rgba(var(--amber-rgb),.12)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 11, fontWeight: 700, opacity: loggingMealId && !isLogging ? 0.5 : 1 }}
                             >
                               {isLogging ? "…" : "+ Log"}
                             </button>
@@ -305,7 +305,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                             </button>
                             {confirmDelete === meal.id ? (
                               <div style={{ display: "flex", gap: 4 }}>
-                                <button onClick={() => confirmAndDelete(meal.id)} disabled={deleting === meal.id} style={{ background: "rgba(255,92,122,.15)", border: "1px solid rgba(255,92,122,.4)", color: "var(--red)", borderRadius: 6, cursor: "pointer", padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>
+                                <button onClick={() => confirmAndDelete(meal.id)} disabled={deleting === meal.id} style={{ background: "rgba(var(--red-rgb),.15)", border: "1px solid rgba(var(--red-rgb),.4)", color: "var(--red)", borderRadius: 6, cursor: "pointer", padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>
                                   {deleting === meal.id ? "…" : "Delete"}
                                 </button>
                                 <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", padding: "4px 8px", fontSize: 11 }}>
@@ -328,11 +328,11 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                         const scale = makingPortions / recipeServings;
                         const isDefault = makingPortions === recipeServings;
                         return (
-                        <div style={{ background: "rgba(255,255,255,.02)", borderTop: "1px solid rgba(255,255,255,.05)", padding: "8px 18px 12px 44px" }}>
+                        <div style={{ background: "rgba(var(--overlay-rgb),.02)", borderTop: "1px solid rgba(var(--overlay-rgb),.05)", padding: "8px 18px 12px 44px" }}>
                           {(meal.prep_minutes || meal.source === "imported_url") && (
                             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
                               {meal.prep_minutes && (
-                                <span style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", background: "rgba(255,255,255,.05)", borderRadius: 12, padding: "2px 9px" }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", background: "rgba(var(--overlay-rgb),.05)", borderRadius: 12, padding: "2px 9px" }}>
                                   ~{meal.prep_minutes} min
                                 </span>
                               )}
@@ -363,7 +363,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                             />
                             <span style={{ fontSize: 11, color: "var(--dim)" }}>portions</span>
                             {isDefault ? (
-                              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--amber)", background: "rgba(255,204,102,.1)", borderRadius: 12, padding: "2px 9px" }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--amber)", background: "rgba(var(--amber-rgb),.1)", borderRadius: 12, padding: "2px 9px" }}>
                                 Intended amount
                               </span>
                             ) : (
@@ -377,7 +377,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                           </div>
 
                           {meal.meal_template_items.map((item, idx) => (
-                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "5px 0", borderBottom: idx < meal.meal_template_items.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none", gap: 8 }}>
+                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "5px 0", borderBottom: idx < meal.meal_template_items.length - 1 ? "1px solid rgba(var(--overlay-rgb),.04)" : "none", gap: 8 }}>
                               <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.food_name}</div>
                               <div style={{ fontSize: 11, color: "var(--dim)", flexShrink: 0 }}>
                                 {formatQty(item.quantity_g * scale, item.serving_qty ? item.serving_qty * scale : item.serving_qty, item.serving_label)}
@@ -390,7 +390,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                               </div>
                             </div>
                           ))}
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, paddingTop: 8, fontSize: 11, fontWeight: 700, borderTop: "1px solid rgba(255,255,255,.07)", marginTop: 6 }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, paddingTop: 8, fontSize: 11, fontWeight: 700, borderTop: "1px solid rgba(var(--overlay-rgb),.07)", marginTop: 6 }}>
                             <span style={{ color: "var(--dim)", fontWeight: 400 }}>Total{isDefault ? "" : ` (${makingPortions} portions)`}:</span>
                             <span>{Math.round(totalCal * scale)} kcal</span>
                             <span style={{ color: "var(--accent)" }}>{r1(totalP * scale)}g</span>

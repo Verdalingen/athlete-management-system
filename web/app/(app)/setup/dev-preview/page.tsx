@@ -48,7 +48,7 @@ export default function DevPreviewPage() {
   if (process.env.NODE_ENV !== "development") return <div>Not found</div>;
   return (
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "48px 24px 80px" }}>
-      <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "var(--red, #ef4444)", textTransform: "uppercase" }}>
+      <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "var(--red)", textTransform: "uppercase" }}>
         Dev preview — not visible in production
       </div>
       <div style={{ marginBottom: 40 }}>

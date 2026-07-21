@@ -106,8 +106,8 @@ export function WeightCard({ date }: Props) {
           <span style={{
             fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 8,
             color: trend! > 0 ? "var(--amber)" : "var(--green)",
-            background: trend! > 0 ? "rgba(255,204,102,.1)" : "rgba(56,217,150,.1)",
-            border: `1px solid ${trend! > 0 ? "rgba(255,204,102,.25)" : "rgba(56,217,150,.25)"}`,
+            background: trend! > 0 ? "rgba(var(--amber-rgb),.1)" : "rgba(var(--green-rgb),.1)",
+            border: `1px solid ${trend! > 0 ? "rgba(var(--amber-rgb),.25)" : "rgba(var(--green-rgb),.25)"}`,
           }}>
             {trend! > 0 ? "▲" : "▼"} {trendLabel}
           </span>

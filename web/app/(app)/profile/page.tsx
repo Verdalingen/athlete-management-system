@@ -5,6 +5,7 @@ import { formatShort } from "@/lib/dates";
 import type { Plan } from "@/lib/types";
 import { signOut } from "@/app/login/actions";
 import { MaxHRInput } from "./MaxHRInput";
+import { ThemeToggle } from "./ThemeToggle";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
 import Link from "next/link";
 
@@ -198,6 +199,18 @@ export default async function ProfilePage() {
           Olympiatoppen 5-zone model
           {!effectiveMaxHR && " · Set your max HR above to see BPM ranges"}
         </p>
+      </section>
+
+      {/* ── Appearance ── */}
+      <section className="section">
+        <h2 className="section-title">Appearance</h2>
+        <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>Theme</div>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>Applies immediately and remembers your choice on this device.</div>
+          </div>
+          <ThemeToggle />
+        </div>
       </section>
 
       {/* ── Sign out ── */}

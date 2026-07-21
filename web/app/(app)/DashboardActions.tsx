@@ -38,7 +38,7 @@ const MODAL: Record<string, ModalConfig> = {
     title: "New Season",
     cost: "~$1–3",
     accentColor: "var(--red)",
-    borderColor: "rgba(255,92,122,.35)",
+    borderColor: "rgba(var(--red-rgb),.35)",
     description: "Runs the full AI pipeline — expert analysis, new HTML reports, and a completely new season plan for the next training block.",
     commentPlaceholder: "Optional note — goals or focus areas for the new season…",
     confirmLabel: "Start New Season",
@@ -115,7 +115,7 @@ export function DashboardActions({ checkinOverdue, daysSinceCheckin, seasonEnded
               rows={3}
               style={{
                 width: "100%", boxSizing: "border-box",
-                background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(var(--overlay-rgb),.04)", border: "1px solid rgba(var(--overlay-rgb),.12)",
                 borderRadius: 8, padding: "10px 12px",
                 color: "var(--text)", fontSize: 13, lineHeight: 1.5,
                 resize: "vertical", outline: "none", fontFamily: "inherit",
@@ -123,7 +123,7 @@ export function DashboardActions({ checkinOverdue, daysSinceCheckin, seasonEnded
             />
 
             <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>
-              After queuing, run <code style={{ background: "rgba(255,255,255,.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> to process.
+              After queuing, run <code style={{ background: "rgba(var(--overlay-rgb),.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> to process.
             </p>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>

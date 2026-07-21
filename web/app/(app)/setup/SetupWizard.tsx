@@ -531,7 +531,7 @@ function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
       {connected && !showForm ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green, #22c55e)" }} />
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
             <span style={{ fontSize: 14, fontWeight: 600 }}>Connected</span>
             <span style={{ fontSize: 13, color: "var(--muted)" }}>— {connectedEmail}</span>
           </div>
@@ -540,7 +540,7 @@ function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
               onClick={() => { setEmail(connectedEmail); setShowForm(true); setStatus("idle"); }}>
               <i className="ti ti-pencil" style={{ marginRight: 6 }} />Update credentials
             </button>
-            <button type="button" className="btn-secondary" style={{ fontSize: 13, color: "var(--red, #ef4444)" }}
+            <button type="button" className="btn-secondary" style={{ fontSize: 13, color: "var(--red)" }}
               onClick={handleDisconnect} disabled={status === "disconnecting"}>
               <i className="ti ti-unlink" style={{ marginRight: 6 }} />
               {status === "disconnecting" ? "Disconnecting…" : "Disconnect"}
@@ -574,8 +574,8 @@ function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
         </div>
       )}
 
-      {status === "error" && <div style={{ color: "var(--red, #ef4444)", fontSize: 13 }}>{errMsg}</div>}
-      {status === "done" && <div style={{ color: "var(--green, #22c55e)", fontSize: 13 }}>Credentials saved successfully.</div>}
+      {status === "error" && <div style={{ color: "var(--red)", fontSize: 13 }}>{errMsg}</div>}
+      {status === "done" && <div style={{ color: "var(--green)", fontSize: 13 }}>Credentials saved successfully.</div>}
 
       <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
         No Garmin Connect account? You can skip this step and connect later from your profile settings.
@@ -731,7 +731,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
 
         {/* Context preview */}
         {hasCtx && !showText && (
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16, background: "rgba(255,255,255,.03)" }}>
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16, background: "rgba(var(--overlay-rgb),.03)" }}>
             <ContextPreview label="Analysis context"  text={data.generated_analysis_context} />
           </div>
         )}
@@ -740,7 +740,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
             sent to the coach as explicit constraints, built fresh from this saved data every time
             a plan is generated. Shown here so it's clear they're actually being used. */}
         {data.recurring_session_requests.length > 0 && (
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12, background: "rgba(255,255,255,.03)" }}>
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12, background: "rgba(var(--overlay-rgb),.03)" }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "var(--dim)", textTransform: "uppercase" }}>
               Recurring Session Requests
             </div>

@@ -193,7 +193,7 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
                 return (
                   <label
                     key={item.name}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}
+                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 4px", borderBottom: "1px solid rgba(var(--overlay-rgb),.05)", cursor: "pointer" }}
                   >
                     <input
                       type="checkbox"

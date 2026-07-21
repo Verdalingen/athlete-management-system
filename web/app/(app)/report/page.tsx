@@ -88,7 +88,7 @@ export default async function ProgressPage() {
   const Z = {
     green:   "rgba(34,197,94,0.16)",
     amber:   "rgba(245,158,11,0.15)",
-    red:     "rgba(239,68,68,0.15)",
+    red:     "rgba(var(--red-rgb),.15)",
     neutral: "rgba(148,163,184,0.09)",
     lineG:   "rgba(34,197,94,0.8)",
     lineA:   "rgba(245,158,11,0.8)",
@@ -140,7 +140,7 @@ export default async function ProgressPage() {
       // ── CTL / ATL / TSB — shown together in PMC ─────────────────────────
       {
         label: "Fitness (CTL)",
-        unit: "load", color: "#60a5fa", decimals: 1, higherIsBetter: true,
+        unit: "load", color: "var(--accent)", decimals: 1, higherIsBetter: true,
         data: dailyRows.map(r => ({ date: r.date, value: r.ctl ?? null })),
       },
       {
@@ -163,7 +163,7 @@ export default async function ProgressPage() {
       },
       {
         label: "Fatigue (ATL)",
-        unit: "load", color: "#f87171", decimals: 1,
+        unit: "load", color: "var(--red)", decimals: 1,
         data: dailyRows.map(r => ({ date: r.date, value: r.atl ?? null })),
       },
 
@@ -242,7 +242,7 @@ export default async function ProgressPage() {
       // ── Physiological signals ────────────────────────────────────────────
       {
         label: "Resting Heart Rate",
-        unit: "bpm", color: "#f87171", decimals: 0, higherIsBetter: false,
+        unit: "bpm", color: "var(--red)", decimals: 0, higherIsBetter: false,
         zoneBands: [
           { min: -Infinity, max: 50,  fill: Z.green,   severity: "optimal", label: "Excellent (<50)",   chartLabel: "Excellent" },
           { min: 50,        max: 60,  fill: Z.neutral, severity: "neutral", label: "Good (50–60)",      chartLabel: "Good" },
@@ -288,7 +288,7 @@ export default async function ProgressPage() {
       // ── Load adaptation rate (bar chart) ────────────────────────────────
       {
         label: "Load Adaptation Rate",
-        unit: "CTL/wk", color: "#22c55e", decimals: 1, chartType: "bar",
+        unit: "CTL/wk", color: "var(--green)", decimals: 1, chartType: "bar",
         zoneBands: [
           { min: -Infinity, max: -5,  fill: Z.amber, severity: "warning", label: "Detraining (<-5)",    chartLabel: "Detraining" },
           { min: -5,        max:  0,  fill: Z.neutral, severity: "neutral", label: "Recovery (-5–0)",   chartLabel: "Recovery" },
@@ -306,7 +306,7 @@ export default async function ProgressPage() {
       // ── Body weight ──────────────────────────────────────────────────────
       {
         label: "Body Weight",
-        unit: "kg", color: "#94a3b8", decimals: 1,
+        unit: "kg", color: "var(--dim)", decimals: 1,
         data: dailyRows.map(r => ({ date: r.date, value: r.weight_kg ?? null })),
       },
 
@@ -323,7 +323,7 @@ export default async function ProgressPage() {
       {
         label: "Fitness (CTL)",
         unit: "load",
-        color: "#60a5fa",
+        color: "var(--accent)",
         decimals: 1,
         higherIsBetter: true,
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.training_load?.chronic_28d_avg ?? null })),
@@ -382,7 +382,7 @@ export default async function ProgressPage() {
       {
         label: "Resting Heart Rate",
         unit: "bpm",
-        color: "#f87171",
+        color: "var(--red)",
         decimals: 0,
         higherIsBetter: false,
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.physiological?.rhr ?? null })),
@@ -390,7 +390,7 @@ export default async function ProgressPage() {
       {
         label: "Body Weight",
         unit: "kg",
-        color: "#94a3b8",
+        color: "var(--dim)",
         decimals: 1,
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.body?.weight_kg ?? null })),
       },

@@ -19,6 +19,7 @@
   --text:      #001219;
   --muted:     #4a5a61;
   --dim:       #7c8a90;
+  --dim-rgb:   124,138,144;
 
   --accent:     #0a9396;
   --accent-rgb: 10,147,150;
@@ -45,6 +46,11 @@
   --overlay-4: rgba(0,18,25,.08);
   --overlay-5: rgba(0,18,25,.10);
   --overlay-border: rgba(0,18,25,.16);
+  /* Raw triplet (no fixed alpha) for one-off overlay tints that don't fit the
+     --overlay-N scale above — components that were written pre-redesign with
+     a literal rgba(255,255,255,X) should migrate to rgba(var(--overlay-rgb),X)
+     instead, preserving their original alpha exactly. */
+  --overlay-rgb: 0,18,25;
 
   /* Raw palette swatches — constant across themes, for components that want
      direct palette access (heatmap ramps, stacked bars) rather than a
@@ -79,6 +85,7 @@
   --text:      #eef6f4;
   --muted:     #9fb8bd;
   --dim:       #5f7a80;
+  --dim-rgb:   95,122,128;
 
   --accent:     #0a9396;
   --accent-rgb: 10,147,150;
@@ -101,6 +108,7 @@
   --overlay-4: rgba(255,255,255,.09);
   --overlay-5: rgba(255,255,255,.11);
   --overlay-border: rgba(255,255,255,.20);
+  --overlay-rgb: 255,255,255;
 }
 
 @theme inline {

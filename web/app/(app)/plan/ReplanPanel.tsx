@@ -150,22 +150,22 @@ function CalendarPicker({
               const session    = sessionMap.get(ds);
               const dotColor   = session && !session.is_rest ? SESSION_COLOR[session.session_type] : null;
 
-              let bg = "rgba(255,255,255,.04)";
-              let border = "1px solid rgba(255,255,255,.06)";
+              let bg = "rgba(var(--overlay-rgb),.04)";
+              let border = "1px solid rgba(var(--overlay-rgb),.06)";
               let textColor = isPast ? "var(--dim)" : "var(--text)";
 
               if (isSelected) {
                 if (isPast) {
-                  bg     = "rgba(255,92,122,.2)";
-                  border = "1px solid rgba(255,92,122,.5)";
+                  bg     = "rgba(var(--red-rgb),.2)";
+                  border = "1px solid rgba(var(--red-rgb),.5)";
                 } else {
-                  bg     = "rgba(255,180,0,.2)";
-                  border = "1px solid rgba(255,180,0,.5)";
+                  bg     = "rgba(var(--amber-rgb),.2)";
+                  border = "1px solid rgba(var(--amber-rgb),.5)";
                 }
                 textColor = "var(--text)";
               }
               if (isToday && !isSelected) {
-                border = "2px solid rgba(255,255,255,.35)";
+                border = "2px solid rgba(var(--overlay-rgb),.35)";
               }
 
               return (
@@ -200,11 +200,11 @@ function CalendarPicker({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10, flexWrap: "wrap", gap: 8 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
-            <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(255,92,122,.25)", border: "1px solid rgba(255,92,122,.5)" }} />
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(var(--red-rgb),.25)", border: "1px solid rgba(var(--red-rgb),.5)" }} />
             Missed
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
-            <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(255,180,0,.25)", border: "1px solid rgba(255,180,0,.5)" }} />
+            <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(var(--amber-rgb),.25)", border: "1px solid rgba(var(--amber-rgb),.5)" }} />
             Constrained
           </div>
           {[...new Set(scheduledDays.filter(s => !s.is_rest).map(s => s.session_type))].map(type => (
@@ -220,7 +220,7 @@ function CalendarPicker({
             <button
               onMouseDown={e => { e.preventDefault(); onClear(); }}
               style={{
-                background: "rgba(255,92,122,.12)", border: "1px solid rgba(255,92,122,.35)",
+                background: "rgba(var(--red-rgb),.12)", border: "1px solid rgba(var(--red-rgb),.35)",
                 borderRadius: 5, padding: "3px 9px",
                 fontSize: 11, color: "var(--red)", cursor: "pointer",
                 fontFamily: "inherit", fontWeight: 600,
@@ -392,7 +392,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
             onClick={e => e.stopPropagation()}
             style={{
               background: "var(--surface)",
-              border: `1px solid ${activeModal === "seasonal" ? "rgba(255,92,122,.35)" : "rgba(255,255,255,.1)"}`,
+              border: `1px solid ${activeModal === "seasonal" ? "rgba(var(--red-rgb),.35)" : "rgba(var(--overlay-rgb),.1)"}`,
               borderRadius: 16, padding: "24px 28px",
               width: "100%", maxWidth: activeModal === "daily" ? 520 : 460,
               maxHeight: "90vh", overflowY: "auto",
@@ -428,7 +428,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
               rows={3}
               style={{
                 width: "100%", boxSizing: "border-box",
-                background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(var(--overlay-rgb),.04)", border: "1px solid rgba(var(--overlay-rgb),.12)",
                 borderRadius: 8, padding: "10px 12px",
                 color: "var(--text)", fontSize: 13, lineHeight: 1.5,
                 resize: "vertical", outline: "none", fontFamily: "inherit",
@@ -436,7 +436,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
             />
 
             <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>
-              After queuing, run <code style={{ background: "rgba(255,255,255,.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> to process.
+              After queuing, run <code style={{ background: "rgba(var(--overlay-rgb),.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> to process.
             </p>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
@@ -475,7 +475,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
 
         {/* Recent jobs */}
         {jobs.length > 0 && (
-          <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 14 }}>
+          <div style={{ marginTop: 16, borderTop: "1px solid rgba(var(--overlay-rgb),.06)", paddingTop: 14 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
               Recent jobs
             </div>

@@ -75,7 +75,7 @@ export function SessionDetailModal({
 
         {/* ── What actually happened (completed Garmin activities) ── */}
         {day.completedActivities && day.completedActivities.length > 0 && (
-          <div style={{ marginBottom: 16, background: "rgba(56,217,150,.06)", border: "1px solid rgba(56,217,150,.15)", borderRadius: 8, padding: "10px 14px" }}>
+          <div style={{ marginBottom: 16, background: "rgba(var(--green-rgb),.06)", border: "1px solid rgba(var(--green-rgb),.15)", borderRadius: 8, padding: "10px 14px" }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--green)", marginBottom: 8 }}>
               What actually happened
             </div>
@@ -192,7 +192,7 @@ export function SessionDetailModal({
 
             {/* ── Purpose & Adaptation ── */}
             {(day.purpose || day.adaptation) && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                 {day.purpose && (
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
@@ -202,7 +202,7 @@ export function SessionDetailModal({
                   </div>
                 )}
                 {day.adaptation && (
-                  <div style={{ background: "rgba(255,180,0,.06)", border: "1px solid rgba(255,180,0,.15)", borderRadius: 8, padding: "10px 14px" }}>
+                  <div style={{ background: "rgba(var(--amber-rgb),.06)", border: "1px solid rgba(var(--amber-rgb),.15)", borderRadius: 8, padding: "10px 14px" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>
                       If you&apos;re tired
                     </div>

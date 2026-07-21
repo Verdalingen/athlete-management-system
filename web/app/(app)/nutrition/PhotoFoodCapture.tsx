@@ -363,7 +363,7 @@ export function PhotoFoodCapture({ meal, mealLabel, onLog, onClose }: Props) {
 
                 {items.map((item, idx) => (
                   <div key={idx} style={{
-                    background: "rgba(255,255,255,.03)", border: "1px solid var(--border)",
+                    background: "rgba(var(--overlay-rgb),.03)", border: "1px solid var(--border)",
                     borderRadius: 10, padding: 12,
                   }}>
                     {/* Name row */}
@@ -377,16 +377,16 @@ export function PhotoFoodCapture({ meal, mealLabel, onLog, onClose }: Props) {
                       {item.source === "usda" ? (
                         <span style={{
                           fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 8, flexShrink: 0,
-                          color: "var(--green)", background: "rgba(56,217,150,.12)",
-                          border: "1px solid rgba(56,217,150,.3)",
+                          color: "var(--green)", background: "rgba(var(--green-rgb),.12)",
+                          border: "1px solid rgba(var(--green-rgb),.3)",
                         }} title={`Matched: ${item.usda_description}`}>
                           ✓ USDA
                         </span>
                       ) : item.source === "ai_estimate" ? (
                         <span style={{
                           fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 8, flexShrink: 0,
-                          color: "var(--amber)", background: "rgba(255,204,102,.1)",
-                          border: "1px solid rgba(255,204,102,.25)",
+                          color: "var(--amber)", background: "rgba(var(--amber-rgb),.1)",
+                          border: "1px solid rgba(var(--amber-rgb),.25)",
                         }}>
                           AI est.
                         </span>

@@ -139,7 +139,7 @@ export function LoginCard({
             <div style={{
               marginBottom: 18, padding: "10px 14px", fontSize: 13,
               background: "rgba(34,197,94,.1)", border: "1px solid rgba(34,197,94,.25)",
-              borderRadius: "var(--radius-sm)", color: "var(--green, #22c55e)", lineHeight: 1.5,
+              borderRadius: "var(--radius-sm)", color: "var(--green)", lineHeight: 1.5,
             }}>
               {message}
             </div>

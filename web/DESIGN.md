@@ -954,3 +954,96 @@ actual calendar rather than a flat list of training weeks.
   Aug 1-2 (in August's grid) now show two separate partial totals for what
   is the same calendar week, matching the explicit ask, and click-to-open
   the session modal still works from a day cell.
+
+## Redesign completion pass — the rest of the app catches up to the light-mode token system
+
+Went looking for the three remaining untouched pages from the original
+redesign plan (Week, Setup Wizard, Profile) and found the real scope was
+much larger: ~130 hardcoded dark-mode-only colors (`rgba(255,255,255,X)`
+overlays, raw hex reds/ambers/greens/blues) still scattered across
+`NutritionClient.tsx`, `MealManagerModal.tsx`, `MealBuilderModal.tsx`,
+`WeeklyMealPlanModal.tsx`, `WeekStrip.tsx`, `WeightCard.tsx`,
+`ReplanPanel.tsx`, `SetupWizard.tsx`, `DashboardActions.tsx`,
+`SessionDetailModal.tsx`, `PlanCalendar.tsx`, `report/ProgressTabs.tsx`,
+`report/page.tsx`, and a couple smaller files — none of these had been
+touched since the Phase-1 token rewrite. Flagged the scope explicitly
+before starting since it was ~5-10x bigger than "a couple of page polishes."
+
+- **New `--overlay-rgb` token** (raw RGB triplet, no fixed alpha:
+  `0,18,25` light / `255,255,255` dark) added alongside the existing
+  `--overlay-1` … `--overlay-5` graduated scale. The existing scale only
+  covers a handful of fixed alpha steps; the wild hardcoded values used
+  dozens of different alphas (.02 through .35) chosen per-component for a
+  specific visual weight. Remapping each to the *nearest* existing step
+  would have subtly changed each component's look; `rgba(var(--overlay-rgb),X)`
+  instead preserves every original alpha exactly while making the base
+  color theme-aware — a straight mechanical substitution, not a redesign.
+- **Colored raw values mapped to their existing semantic tokens**, alpha
+  preserved: `255,180,0` / `255,204,102` (raw amber) → `rgba(var(--amber-rgb),X)`,
+  `255,92,122` (raw red) → `rgba(var(--red-rgb),X)`, `56,217,150` (raw green)
+  → `rgba(var(--green-rgb),X)`. Also added `--dim-rgb` (was missing) for a
+  couple of neutral-fallback fill cases in `ProgressTabs.tsx`.
+- **Two real exceptions found and deliberately left alone**:
+  `BarcodeScanner.tsx` (white UI overlaid on a live camera feed) and the
+  "Analyzing meal…" scrim inside `PhotoFoodCapture.tsx` (white caption text
+  on a dark scrim over a captured photo). Both are correctly
+  theme-independent — they're not rendered against the app's background,
+  they're rendered against a camera/photo, so "fixing" them to follow the
+  light/dark toggle would have actually broken them. Modal backdrops
+  (`rgba(0,0,0,.6-.75)`, used consistently by every modal in the app) were
+  also left alone for the same reason — a dark scrim behind a modal is a
+  deliberate, universal convention, not a light-mode bug.
+- **Redundant `var(--color, #hex)` CSS fallback syntax simplified** to
+  plain `var(--color)` in `SetupWizard.tsx`, `dev-preview/page.tsx`,
+  `BarcodeScanner.tsx`, and `LoginCard.tsx` — the fallback never fired
+  (the referenced custom properties are always defined), so it was dead
+  literal-hex weight sitting next to the real token for no reason.
+- **Nutrition's carbs identity color swapped from `--cyan` (pearl-aqua) to
+  `--blue` (dark-teal)** — 17 occurrences, all either directly rendering
+  carb values as text (`C39g` badges throughout meal cards, search
+  results, the macro pills, `MacroBar`'s numeric label) or feeding into
+  such text. Pearl-aqua is documented as background/border-only, fails
+  contrast on white — this was the exact bug flagged (and deliberately
+  deferred) during `WeeklyMacrosCard`'s build. `--blue` keeps the "cool
+  color" identity distinct from protein's `--accent` and fat's `--amber`
+  without introducing a new token; `MacroBar`'s bar-fill for carbs also
+  moved from pearl-aqua to dark-teal as a result (same prop drives both
+  fill and label text), a minor, acceptable shade change in exchange for
+  fixing the real text-contrast bug.
+- **Progress page chart colors remapped to design tokens**: `SEV` severity
+  colors (`optimal`/`warning`/`danger`/`neutral`), the CTL/ATL line colors
+  in the embedded PMC mini-chart, and the RHR/ramp-rate/weight trend-series
+  colors in `report/page.tsx` were still literal hex values left over from
+  before the redesign (e.g. CTL was `#60a5fa`, a generic sky-blue with no
+  relation to the palette, while the *dashboard's* `FitnessTrendChart` had
+  already been redesigned to use `var(--accent)` for the same metric —
+  the two CTL/ATL charts were visually inconsistent with each other).
+  Mapped CTL→`--accent`, ATL/RHR/danger→`--red`, ramp-rate/optimal→`--green`,
+  weight/neutral-fallback→`--dim`, warning→`--amber`, matching each color's
+  actual semantic meaning rather than a blind find-replace. **Not done**:
+  threading `<linearGradient>` fills through the remaining Progress charts
+  (the original plan's "gradient-fill" item) — that's a visual enhancement,
+  not a bug, and was deliberately left for a dedicated pass rather than
+  folded into this correctness-focused sweep.
+- **Dark-mode toggle shipped** — `ThemeToggle.tsx` (new, in `profile/`),
+  a two-segment button matching the exact visual pattern already
+  established by the Nutrition page's g/oz unit toggle (same
+  `rgba(124,92,255,.15)` active-segment tint, same border/radius), added
+  to a new "Appearance" section on the Profile page. `useTheme()` from
+  the existing `ThemeContext.tsx` (mounted but inert since Phase 1) is all
+  that was needed — every page already had working `[data-theme="dark"]`
+  CSS. Verified live: toggling switches the whole app instantly, persists
+  across a reload, and every page checked (dashboard, plan, nutrition,
+  profile) rendered correctly in dark mode with no leftover light-only
+  styling — confirming the Phase-1 dark-mode token work was solid, it just
+  had no UI to reach it until now.
+- **Caught and stopped a real mistake mid-verification**: rapid-clicked
+  "Continue" through the live Setup Wizard while spot-checking its styling,
+  which is a real multi-step form that persists to Supabase on every step
+  — not a safe thing to click through carelessly on the user's actual
+  account data. Backed out immediately via direct navigation rather than
+  continuing to click through it; confirmed via the Profile page afterward
+  that the real profile answers were unchanged. Lesson: browser-verifying
+  a *form* page needs more care than a read-only page — screenshot what's
+  there, don't drive multi-step flows with real side effects during a
+  styling check.

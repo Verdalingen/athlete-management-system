@@ -96,7 +96,7 @@ export function MaxHRInput({ manualValue, garminEstimate }: Props) {
                 autoFocus
                 style={{
                   width: 100, padding: "8px 36px 8px 12px",
-                  background: "rgba(255,255,255,.06)", border: "1px solid var(--border)",
+                  background: "rgba(var(--overlay-rgb),.06)", border: "1px solid var(--border)",
                   borderRadius: 8, color: "var(--text)", fontSize: 15,
                   fontFamily: "var(--mono)", fontWeight: 700,
                 }}

@@ -171,7 +171,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
         {status === "loading" && "Starting camera…"}
         {status === "scanning" && "Align barcode within the frame"}
         {status === "error" && (
-          <span style={{ color: "var(--red, #ff5c7a)" }}>{errorMsg}</span>
+          <span style={{ color: "var(--red)" }}>{errorMsg}</span>
         )}
       </div>
 

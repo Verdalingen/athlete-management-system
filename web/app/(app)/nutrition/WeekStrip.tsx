@@ -80,7 +80,7 @@ export function WeekStrip({ selectedDate, onDateSelect }: Props) {
 
   return (
     <div style={{
-      background: "rgba(255,255,255,.025)", border: "1px solid var(--border)",
+      background: "rgba(var(--overlay-rgb),.025)", border: "1px solid var(--border)",
       borderRadius: "var(--radius)", padding: "10px 12px 8px", marginBottom: 18,
     }}>
       <div style={{ display: "flex", gap: 4, justifyContent: "space-between" }}>
@@ -120,13 +120,13 @@ export function WeekStrip({ selectedDate, onDateSelect }: Props) {
               {/* Dual ring — calories outer, protein inner, date number in the middle */}
               <div style={{ position: "relative", width: 46, height: 46 }}>
                 <svg viewBox="0 0 60 60" width="46" height="46">
-                  <circle cx="30" cy="30" r={OUTER_R} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="5" />
+                  <circle cx="30" cy="30" r={OUTER_R} fill="none" stroke="rgba(var(--overlay-rgb),.08)" strokeWidth="5" />
                   <circle
                     cx="30" cy="30" r={OUTER_R} fill="none" stroke={calColor} strokeWidth="5" strokeLinecap="round"
                     strokeDasharray={OUTER_C} strokeDashoffset={OUTER_C * (1 - calFill)}
                     transform="rotate(-90 30 30)" style={{ transition: "stroke-dashoffset .3s ease" }}
                   />
-                  <circle cx="30" cy="30" r={INNER_R} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="5" />
+                  <circle cx="30" cy="30" r={INNER_R} fill="none" stroke="rgba(var(--overlay-rgb),.08)" strokeWidth="5" />
                   <circle
                     cx="30" cy="30" r={INNER_R} fill="none" stroke="var(--accent)" strokeWidth="5" strokeLinecap="round"
                     strokeDasharray={INNER_C} strokeDashoffset={INNER_C * (1 - proteinFill)}
@@ -150,13 +150,13 @@ export function WeekStrip({ selectedDate, onDateSelect }: Props) {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
                 <span style={{
                   fontSize: 9, fontWeight: 700,
-                  color: hasCal ? (col.isSelected ? "var(--text)" : "var(--dim)") : "rgba(255,255,255,.2)",
+                  color: hasCal ? (col.isSelected ? "var(--text)" : "var(--dim)") : "rgba(var(--overlay-rgb),.2)",
                 }}>
                   {hasCal ? fmtCal(col.cal) : "—"}
                 </span>
                 <span style={{
                   fontSize: 8, fontWeight: 600,
-                  color: hasProtein ? "var(--accent)" : "rgba(255,255,255,.2)",
+                  color: hasProtein ? "var(--accent)" : "rgba(var(--overlay-rgb),.2)",
                 }}>
                   {hasProtein ? `${Math.round(col.protein)}g` : "—"}
                 </span>

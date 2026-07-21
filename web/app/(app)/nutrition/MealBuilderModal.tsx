@@ -293,7 +293,7 @@ export function MealBuilderModal({ onSave, onClose, initial }: Props) {
                 <div
                   key={food.fdcId}
                   onClick={() => addIngredient(food)}
-                  style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 10 }}
+                  style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)", gap: 10 }}
                   className="ntr-search-row"
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -321,7 +321,7 @@ export function MealBuilderModal({ onSave, onClose, initial }: Props) {
                 Ingredients ({items.length})
               </div>
               {items.map((item, idx) => (
-                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.03)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--border)" }}>
+                <div key={idx} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(var(--overlay-rgb),.03)", borderRadius: 8, padding: "8px 10px", border: "1px solid var(--border)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.food_name}</div>
                     <div style={{ fontSize: 10, color: "var(--dim)" }}>

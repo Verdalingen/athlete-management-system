@@ -185,14 +185,14 @@ export default async function PlanPage() {
                   {Math.round(progress)}%
                 </span>
               </div>
-              <div style={{ height: 6, background: "rgba(255,255,255,.08)", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ height: 6, background: "rgba(var(--overlay-rgb),.08)", borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${progress}%`, background: "var(--accent)", borderRadius: 3 }} />
               </div>
             </div>
 
             {/* Target */}
             {meta.target && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", paddingTop: 14 }}>
+              <div style={{ borderTop: "1px solid rgba(var(--overlay-rgb),.07)", paddingTop: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 6 }}>
                   Target
                 </div>

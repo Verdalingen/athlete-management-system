@@ -154,11 +154,11 @@ const WATER_ML_PER_GLASS = 250;
 const WATER_GLASSES_TARGET = 10; // 2.5L default
 
 const DAY_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  hard:    { label: "⚡ Hard Session Day",  color: "var(--red)",    bg: "rgba(255,92,122,.12)" },
+  hard:    { label: "⚡ Hard Session Day",  color: "var(--red)",    bg: "rgba(var(--red-rgb),.12)" },
   easy:    { label: "🏃 Easy Day",          color: "var(--blue)",   bg: "rgba(111,182,255,.12)" },
-  rest:    { label: "😴 Rest Day",          color: "var(--green)",  bg: "rgba(56,217,150,.12)" },
+  rest:    { label: "😴 Rest Day",          color: "var(--green)",  bg: "rgba(var(--green-rgb),.12)" },
   race:    { label: "🏁 Race Day",          color: "var(--accent)", bg: "rgba(124,92,255,.12)" },
-  default: { label: "📅 Training Day",     color: "var(--muted)",  bg: "rgba(255,255,255,.05)" },
+  default: { label: "📅 Training Day",     color: "var(--muted)",  bg: "rgba(var(--overlay-rgb),.05)" },
 };
 
 // Standard adult RDAs (approximate)
@@ -305,7 +305,7 @@ function CalRing({ value, max, size = 100, stroke = 9 }: { value: number; max: n
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth={stroke} />
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(var(--overlay-rgb),.07)" strokeWidth={stroke} />
       <circle
         cx={cx} cy={cx} r={r} fill="none"
         stroke={fill >= 1 ? "var(--amber)" : "var(--accent)"}
@@ -344,7 +344,7 @@ function MicroRow({ label, value, rda, unit }: { label: string; value: number; r
   const over = p >= 110;
   const met = p >= 95;
   const low = p < 40;
-  const barColor = over ? "var(--amber)" : met ? "var(--green)" : low ? "rgba(255,92,122,.6)" : "var(--accent)";
+  const barColor = over ? "var(--amber)" : met ? "var(--green)" : low ? "rgba(var(--red-rgb),.6)" : "var(--accent)";
   const valColor = over ? "var(--amber)" : met ? "var(--green)" : low ? "var(--red)" : "var(--muted)";
 
   return (
@@ -353,7 +353,7 @@ function MicroRow({ label, value, rda, unit }: { label: string; value: number; r
         {label}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ height: 4, background: "rgba(255,255,255,.07)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{ height: 4, background: "rgba(var(--overlay-rgb),.07)", borderRadius: 2, overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${p}%`, background: barColor, borderRadius: 2, transition: "width .4s ease" }} />
         </div>
       </div>
@@ -1256,7 +1256,7 @@ export function NutritionClient({
                       key={ds}
                       onClick={() => copyFromDate(ds)}
                       className="ntr-search-row"
-                      style={{ width: "100%", display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", background: "none", border: "none", color: "var(--text)", fontSize: 13, textAlign: "left", gap: 8, borderTop: "1px solid rgba(255,255,255,.04)" }}
+                      style={{ width: "100%", display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", background: "none", border: "none", color: "var(--text)", fontSize: 13, textAlign: "left", gap: 8, borderTop: "1px solid rgba(var(--overlay-rgb),.04)" }}
                     >
                       <i className="ti ti-calendar" style={{ fontSize: 13, color: "var(--dim)", flexShrink: 0 }} aria-hidden="true" />
                       {label}
@@ -1296,7 +1296,7 @@ export function NutritionClient({
               }
               setMealManagerOpen(true);
             }}
-            style={{ fontSize: 12, padding: "6px 14px", background: "rgba(255,204,102,.1)", border: "1px solid rgba(255,204,102,.3)", color: "var(--amber)", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+            style={{ fontSize: 12, padding: "6px 14px", background: "rgba(var(--amber-rgb),.1)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
           >
             <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 13 }} />
             Meals
@@ -1440,10 +1440,10 @@ export function NutritionClient({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 14 }}>
               {[
                 { label: "P", val: totals.protein_g, color: "var(--accent)" },
-                { label: "C", val: totals.carbs_g,   color: "var(--cyan)" },
+                { label: "C", val: totals.carbs_g,   color: "var(--blue)" },
                 { label: "F", val: totals.fat_g,     color: "var(--amber)" },
               ].map(m => (
-                <div key={m.label} style={{ textAlign: "center", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "8px 4px" }}>
+                <div key={m.label} style={{ textAlign: "center", background: "rgba(var(--overlay-rgb),.04)", borderRadius: 8, padding: "8px 4px" }}>
                   <div style={{ fontSize: 10, color: "var(--dim)", marginBottom: 2 }}>{m.label}</div>
                   <div style={{ fontSize: 17, fontWeight: 800, color: m.color }}>{m.val}</div>
                   <div style={{ fontSize: 9, color: "var(--dim)" }}>g</div>
@@ -1459,7 +1459,7 @@ export function NutritionClient({
             <MacroBar
               label="Carbs" value={totals.carbs_g}
               max={currentTarget?.carbs_g ?? Math.max(1, Math.round(totals.carbs_g * 1.2))}
-              color="var(--cyan)"
+              color="var(--blue)"
             />
             <MacroBar
               label="Fat" value={totals.fat_g}
@@ -1523,7 +1523,7 @@ export function NutritionClient({
                         ) : (
                           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
                             <span style={{ color: "var(--accent)", fontWeight: 600 }}>P{proteinG}g</span>
-                            {carbsG !== null && <span style={{ color: "var(--cyan)", fontWeight: 600, marginLeft: 5 }}>C{carbsG}g</span>}
+                            {carbsG !== null && <span style={{ color: "var(--blue)", fontWeight: 600, marginLeft: 5 }}>C{carbsG}g</span>}
                             <span style={{ color: "var(--dim)", marginLeft: 5 }}>{cal} kcal</span>
                             {status === "low" && <span style={{ color: "var(--amber)", marginLeft: 5 }}>· aim for ≥{PRO_MIN}g</span>}
                           </div>
@@ -1549,8 +1549,8 @@ export function NutritionClient({
                     width: 20, height: 20, borderRadius: "50% 50% 50% 0",
                     transform: "rotate(-45deg)",
                     cursor: "pointer",
-                    background: i < waterGlasses ? "var(--accent)" : "rgba(255,255,255,.07)",
-                    border: `1px solid ${i < waterGlasses ? "var(--accent)" : "rgba(255,255,255,.12)"}`,
+                    background: i < waterGlasses ? "var(--accent)" : "rgba(var(--overlay-rgb),.07)",
+                    border: `1px solid ${i < waterGlasses ? "var(--accent)" : "rgba(var(--overlay-rgb),.12)"}`,
                     transition: "background .15s",
                   }}
                 />
@@ -1610,7 +1610,7 @@ export function NutritionClient({
                     <div style={{ display: "flex", gap: 5, marginLeft: 10 }}>
                       {[
                         { v: `${mealP}g`, c: "var(--accent)" },
-                        { v: `${mealC}g`, c: "var(--cyan)" },
+                        { v: `${mealC}g`, c: "var(--blue)" },
                         { v: `${mealF}g`, c: "var(--amber)" },
                       ].map((p, i) => (
                         <span key={i} style={{ fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 10, background: `${p.c}18`, color: p.c }}>{p.v}</span>
@@ -1629,7 +1629,7 @@ export function NutritionClient({
                     <button
                       onClick={() => { setActiveMeal(meal.key); setScannerOpen(true); setBarcodeError(null); }}
                       title="Scan barcode"
-                      style={{ background: "none", border: "1px solid rgba(45,226,230,.25)", borderRadius: 6, cursor: "pointer", color: "var(--cyan)", fontSize: 13, padding: "3px 7px", transition: "color .12s", lineHeight: 1 }}
+                      style={{ background: "none", border: "1px solid rgba(var(--blue-rgb),.25)", borderRadius: 6, cursor: "pointer", color: "var(--blue)", fontSize: 13, padding: "3px 7px", transition: "color .12s", lineHeight: 1 }}
                     >
                       <i className="ti ti-scan" aria-hidden="true" />
                     </button>
@@ -1671,14 +1671,14 @@ export function NutritionClient({
                       {isRecExpanded && (
                         <div style={{ marginTop: 6, marginLeft: 19, padding: "6px 0", borderTop: "1px solid rgba(124,92,255,.12)" }}>
                           {rec.ingredients.map((item, idx) => (
-                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < rec.ingredients.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none", gap: 8 }}>
+                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < rec.ingredients.length - 1 ? "1px solid rgba(var(--overlay-rgb),.04)" : "none", gap: 8 }}>
                               <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)" }}>
                                 {item.food_name}
                               </div>
                               <div style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>{formatQty(item.quantity_g, item.serving_qty, item.serving_label)}</div>
                               <div style={{ display: "flex", gap: 8, fontSize: 10, flexShrink: 0 }}>
                                 <span style={{ color: "var(--accent)" }}>{item.protein_g}g</span>
-                                <span style={{ color: "var(--cyan)" }}>{item.carbs_g}g</span>
+                                <span style={{ color: "var(--blue)" }}>{item.carbs_g}g</span>
                                 <span style={{ color: "var(--amber)" }}>{item.fat_g}g</span>
                               </div>
                               <div style={{ fontSize: 10, fontWeight: 600, width: 32, textAlign: "right", flexShrink: 0 }}>{item.calories}</div>
@@ -1707,7 +1707,7 @@ export function NutritionClient({
                   const isMeal = entry.meal_items && entry.meal_items.length > 0;
                   const isExpanded = expandedEntries.has(entry.id);
                   return (
-                    <div key={entry.id} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                    <div key={entry.id} style={{ borderBottom: "1px solid rgba(var(--overlay-rgb),.04)" }}>
                       <div
                         className="ntr-food-row"
                         style={{ display: "flex", alignItems: "center", padding: "8px 14px" }}
@@ -1738,7 +1738,7 @@ export function NutritionClient({
                             P<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--accent)" }}>{entry.protein_g}g</span>
                           </div>
                           <div style={{ fontSize: 10, color: "var(--dim)", textAlign: "right" }}>
-                            C<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--cyan)" }}>{entry.carbs_g}g</span>
+                            C<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--blue)" }}>{entry.carbs_g}g</span>
                           </div>
                           <div style={{ fontSize: 10, color: "var(--dim)", textAlign: "right" }}>
                             F<span style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--amber)" }}>{entry.fat_g}g</span>
@@ -1755,16 +1755,16 @@ export function NutritionClient({
                       </div>
                       {/* Expanded ingredient list */}
                       {isMeal && isExpanded && (
-                        <div style={{ background: "rgba(255,204,102,.04)", borderTop: "1px solid rgba(255,204,102,.1)", padding: "6px 14px 8px 32px" }}>
+                        <div style={{ background: "rgba(var(--amber-rgb),.04)", borderTop: "1px solid rgba(var(--amber-rgb),.1)", padding: "6px 14px 8px 32px" }}>
                           {entry.meal_items!.map((item, idx) => (
-                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < entry.meal_items!.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none", gap: 8 }}>
+                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < entry.meal_items!.length - 1 ? "1px solid rgba(var(--overlay-rgb),.04)" : "none", gap: 8 }}>
                               <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)" }}>
                                 {item.food_name}
                               </div>
                               <div style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>{formatQty(item.quantity_g, item.serving_qty, item.serving_label)}</div>
                               <div style={{ display: "flex", gap: 8, fontSize: 10, flexShrink: 0 }}>
                                 <span style={{ color: "var(--accent)" }}>{item.protein_g}g</span>
-                                <span style={{ color: "var(--cyan)" }}>{item.carbs_g}g</span>
+                                <span style={{ color: "var(--blue)" }}>{item.carbs_g}g</span>
                                 <span style={{ color: "var(--amber)" }}>{item.fat_g}g</span>
                               </div>
                               <div style={{ fontSize: 10, fontWeight: 600, width: 32, textAlign: "right", flexShrink: 0 }}>{item.calories}</div>
@@ -1792,7 +1792,7 @@ export function NutritionClient({
                     {[
                       { label: "Cal", val: mealCal, unit: "" },
                       { label: "Protein", val: mealP, unit: "g", color: "var(--accent)" },
-                      { label: "Carbs",  val: mealC, unit: "g", color: "var(--cyan)" },
+                      { label: "Carbs",  val: mealC, unit: "g", color: "var(--blue)" },
                       { label: "Fat",    val: mealF, unit: "g", color: "var(--amber)" },
                     ].map(cell => (
                       <div key={cell.label} style={{ padding: "7px 14px", textAlign: "center", borderRight: "1px solid var(--border)" }}>
@@ -1825,9 +1825,9 @@ export function NutritionClient({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
                   {[
                     { label: "Protein", score: protScore, color: "var(--accent)" },
-                    { label: "Micros",  score: microScore, color: "var(--cyan)" },
+                    { label: "Micros",  score: microScore, color: "var(--blue)" },
                   ].map(s => (
-                    <div key={s.label} style={{ textAlign: "center", background: "rgba(255,255,255,.04)", borderRadius: 8, padding: "10px 6px" }}>
+                    <div key={s.label} style={{ textAlign: "center", background: "rgba(var(--overlay-rgb),.04)", borderRadius: 8, padding: "10px 6px" }}>
                       <div style={{
                         fontSize: 20, fontWeight: 800,
                         color: s.score == null ? "var(--dim)" : s.score >= 80 ? "var(--green)" : s.score >= 50 ? "var(--amber)" : "var(--red)",
@@ -1917,8 +1917,8 @@ export function NutritionClient({
                 onClick={() => { setSearchOpen(false); setScannerOpen(true); setBarcodeError(null); }}
                 title="Scan barcode"
                 style={{
-                  background: "rgba(45,226,230,.1)", border: "1px solid rgba(45,226,230,.3)",
-                  color: "var(--cyan)", borderRadius: 8, cursor: "pointer",
+                  background: "rgba(var(--blue-rgb),.1)", border: "1px solid rgba(var(--blue-rgb),.3)",
+                  color: "var(--blue)", borderRadius: 8, cursor: "pointer",
                   padding: "9px 13px", lineHeight: 1, flexShrink: 0,
                   display: "flex", alignItems: "center",
                 }}
@@ -1929,7 +1929,7 @@ export function NutritionClient({
                 onClick={() => { setSearchOpen(false); setMealManagerOpen(true); }}
                 title="View saved meals"
                 style={{
-                  background: "rgba(255,204,102,.1)", border: "1px solid rgba(255,204,102,.3)",
+                  background: "rgba(var(--amber-rgb),.1)", border: "1px solid rgba(var(--amber-rgb),.3)",
                   color: "var(--amber)", borderRadius: 8, cursor: "pointer",
                   padding: "9px 12px", lineHeight: 1, flexShrink: 0,
                   display: "flex", alignItems: "center", gap: 4,
@@ -1942,7 +1942,7 @@ export function NutritionClient({
                 onClick={() => { setEditingCustomFood(null); setCustomFoodModalOpen(true); }}
                 title="Create custom food"
                 style={{
-                  background: "rgba(56,217,150,.1)", border: "1px solid rgba(56,217,150,.3)",
+                  background: "rgba(var(--green-rgb),.1)", border: "1px solid rgba(var(--green-rgb),.3)",
                   color: "var(--green)", borderRadius: 8, cursor: "pointer",
                   padding: "9px 12px", lineHeight: 1, flexShrink: 0,
                   display: "flex", alignItems: "center", gap: 4,
@@ -1961,7 +1961,7 @@ export function NutritionClient({
 
             {/* Barcode error banner */}
             {barcodeError && (
-              <div style={{ padding: "10px 20px", background: "rgba(255,92,122,.08)", borderBottom: "1px solid rgba(255,92,122,.2)", fontSize: 12, color: "var(--red)", display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ padding: "10px 20px", background: "rgba(var(--red-rgb),.08)", borderBottom: "1px solid rgba(var(--red-rgb),.2)", fontSize: 12, color: "var(--red)", display: "flex", gap: 8, alignItems: "center" }}>
                 <span>⚠</span>
                 <span style={{ flex: 1 }}>{barcodeError}</span>
                 <button onClick={() => setBarcodeError(null)} style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 14 }}>✕</button>
@@ -1997,13 +1997,13 @@ export function NutritionClient({
                   </div>
 
                   {/* Nutrition preview (scaled) */}
-                  <div style={{ background: "rgba(255,255,255,.04)", borderRadius: 10, padding: 14, marginBottom: 20 }}>
+                  <div style={{ background: "rgba(var(--overlay-rgb),.04)", borderRadius: 10, padding: 14, marginBottom: 20 }}>
                     <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}>Nutrition for {addQty}g</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }}>
                       {[
                         { label: "Cal",     val: Math.round(selectedFood.calories * addQty / 100),    unit: "",  color: "var(--text)" },
                         { label: "Protein", val: round1(selectedFood.protein * addQty / 100),          unit: "g", color: "var(--accent)" },
-                        { label: "Carbs",   val: round1(selectedFood.carbs   * addQty / 100),          unit: "g", color: "var(--cyan)" },
+                        { label: "Carbs",   val: round1(selectedFood.carbs   * addQty / 100),          unit: "g", color: "var(--blue)" },
                         { label: "Fat",     val: round1(selectedFood.fat     * addQty / 100),          unit: "g", color: "var(--amber)" },
                       ].map(m => (
                         <div key={m.label} style={{ textAlign: "center" }}>
@@ -2043,7 +2043,7 @@ export function NutritionClient({
                       >
                         <i className="ti ti-edit" style={{ marginRight: 5 }} aria-hidden="true" />Edit food
                       </button>
-                      <button className="btn-secondary" style={{ fontSize: 12, color: "var(--red)", borderColor: "rgba(255,92,122,.3)" }}
+                      <button className="btn-secondary" style={{ fontSize: 12, color: "var(--red)", borderColor: "rgba(var(--red-rgb),.3)" }}
                         onClick={() => selectedFood.customFoodId && deleteCustomFood(selectedFood.customFoodId)}
                       >
                         <i className="ti ti-trash" aria-hidden="true" />
@@ -2070,7 +2070,7 @@ export function NutritionClient({
                               <div
                                 key={i}
                                 className="ntr-search-row"
-                                style={{ display: "flex", alignItems: "center", padding: "9px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 10 }}
+                                style={{ display: "flex", alignItems: "center", padding: "9px 20px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)", gap: 10 }}
                                 onClick={() => openRecentFoodDetail(food)}
                               >
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2087,7 +2087,7 @@ export function NutritionClient({
                                 <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
                                   <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories} kcal</span>
                                   <span style={{ color: "var(--accent)" }}>P{round1(food.protein_g)}g</span>
-                                  <span style={{ color: "var(--cyan)" }}>C{round1(food.carbs_g)}g</span>
+                                  <span style={{ color: "var(--blue)" }}>C{round1(food.carbs_g)}g</span>
                                   <span style={{ color: "var(--amber)" }}>F{round1(food.fat_g)}g</span>
                                 </div>
                                 <button
@@ -2113,7 +2113,7 @@ export function NutritionClient({
                               </div>
                               {customFoods.slice(0, 5).map(food => (
                                 <div key={food.id} className="ntr-search-row"
-                                  style={{ display: "flex", alignItems: "center", padding: "9px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 8 }}
+                                  style={{ display: "flex", alignItems: "center", padding: "9px 20px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)", gap: 8 }}
                                   onClick={() => selectSearchResult(customToUSDA(food))}
                                 >
                                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -2157,7 +2157,7 @@ export function NutritionClient({
                         </div>
                         {matches.map(food => (
                           <div key={food.id} className="ntr-search-row"
-                            style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)", gap: 8 }}
+                            style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)", gap: 8 }}
                             onClick={() => { setSelectedFood(customToUSDA(food)); setAddQty(food.serving_size_g); }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -2167,7 +2167,7 @@ export function NutritionClient({
                             <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
                               <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories_per_100g} kcal</span>
                               <span style={{ color: "var(--accent)" }}>P{food.protein_per_100g}g</span>
-                              <span style={{ color: "var(--cyan)" }}>C{food.carbs_per_100g}g</span>
+                              <span style={{ color: "var(--blue)" }}>C{food.carbs_per_100g}g</span>
                               <span style={{ color: "var(--amber)" }}>F{food.fat_per_100g}g</span>
                               <span style={{ color: "var(--dim)" }}>/ 100g</span>
                             </div>
@@ -2210,7 +2210,7 @@ export function NutritionClient({
                       key={food.fdcId}
                       onClick={() => selectSearchResult(food)}
                       className="ntr-search-row"
-                      style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,.04)" }}
+                      style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)" }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2224,7 +2224,7 @@ export function NutritionClient({
                       <div style={{ display: "flex", gap: 8, marginLeft: 12, fontSize: 11, flexShrink: 0 }}>
                         <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories} kcal</span>
                         <span style={{ color: "var(--accent)" }}>P{food.protein}g</span>
-                        <span style={{ color: "var(--cyan)" }}>C{food.carbs}g</span>
+                        <span style={{ color: "var(--blue)" }}>C{food.carbs}g</span>
                         <span style={{ color: "var(--amber)" }}>F{food.fat}g</span>
                         <span style={{ color: "var(--dim)" }}>/ 100g</span>
                       </div>
@@ -2463,8 +2463,8 @@ export function NutritionClient({
           background: "rgba(0,0,0,.65)", backdropFilter: "blur(4px)",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14,
         }}>
-          <i className="ti ti-scan" aria-hidden="true" style={{ fontSize: 36, color: "var(--cyan)" }} />
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--cyan)" }}>Looking up barcode…</div>
+          <i className="ti ti-scan" aria-hidden="true" style={{ fontSize: 36, color: "var(--blue)" }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>Looking up barcode…</div>
           <div style={{ fontSize: 12, color: "var(--dim)" }}>Searching Open Food Facts database</div>
         </div>
       )}
@@ -2476,13 +2476,13 @@ export function NutritionClient({
         borderRadius: 10, padding: "8px 14px", fontSize: 11, color: "var(--dim)",
         display: "flex", gap: 8, alignItems: "center",
       }}>
-        <span style={{ background: "rgba(255,255,255,.08)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: 10, color: "var(--muted)" }}>⌘K</span>
+        <span style={{ background: "rgba(var(--overlay-rgb),.08)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: 10, color: "var(--muted)" }}>⌘K</span>
         Quick log food
       </div>
 
       <style>{`
         .ntr-food-row:hover .ntr-del-btn { opacity: 1 !important; }
-        .ntr-search-row:hover { background: rgba(255,255,255,.04); }
+        .ntr-search-row:hover { background: rgba(var(--overlay-rgb),.04); }
         .ntr-quick-row:hover { color: var(--accent) !important; }
       `}</style>
     </div>
