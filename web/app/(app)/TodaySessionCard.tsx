@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDuration } from "@/lib/dates";
 import type { ScheduledDay, StrengthSession } from "@/lib/types";
-import type { WeightRecommendation } from "@/lib/strength";
+import { formatReps, isBarbellBench, estimateBenchWeight, type WeightRecommendation } from "@/lib/strength";
 import { SESSION_BADGE } from "@/lib/session-theme";
 import { WorkoutStructure } from "@/lib/workout-structure";
 import { SessionDetailModal, type DayData } from "./SessionDetailModal";
-
-const CHIP_LIMIT = 6;
 
 /** Fixed height regardless of session content — a 7-exercise strength day and
  * a rest day render at the same size. Frees the hero row's overall height
@@ -18,13 +16,19 @@ const CHIP_LIMIT = 6;
  * value and how it was picked. */
 export const TODAY_SESSION_CARD_HEIGHT = 380;
 
+/** Height of the scrollable exercise-table viewport — roughly 3 rows' worth,
+ * picked empirically the same way TODAY_SESSION_CARD_HEIGHT was (verify
+ * against a real 7-exercise day via getBoundingClientRect, not by
+ * eyeballing). Sessions with more exercises than fit scroll within this
+ * fixed area instead of growing the card. */
+const EXERCISE_SCROLL_HEIGHT = 172;
+
 /** Dashboard hero card for today's session — a client component (not just markup
  * in page.tsx) because "View full session" opens the same SessionDetailModal
- * used by the calendar. Deliberately doesn't inline the exercise table or full
- * workout detail anymore (see DESIGN.md "TodaySessionCard v2" for why) — a
- * compact exercise-name chip row plus a pinned CTA is what keeps the card at a
- * fixed height across rest/run/strength days without truncating mid-table or
- * growing unboundedly. */
+ * used by the calendar. Shows the same Exercise / Sets×Reps / Rest / Intensity
+ * table week/page.tsx renders, inside a fixed-height scrollable viewport so
+ * the card never grows past its fixed height regardless of how many
+ * exercises the session has. */
 export function TodaySessionCard({
   today_day, session, dayData, bench1RMKg, weightRecommendations,
 }: {
@@ -35,10 +39,27 @@ export function TodaySessionCard({
   weightRecommendations?: Record<string, WeightRecommendation>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const exercises = session?.exercises ?? [];
-  const visibleExercises = exercises.slice(0, CHIP_LIMIT);
-  const hiddenExerciseCount = exercises.length - visibleExercises.length;
+
+  // Whether to show the "scroll for more" fade — recomputed whenever the
+  // exercise list changes (a fresh scroll container starts at scrollTop 0)
+  // and on every scroll so the fade disappears once the athlete reaches the
+  // bottom, the same "more below" cue the other scrollable lists in this app
+  // don't need since they're not inside a fixed-height card.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setHasMoreBelow(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+  }, [exercises]);
+
+  function handleExerciseScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    setHasMoreBelow(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+  }
 
   // Raw description text is redundant once WorkoutStructure's colorized zone
   // breakdown (non-strength) already represents the same content structurally
@@ -81,16 +102,79 @@ export function TodaySessionCard({
             </div>
           )}
 
-          {visibleExercises.length > 0 && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 14 }}>
-              {visibleExercises.map(ex => (
-                <span key={ex.id} className="badge" style={{ fontWeight: 600 }}>
-                  {ex.display_name}
-                </span>
-              ))}
-              {hiddenExerciseCount > 0 && (
-                <span className="badge" style={{ color: "var(--dim)" }}>+{hiddenExerciseCount} more</span>
-              )}
+          {exercises.length > 0 && (
+            <div style={{ position: "relative", marginTop: 14 }}>
+            <div
+              ref={scrollRef}
+              onScroll={handleExerciseScroll}
+              className="exercise-scroll"
+              style={{ maxHeight: EXERCISE_SCROLL_HEIGHT, overflowY: "auto" }}
+            >
+            <table>
+              <thead>
+                <tr>
+                  <th>Exercise</th>
+                  <th style={{ width: 80, textAlign: "center" }}>Sets × Reps</th>
+                  <th style={{ width: 60, textAlign: "center" }}>Rest</th>
+                  <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exercises.map(ex => {
+                  const rec = weightRecommendations?.[ex.id];
+                  const hasRealData = rec != null && rec.action !== "no_data" && rec.weight != null;
+                  const estWeight = !hasRealData && bench1RMKg != null && isBarbellBench(ex.garmin_category, ex.display_name)
+                    ? estimateBenchWeight(bench1RMKg, ex.reps_min, ex.reps_max)
+                    : null;
+                  return (
+                    <tr key={ex.id}>
+                      <td style={{ fontWeight: 600 }}>
+                        {ex.display_name}
+                        {hasRealData && (
+                          <div
+                            style={{
+                              fontSize: 10, marginTop: 2, fontWeight: 400,
+                              color: rec.action === "increase" ? "var(--green)" : rec.action === "decrease" ? "var(--red)" : "var(--dim)",
+                            }}
+                            title={rec.note}
+                          >
+                            {rec.action === "increase" ? "↑" : rec.action === "decrease" ? "↓" : "→"} {rec.weight} kg
+                          </div>
+                        )}
+                        {estWeight != null && (
+                          <div style={{ fontSize: 10, color: "var(--dim)", fontWeight: 400, marginTop: 2 }}>
+                            ~{estWeight} kg est.
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
+                        {ex.sets}×{formatReps(ex.reps_min, ex.reps_max)}
+                      </td>
+                      <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
+                        {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
+                      </td>
+                      <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
+                        {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+            {hasMoreBelow && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute", left: 0, right: 0, bottom: 0, height: 28,
+                  background: "linear-gradient(to bottom, transparent, var(--surface))",
+                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                  pointerEvents: "none",
+                }}
+              >
+                <i className="ti ti-chevron-down" style={{ fontSize: 12, color: "var(--dim)", marginBottom: 2 }} />
+              </div>
+            )}
             </div>
           )}
         </div>

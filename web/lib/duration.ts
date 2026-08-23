@@ -17,16 +17,38 @@ export function sumMinuteTokens(text: string): number {
   return total;
 }
 
+// Same fallback services/garmin/running_uploader.py's estimate_running_duration_secs() uses
+// when a distance-based segment has no pace at all (common for jog-recovery reps, e.g.
+// "200m jog recovery r" — schema guidance says recovery should be time-based, but the LLM
+// sometimes emits it as distance-based with no pace_low/pace_high set).
+const FALLBACK_PACE_SECS_PER_KM = 330; // 5:30/km
+
 // Estimates work-segment duration from "Xkm @ M:SS-M:SS/km" or "Xm @ M:SS-M:SS/km" notation,
 // for interval formats that specify distance+pace instead of an explicit minute duration.
+// The distance and the "@pace" are rarely adjacent in real descriptions — the renderer puts a
+// zone label (and sometimes a note) between them, e.g. "400m Z5 @1:30-1:35/km" for a VO2max
+// interval. A regex requiring only whitespace there (`\s*@`) never matches these, silently
+// undercounting every distance-based interval's duration — real bug, not a formatting nitpick:
+// `[^@\n]*?` (lazy, so it stops at THIS segment's own "@" rather than skipping ahead) bridges
+// whatever's actually there (zone, note, both, or nothing).
 export function estimateDistancePaceMinutes(text: string): number {
   let total = 0;
-  for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*(km|m)\b\s*@\s*(\d+):(\d+)(?:-(\d+):(\d+))?\s*\/km/gi)) {
+  let rest = text;
+  for (const m of text.matchAll(/(\d+(?:\.\d+)?)\s*(km|m)\b[^@\n]*?@\s*(\d+):(\d+)(?:-(\d+):(\d+))?\s*\/km/gi)) {
     const rawDistance = parseFloat(m[1]);
     const distanceKm = m[2].toLowerCase() === "km" ? rawDistance : rawDistance / 1000;
     const paceLowSec = parseInt(m[3]) * 60 + parseInt(m[4]);
     const paceHighSec = m[5] !== undefined ? parseInt(m[5]) * 60 + parseInt(m[6]) : paceLowSec;
     total += distanceKm * ((paceLowSec + paceHighSec) / 2 / 60);
+    rest = rest.replace(m[0], "");
+  }
+  // Bare distance mentions left with no pace annotation at all — estimate at the same flat
+  // fallback pace the structured (Garmin-upload) estimator uses, instead of silently
+  // contributing 0. The `\b` after (km|m) already keeps this from matching inside "12min" etc.
+  for (const m of rest.matchAll(/(\d+(?:\.\d+)?)\s*(km|m)\b/gi)) {
+    const rawDistance = parseFloat(m[1]);
+    const distanceKm = m[2].toLowerCase() === "km" ? rawDistance : rawDistance / 1000;
+    total += distanceKm * (FALLBACK_PACE_SECS_PER_KM / 60);
   }
   return total;
 }

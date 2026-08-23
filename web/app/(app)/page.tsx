@@ -13,6 +13,10 @@ import { SicknessWatchCard } from "./SicknessWatchCard";
 import type { DayData } from "./SessionDetailModal";
 import { FitnessTrendChart } from "./FitnessTrendChart";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
+import { getReplanJobs } from "@/app/actions/replan";
+import { RefreshDataButton } from "./RefreshDataButton";
+import type { TrendSeries } from "./report/ProgressTabs";
+import { GoalProgressGrid } from "./GoalProgressGrid";
 
 function fmtTime(totalSecs: number): string {
   const m = Math.floor(totalSecs / 60);
@@ -56,6 +60,10 @@ export default async function DashboardPage() {
   const heatmapWindowStart = new Date(Date.now() - 182 * 86400000).toISOString().slice(0, 10);
   const fitnessTrendStart = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
   const sicknessWindowStart = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10);
+  // Garmin's race predictor only exposes up to 366 days of daily history per call
+  // (see services/garmin/data_extractor.py's get_race_prediction_history) — matches
+  // that same window here rather than fetching an unbounded range.
+  const raceHistoryStart = new Date(Date.now() - 366 * 86400000).toISOString().slice(0, 10);
 
   // Window for the dashboard's MiniMonthCalendar (prev/current/next month, so
   // its prev/next arrows work against already-fetched data with no extra round trip).
@@ -63,7 +71,7 @@ export default async function DashboardPage() {
   const calWindowStart = new Date(todayDateObj.getFullYear(), todayDateObj.getMonth() - 1, 1).toISOString().slice(0, 10);
   const calWindowEnd = new Date(todayDateObj.getFullYear(), todayDateObj.getMonth() + 2, 0).toISOString().slice(0, 10);
 
-  const [dayRes, weekRes, weekSessRes, nextKeyRes, metricsRes, lastCheckinRes, athleteProfile, completedSetsRes, completedActivitiesRes, firstName, fitnessTrendRes, calDaysRes, calStrengthRes, weekMacrosRes, sicknessRes] = await Promise.all([
+  const [dayRes, weekRes, weekSessRes, nextKeyRes, metricsRes, lastCheckinRes, athleteProfile, completedSetsRes, completedActivitiesRes, firstName, fitnessTrendRes, calDaysRes, calStrengthRes, weekMacrosRes, sicknessRes, replanJobs, benchRes, raceHistoryRes] = await Promise.all([
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("date", today).limit(1)
       : Promise.resolve({ data: [] }),
@@ -76,7 +84,8 @@ export default async function DashboardPage() {
     planId
       ? sb.from("scheduled_days").select("*").eq("user_id", uid).eq("plan_id", planId).eq("is_key", true).gt("date", today).order("date").limit(1)
       : Promise.resolve({ data: [] }),
-    sb.from("analyses").select("bench_e1rm_kg, predicted_5k_secs, kpis, report_date").eq("user_id", uid).order("report_date", { ascending: false }).limit(1),
+    sb.from("analyses").select("bench_e1rm_kg, kpis, report_date, updated_at").eq("user_id", uid)
+      .order("report_date", { ascending: false }).order("updated_at", { ascending: false }).limit(1),
     sb.from("replan_jobs").select("completed_at").eq("user_id", uid).eq("type", "replan").eq("status", "done").order("completed_at", { ascending: false }).limit(1),
     getAthleteProfile(),
     sb.from("completed_exercise_sets").select("exercise_id, date, reps, weight_kg, prescribed_reps_min")
@@ -92,8 +101,18 @@ export default async function DashboardPage() {
       : Promise.resolve({ data: [] }),
     sb.from("nutrition_diary").select("date, calories, protein_g, carbs_g, fat_g")
       .eq("user_id", uid).neq("meal_type", "water").gte("date", weekStart).lte("date", weekEnd),
-    sb.from("daily_metrics").select("date, hrv_overnight, rhr, respiration_avg, sleep_stress_avg, body_battery_overnight_gain")
+    sb.from("daily_metrics").select("date, hrv_overnight, rhr, respiration_avg, sleep_stress_avg, body_battery_overnight_gain, sleep_hours")
       .eq("user_id", uid).gte("date", sicknessWindowStart).order("date", { ascending: true }),
+    getReplanJobs(),
+    // Bench e1RM stays on analyses (one point per check-in — no daily equivalent exists,
+    // unlike the race predictions below which Garmin recomputes every single day).
+    sb.from("analyses").select("report_date, bench_e1rm_kg").eq("user_id", uid).order("report_date", { ascending: true }),
+    // Dense daily race-time predictions, backed by daily_metrics (see migration 038 +
+    // services/garmin/history_sync.py) instead of the sparse per-check-in analyses
+    // columns — Garmin recomputes these every day, so this gives up to 366 real points
+    // per distance instead of one point per weekly check-in.
+    sb.from("daily_metrics").select("date, predicted_5k_secs, predicted_10k_secs, predicted_half_marathon_secs, predicted_marathon_secs")
+      .eq("user_id", uid).gte("date", raceHistoryStart).order("date", { ascending: true }),
   ]);
 
   const completedActivities: CompletedActivity[] = completedActivitiesRes.data ?? [];
@@ -155,6 +174,7 @@ export default async function DashboardPage() {
     respiration_avg: number | null;
     sleep_stress_avg: number | null;
     body_battery_overnight_gain: number | null;
+    sleep_hours: number | null;
   }[] = sicknessRes.data ?? [];
   const sicknessLatest = sicknessRows[sicknessRows.length - 1] ?? null;
   const sicknessBaselineRows = sicknessRows.slice(0, -1); // exclude today so it can't skew its own baseline
@@ -165,6 +185,11 @@ export default async function DashboardPage() {
     const variance = nums.reduce((s, v) => s + (v - mean) ** 2, 0) / nums.length;
     return { mean, std: Math.sqrt(variance) };
   }
+  // Same daily_metrics.hrv_overnight baseline used by the Sickness Watch signal
+  // below — reused here so the dashboard pill agrees with Sickness Watch and
+  // Progress instead of the old kpis.hrv.weekly_avg (a different Garmin field,
+  // pinned to whenever the last check-in report ran).
+  const hrvBaseline = baselineStats(sicknessBaselineRows.map(r => r.hrv_overnight));
   function sicknessSignal(label: string, value: number | null, unit: string, baseline: { mean: number; std: number } | null, direction: "above" | "below") {
     const flagged = value != null && baseline != null
       ? (direction === "below" ? value < baseline.mean - baseline.std : value > baseline.mean + baseline.std)
@@ -224,9 +249,29 @@ export default async function DashboardPage() {
 
   const latestMetrics = metricsRes.data?.[0] ?? null;
   const benchE1rm: number | null = latestMetrics?.bench_e1rm_kg ?? null;
-  const predicted5kSecs: number | null = latestMetrics?.predicted_5k_secs ?? null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const kpis: Record<string, any> | null = latestMetrics?.kpis ?? null;
+  const lastSyncedAt: string | null = latestMetrics?.updated_at ?? null;
+
+  // Dense daily race-time history from daily_metrics (see migration 038) — Garmin
+  // recomputes a prediction every single day, unlike bench e1RM which only exists on
+  // days a bench session was logged, so this gets up to 366 real points per distance
+  // instead of one point per weekly check-in.
+  const raceHistoryRows = (raceHistoryRes.data ?? []) as {
+    date: string; predicted_5k_secs: number | null; predicted_10k_secs: number | null;
+    predicted_half_marathon_secs: number | null; predicted_marathon_secs: number | null;
+  }[];
+  function latestRaceValue(key: keyof (typeof raceHistoryRows)[number]): number | null {
+    for (let i = raceHistoryRows.length - 1; i >= 0; i--) {
+      const v = raceHistoryRows[i][key];
+      if (v != null) return v as number;
+    }
+    return null;
+  }
+  const predicted5kSecs = latestRaceValue("predicted_5k_secs");
+  const predicted10kSecs = latestRaceValue("predicted_10k_secs");
+  const predictedHalfMarathonSecs = latestRaceValue("predicted_half_marathon_secs");
+  const predictedMarathonSecs = latestRaceValue("predicted_marathon_secs");
 
   // Upcoming events from athlete profile (sorted by date, future only)
   const events = (athleteProfile?.events ?? [])
@@ -238,7 +283,49 @@ export default async function DashboardPage() {
       return a.date < b.date ? -1 : 1;
     });
 
-  const hasGoals = events.length > 0 || benchE1rm != null || predicted5kSecs != null;
+  const hasGoals = events.length > 0 || benchE1rm != null || predicted5kSecs != null
+    || predicted10kSecs != null || predictedHalfMarathonSecs != null || predictedMarathonSecs != null;
+
+  // Bench e1RM: full history from analyses, one point per check-in (no daily equivalent).
+  const benchRows = (benchRes.data ?? []) as { report_date: string; bench_e1rm_kg: number | null }[];
+  const benchSeries: TrendSeries = {
+    label: "Bench e1RM (Epley)", unit: "kg", color: "#c084fc", decimals: 1, higherIsBetter: true,
+    data: benchRows.map(r => ({ date: r.report_date, value: r.bench_e1rm_kg })),
+  };
+  // Race-time series are charted in decimal minutes (raw seconds reads badly on an axis
+  // next to the other decimal-scale charts) — same conversion the original 5K chart used.
+  const predicted5kSeries: TrendSeries = {
+    label: "Predicted 5K", unit: "min", color: "#38bdf8", decimals: 1, higherIsBetter: false,
+    data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_5k_secs != null ? r.predicted_5k_secs / 60 : null })),
+  };
+  const predicted10kSeries: TrendSeries = {
+    label: "Predicted 10K", unit: "min", color: "#34d399", decimals: 1, higherIsBetter: false,
+    data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_10k_secs != null ? r.predicted_10k_secs / 60 : null })),
+  };
+  const predictedHalfMarathonSeries: TrendSeries = {
+    label: "Predicted Half Marathon", unit: "min", color: "#f59e0b", decimals: 1, higherIsBetter: false,
+    data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_half_marathon_secs != null ? r.predicted_half_marathon_secs / 60 : null })),
+  };
+  const predictedMarathonSeries: TrendSeries = {
+    label: "Predicted Marathon", unit: "min", color: "#f87171", decimals: 1, higherIsBetter: false,
+    data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_marathon_secs != null ? r.predicted_marathon_secs / 60 : null })),
+  };
+  const benchChartReady = benchSeries.data.filter(d => d.value !== null).length >= 3;
+  const predicted5kChartReady = predicted5kSeries.data.filter(d => d.value !== null).length >= 3;
+  const predicted10kChartReady = predicted10kSeries.data.filter(d => d.value !== null).length >= 3;
+  const predictedHalfMarathonChartReady = predictedHalfMarathonSeries.data.filter(d => d.value !== null).length >= 3;
+  const predictedMarathonChartReady = predictedMarathonSeries.data.filter(d => d.value !== null).length >= 3;
+  const anyRaceChartReady = predicted5kChartReady || predicted10kChartReady || predictedHalfMarathonChartReady || predictedMarathonChartReady;
+
+  // Average pace the athlete would need to hold for the full distance to hit each
+  // predicted time — a race-time number alone doesn't say much without this.
+  const goalCharts: { key: string; series: TrendSeries; ready: boolean; caption?: string }[] = [
+    { key: "bench", series: benchSeries, ready: benchChartReady },
+    { key: "5k", series: predicted5kSeries, ready: predicted5kChartReady, caption: predicted5kSecs != null ? `Target pace: ${fmtPace(predicted5kSecs, 5)}` : undefined },
+    { key: "10k", series: predicted10kSeries, ready: predicted10kChartReady, caption: predicted10kSecs != null ? `Target pace: ${fmtPace(predicted10kSecs, 10)}` : undefined },
+    { key: "half", series: predictedHalfMarathonSeries, ready: predictedHalfMarathonChartReady, caption: predictedHalfMarathonSecs != null ? `Target pace: ${fmtPace(predictedHalfMarathonSecs, 21.0975)}` : undefined },
+    { key: "marathon", series: predictedMarathonSeries, ready: predictedMarathonChartReady, caption: predictedMarathonSecs != null ? `Target pace: ${fmtPace(predictedMarathonSecs, 42.195)}` : undefined },
+  ].filter(g => g.ready);
 
   return (
     <div className="page">
@@ -251,16 +338,26 @@ export default async function DashboardPage() {
           DESIGN.md for why forced stretch was rejected here. ── */}
       <div className="dashboard-hero-grid">
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.5px", marginBottom: 4 }}>
-              {greeting(new Date().getHours(), firstName)}
-            </h1>
-            <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)" }}>
-              {formatLong(today)}
-            </p>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.5px", marginBottom: 4 }}>
+                {greeting(new Date().getHours(), firstName)}
+              </h1>
+              <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)" }}>
+                {formatLong(today)}
+              </p>
+            </div>
+            <RefreshDataButton lastSyncedAt={lastSyncedAt} initialJobs={replanJobs} />
           </div>
 
-          {kpis && <ReadinessStrip kpis={kpis} />}
+          {kpis && (
+            <ReadinessStrip
+              kpis={kpis}
+              hrvOvernight={sicknessLatest?.hrv_overnight ?? null}
+              hrvBaseline={hrvBaseline}
+              sleepHours={sicknessLatest?.sleep_hours ?? null}
+            />
+          )}
 
           {today_day ? (
             <TodaySessionCard
@@ -401,8 +498,9 @@ export default async function DashboardPage() {
               );
             })}
 
-            {/* Bench press e1RM (only if from analysis data) */}
-            {benchE1rm != null && (
+            {/* Bench press e1RM — compact card fallback only when there's not yet enough
+                history (< 3 points) for the full-width evolution chart below. */}
+            {benchE1rm != null && !benchChartReady && (
               <div className="card">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                   <div className="card-title" style={{ margin: 0 }}>Bench Press</div>
@@ -423,34 +521,42 @@ export default async function DashboardPage() {
               </div>
             )}
 
-            {/* Run predictions (5k, 10k) */}
-            {predicted5kSecs != null && (
+            {/* Race predictions — compact fallback listing only the distances that don't
+                have a chart yet below (sourced from the dedicated predicted_*_secs columns,
+                not kpis.race_predictions — that JSONB blob only gets populated on a full
+                Check-In run, not the lightweight KPI-refresh sync, so it lags behind). */}
+            {(predicted5kSecs != null && !predicted5kChartReady) ||
+             (predicted10kSecs != null && !predicted10kChartReady) ||
+             (predictedHalfMarathonSecs != null && !predictedHalfMarathonChartReady) ||
+             (predictedMarathonSecs != null && !predictedMarathonChartReady) ? (
               <div className="card">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                   <div className="card-title" style={{ margin: 0 }}>Race Predictions</div>
                   <span className="badge badge-cyan" style={{ fontSize: 10 }}>Garmin</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                    <span style={{ color: "var(--dim)" }}>5 km</span>
-                    <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predicted5kSecs)}</span>
-                  </div>
-                  {kpis?.race_predictions?.["10k_secs"] != null && (
+                  {predicted5kSecs != null && !predicted5kChartReady && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--dim)" }}>5 km</span>
+                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predicted5kSecs)}</span>
+                    </div>
+                  )}
+                  {predicted10kSecs != null && !predicted10kChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span style={{ color: "var(--dim)" }}>10 km</span>
-                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(kpis.race_predictions["10k_secs"])}</span>
+                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predicted10kSecs)}</span>
                     </div>
                   )}
-                  {kpis?.race_predictions?.half_marathon_secs != null && (
+                  {predictedHalfMarathonSecs != null && !predictedHalfMarathonChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span style={{ color: "var(--dim)" }}>Half marathon</span>
-                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(kpis.race_predictions.half_marathon_secs)}</span>
+                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predictedHalfMarathonSecs)}</span>
                     </div>
                   )}
-                  {kpis?.race_predictions?.marathon_secs != null && (
+                  {predictedMarathonSecs != null && !predictedMarathonChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                       <span style={{ color: "var(--dim)" }}>Marathon</span>
-                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(kpis.race_predictions.marathon_secs)}</span>
+                      <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predictedMarathonSecs)}</span>
                     </div>
                   )}
                 </div>
@@ -460,9 +566,18 @@ export default async function DashboardPage() {
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
 
           </div>
+
+          {/* Full-history evolution charts for every goal estimate with enough data —
+              bench e1RM plus whichever Garmin race-predictor distances have 3+ check-ins.
+              One shared 1M/3M/6M/1Y toggle drives all of them, side by side. */}
+          {(benchChartReady || anyRaceChartReady) && (
+            <div style={{ marginTop: 16 }}>
+              <GoalProgressGrid charts={goalCharts} events={events} />
+            </div>
+          )}
         </section>
       )}
 
@@ -472,8 +587,13 @@ export default async function DashboardPage() {
 
 // ── Readiness strip ───────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ReadinessStrip({ kpis }: { kpis: Record<string, any> }) {
+function ReadinessStrip({ kpis, hrvOvernight, hrvBaseline, sleepHours }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  kpis: Record<string, any>;
+  hrvOvernight: number | null;
+  hrvBaseline: { mean: number; std: number } | null;
+  sleepHours: number | null;
+}) {
   type Pill = { label: string; detail?: string; color: string; icon: string };
   const pills: Pill[] = [];
 
@@ -503,20 +623,25 @@ function ReadinessStrip({ kpis }: { kpis: Record<string, any> }) {
     pills.push({ label: `Battery ${Math.round(bb)}%`, color, icon: "ti-battery-2" });
   }
 
-  const hrv = kpis.hrv?.weekly_avg;
-  const hrvLow = kpis.hrv?.baseline_low;
-  const hrvHigh = kpis.hrv?.baseline_high;
-  if (hrv != null && hrvLow != null && hrvHigh != null) {
-    const inRange = hrv >= hrvLow && hrv <= hrvHigh;
-    const color = inRange ? "var(--green)" : "var(--amber)";
-    const status = inRange ? "HRV ok" : hrv < hrvLow ? "HRV low" : "HRV high";
-    pills.push({ label: status, detail: `${Math.round(hrv)} ms`, color, icon: "ti-heart-rate-monitor" });
+  // Last night's overnight HRV, same daily_metrics.hrv_overnight + baseline the
+  // Sickness Watch card uses — was previously kpis.hrv.weekly_avg, a different
+  // Garmin field (hrvSummary.weeklyAvg) pinned to whenever the last check-in
+  // report ran, which is why this pill used to disagree with Sickness Watch
+  // and Progress. Only "below baseline" is flagged, matching Sickness Watch's
+  // own directionality — elevated HRV isn't a concern the same way low is.
+  if (hrvOvernight != null) {
+    const low = hrvBaseline != null && hrvOvernight < hrvBaseline.mean - hrvBaseline.std;
+    const color = low ? "var(--amber)" : "var(--green)";
+    const status = low ? "HRV low" : "HRV ok";
+    pills.push({ label: status, detail: `${Math.round(hrvOvernight)} ms`, color, icon: "ti-heart-rate-monitor" });
   }
 
-  const sleep = kpis.sleep?.avg_total_hours;
-  if (sleep != null) {
-    const color = sleep >= 7.5 ? "var(--green)" : sleep >= 6 ? "var(--amber)" : "var(--red)";
-    pills.push({ label: `Sleep ${sleep.toFixed(1)} h`, color, icon: "ti-moon" });
+  // Last night's sleep duration, same daily_metrics.sleep_hours Sickness Watch
+  // and Progress read — was previously kpis.sleep.avg_total_hours, a 56-day
+  // mean mislabeled "7-day avg" in the report-generation code.
+  if (sleepHours != null) {
+    const color = sleepHours >= 7.5 ? "var(--green)" : sleepHours >= 6 ? "var(--amber)" : "var(--red)";
+    pills.push({ label: `Sleep ${sleepHours.toFixed(1)} h`, color, icon: "ti-moon" });
   }
 
   if (pills.length === 0) return null;
@@ -576,5 +701,14 @@ function fmtRaceTime(secs: number): string {
   return h > 0
     ? `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
     : `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+// Average per-km pace needed to hit a predicted race time over the given distance.
+function fmtPace(totalSecs: number, km: number): string {
+  const perKm = totalSecs / km;
+  let m = Math.floor(perKm / 60);
+  let s = Math.round(perKm - m * 60);
+  if (s === 60) { s = 0; m += 1; }
+  return `${m}:${s.toString().padStart(2, "0")}/km`;
 }
 

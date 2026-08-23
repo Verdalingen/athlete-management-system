@@ -19,6 +19,8 @@ export interface ScheduledDay {
   description: string | null;
   is_key: boolean;
   is_rest: boolean;
+  running_segments: unknown[] | null;
+  garmin_workout_id: number | null;
 }
 
 export interface StrengthSession {

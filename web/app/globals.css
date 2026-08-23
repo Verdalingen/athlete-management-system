@@ -300,6 +300,44 @@ body {
 }
 .report-content .card > .badge { margin-bottom: 10px; }
 
+/* Bullet lists — generated report HTML (Season analysis) can contain lists. Without this
+   they'd fall back to unstyled browser defaults (wrong font size/color for this system). */
+.report-content ul { margin: 0; padding-left: 20px; }
+.report-content li {
+  font-size: 14px; line-height: 1.65; color: var(--text);
+  margin-bottom: 10px;
+}
+.report-content li::marker { color: var(--accent); }
+
+/* ── Weekly review insight cards (Progress → This week) ──
+   Each coach_feedback line is a distinct assessment, so each gets its own card instead
+   of running together as one block of prose. Selectors are scoped under .report-content
+   to outrank the generic `.report-content li` rule above (which would otherwise win on
+   specificity and re-apply its bullet margin). */
+.report-content .insight-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.report-content .insight {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  font-size: 14px; line-height: 1.65; color: var(--text);
+}
+.report-content .insight-warn {
+  border-left-color: var(--amber);
+  background: rgba(var(--amber-rgb), .05);
+}
+.report-content .insight-label {
+  display: block;
+  font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 5px;
+}
+.report-content .insight-warn .insight-label { color: var(--amber); }
+
 .report-content .card h3 {
   font-size: 14px; font-weight: 700; letter-spacing: 0; text-transform: none;
   color: var(--accent); margin: 14px 0 6px;
@@ -359,6 +397,15 @@ body {
 .goal-grid .card { height: 100%; }
 .goal-grid .card + .card { margin-top: 0; }
 
+/* ── Goal progress chart grid (dashboard) ── */
+/* Same `.card + .card` adjacency trap as above — ExpandedChart's root is a bare
+   .card, so every chart after the first in DOM order was getting pushed down
+   16px and, combined with grid-auto-rows: 1fr's stretch, rendering that much
+   shorter than its unaffected siblings (confirmed live via getBoundingClientRect:
+   Bench e1RM 279px vs. Predicted 5K 263px, a 16px gap matching this exact rule). */
+.goal-progress-chart-grid .card { height: 100%; }
+.goal-progress-chart-grid .card + .card { margin-top: 0; }
+
 /* ── KPI grid + cells ── */
 .kpi-grid {
   display: grid;
@@ -393,6 +440,7 @@ body {
 .badge-blue   { background: rgba(var(--blue-rgb),.15); color: var(--blue);   border: 1px solid rgba(var(--blue-rgb),.28); }
 .badge-accent { background: rgba(var(--accent-rgb),.15);  color: var(--accent); border: 1px solid rgba(var(--accent-rgb),.28); }
 .badge-cyan   { background: rgba(var(--cyan-rgb),.18);  color: var(--accent);   border: 1px solid rgba(var(--cyan-rgb),.32); }
+.badge-neutral { background: var(--overlay-3); color: var(--text); border: 1px solid var(--overlay-border); }
 
 /* ── Progress bar ── */
 .progress-bar { height: 6px; background: var(--overlay-4); border-radius: 3px; overflow: hidden; margin-top: 8px; }
@@ -407,6 +455,16 @@ th {
 }
 td { padding: 9px 12px; border-bottom: 1px solid var(--overlay-2); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
+
+/* ── Scrollable exercise table (TodaySessionCard) — thin themed slider,
+   not the browser's default scrollbar, and a sticky header so the column
+   labels stay visible while scrolling through a long exercise list. ── */
+.exercise-scroll { scrollbar-width: thin; scrollbar-color: var(--overlay-border) transparent; }
+.exercise-scroll::-webkit-scrollbar { width: 6px; }
+.exercise-scroll::-webkit-scrollbar-track { background: transparent; }
+.exercise-scroll::-webkit-scrollbar-thumb { background: var(--overlay-border); border-radius: 3px; }
+.exercise-scroll::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+.exercise-scroll thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 tr:hover td { background: var(--overlay-2); }
 
 /* ── Week grid ── */

@@ -115,7 +115,7 @@ export function SessionDetailModal({
                   </span>
                 ) : null;
               })()}
-              {strengthSession?.garmin_workout_id && (
+              {(strengthSession?.garmin_workout_id || day.garmin_workout_id) && (
                 <span className="badge badge-green">
                   <i className="ti ti-check" style={{ marginRight: 4 }} />
                   Garmin
