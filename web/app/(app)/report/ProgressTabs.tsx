@@ -252,6 +252,16 @@ export function PMCChart({
   const atlLine = atlPts.length >= 2
     ? atlPts.map((p, j) => `${j === 0 ? "M" : "L"} ${xS(p.idx).toFixed(1)} ${yL(p.value).toFixed(1)}`).join(" ")
     : null;
+  // Gradient-fade area fills under CTL/ATL, matching the dashboard's
+  // FitnessTrendChart (ctl-grad/atl-grad) so the two "same metric, two
+  // places" charts read as the same visual language.
+  const topBaseline = TOP_PAD.top + topPlotH;
+  const ctlArea = ctlLine
+    ? `${ctlLine} L ${xS(ctlPts[ctlPts.length - 1].idx).toFixed(1)} ${topBaseline.toFixed(1)} L ${xS(ctlPts[0].idx).toFixed(1)} ${topBaseline.toFixed(1)} Z`
+    : null;
+  const atlArea = atlLine
+    ? `${atlLine} L ${xS(atlPts[atlPts.length - 1].idx).toFixed(1)} ${topBaseline.toFixed(1)} L ${xS(atlPts[0].idx).toFixed(1)} ${topBaseline.toFixed(1)} Z`
+    : null;
 
   const spanDays = tRange / 86400000 || 1;
   const barW = Math.max(2, (plotW / spanDays) * 0.8);
@@ -361,6 +371,20 @@ export function PMCChart({
         <svg viewBox={`0 0 ${W} ${TOP_H}`} style={{ width: "100%", display: "block", cursor: "crosshair" }}
           preserveAspectRatio="xMidYMid meet"
           onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)}>
+
+          <defs>
+            <linearGradient id="pmc-ctl-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.26" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="pmc-atl-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--red)" stopOpacity="0.20" />
+              <stop offset="100%" stopColor="var(--red)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+
+          {ctlArea && <path d={ctlArea} fill="url(#pmc-ctl-grad)" />}
+          {atlArea && <path d={atlArea} fill="url(#pmc-atl-grad)" />}
 
           {yLTicks.map((v, i) => (
             <g key={i}>
@@ -477,6 +501,9 @@ function CompactChart({ series, selected, onClick }: { series: TrendSeries; sele
   const points = series.data.filter((d): d is { date: string; value: number } => d.value !== null);
   const dec = series.decimals ?? 1;
   const W = 300, H = 52, PAD = 4;
+  // Unique per series so multiple CompactChart instances on the same page
+  // (one per metric card) don't collide on SVG gradient ids.
+  const gradId = `cc-grad-${series.label.replace(/[^a-zA-Z0-9]+/g, "-")}`;
   const latest = points.at(-1), prev = points.length > 7 ? points.at(-8) : points[0];
   const delta = latest && prev ? latest.value - prev.value : null;
   const severity = getZoneSeverity(latest?.value ?? null, series.zoneBands);
@@ -516,7 +543,13 @@ function CompactChart({ series, selected, onClick }: { series: TrendSeries; sele
 
       {points.length >= 2 ? (
         <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }} preserveAspectRatio="none" aria-hidden>
-          <path d={areaD} fill={series.color} fillOpacity={0.15} />
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={series.color} stopOpacity="0.32" />
+              <stop offset="100%" stopColor={series.color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={areaD} fill={`url(#${gradId})`} />
           <path d={pathD} fill="none" stroke={series.color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
         </svg>
       ) : (
@@ -546,13 +579,17 @@ function CompactChart({ series, selected, onClick }: { series: TrendSeries; sele
 
 // ── Expanded chart: line or bar, zones, colored segments, event markers ───────
 
-function ExpandedChart({ series, events, onClose }: { series: TrendSeries; events: RaceEvent[]; onClose: () => void }) {
+export function ExpandedChart({ series, events, onClose, showAnomalies = true, caption }: {
+  series: TrendSeries; events: RaceEvent[]; onClose?: () => void; showAnomalies?: boolean; caption?: string;
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const points = series.data.filter((d): d is { date: string; value: number } => d.value !== null);
   const dec = series.decimals ?? 1;
   const isBar = series.chartType === "bar";
   if (points.length < 2) return null;
+
+  const gradId = `ec-grad-${series.label.replace(/[^a-zA-Z0-9]+/g, "-")}`;
 
   const W = 900, H = 240;
   const PAD = { top: 28, right: 56, bottom: 40, left: 56 };
@@ -608,10 +645,13 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
   const xTickIdxs = Array.from({ length: xTickCount }, (_, i) =>
     Math.round(i * (points.length - 1) / (xTickCount - 1)));
 
-  // Anomaly detection: find points where value is > 2 SD from mean (illness/spike flags)
+  // Anomaly detection: find points where value is > 2 SD from mean (illness/spike flags).
+  // showAnomalies=false skips this entirely — some series (e.g. a PR-driven estimate like
+  // bench e1RM or a race-time prediction) are supposed to jump around on real progress,
+  // not get flagged as if every PR were a data-quality glitch.
   const mean = dataVals.reduce((a, b) => a + b, 0) / dataVals.length;
   const sd = Math.sqrt(dataVals.reduce((s, v) => s + (v - mean) ** 2, 0) / dataVals.length);
-  const anomalyIdxs = series.higherIsBetter === true
+  const anomalyIdxs = !showAnomalies ? [] : series.higherIsBetter === true
     ? points.map((p, i) => p.value < mean - 2 * sd ? i : -1).filter(i => i >= 0)
     : series.higherIsBetter === false
     ? points.map((p, i) => p.value > mean + 2 * sd ? i : -1).filter(i => i >= 0)
@@ -659,15 +699,27 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
               {anomalyIdxs.length > 0 && <span style={{ color: "var(--red)", marginLeft: 8 }}>· {anomalyIdxs.length} anomalies flagged</span>}
             </div>
           )}
+          {caption && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{caption}</div>}
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", cursor: "pointer", padding: "4px 12px", fontSize: 12, color: "var(--muted)" }}>
-          Close ✕
-        </button>
+        {onClose && (
+          <button onClick={onClose} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", cursor: "pointer", padding: "4px 12px", fontSize: 12, color: "var(--muted)" }}>
+            Close ✕
+          </button>
+        )}
       </div>
 
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", cursor: "crosshair" }}
         preserveAspectRatio="xMidYMid meet"
         onMouseMove={handleMouseMove} onMouseLeave={() => setHoverIdx(null)}>
+
+        {!isBar && (
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={series.color} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={series.color} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        )}
 
         {/* Zone bands with in-chart labels */}
         {series.zoneBands && (
@@ -730,7 +782,7 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
         {/* LINE CHART rendering */}
         {!isBar && (
           <>
-            <path d={areaD} fill={series.color} fillOpacity={0.08} />
+            <path d={areaD} fill={`url(#${gradId})`} />
             {segs.map((seg, i) => (
               <path key={i} d={seg.d} fill="none" stroke={seg.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
             ))}
@@ -785,12 +837,57 @@ function ExpandedChart({ series, events, onClose }: { series: TrendSeries; event
   );
 }
 
+// ── Weekly KPI deltas ─────────────────────────────────────────────────────────
+
+/** Shape written by compute_weekly_kpi_delta() in services/supabase/plan_writer.py —
+ * this week's average vs. the prior week's, per metric. */
+export type WeeklyKpiDelta = Record<string, {
+  current: number; prior: number; delta: number; higher_is_better: boolean | null;
+}>;
+
+const KPI_DELTA_LABELS: Record<string, { label: string; unit: string }> = {
+  ctl: { label: "Fitness (CTL)", unit: "" },
+  atl: { label: "Fatigue (ATL)", unit: "" },
+  tsb: { label: "Form (TSB)", unit: "" },
+  hrv_overnight: { label: "HRV", unit: " ms" },
+  rhr: { label: "Resting HR", unit: " bpm" },
+  sleep_hours: { label: "Sleep", unit: " h" },
+};
+
+function WeeklyKpiDeltas({ delta }: { delta: WeeklyKpiDelta }) {
+  const entries = Object.entries(delta).filter(([k]) => k in KPI_DELTA_LABELS);
+  if (entries.length === 0) return null;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 20 }}>
+      {entries.map(([key, d]) => {
+        const { label, unit } = KPI_DELTA_LABELS[key];
+        // higher_is_better === null means direction isn't inherently good or bad
+        // (ATL/TSB) — left uncolored rather than editorialized, matching DeltaBadge.
+        const color = d.higher_is_better == null
+          ? "var(--muted)"
+          : (d.delta >= 0) === d.higher_is_better ? "var(--green)" : "var(--red)";
+        const arrow = d.delta > 0 ? "ti-trending-up" : d.delta < 0 ? "ti-trending-down" : "ti-minus";
+        return (
+          <div key={key} className="kpi">
+            <div className="kpi-label">{label}</div>
+            <div className="kpi-value">{d.current.toFixed(1)}<span className="kpi-unit">{unit}</span></div>
+            <div className="kpi-note" style={{ color, display: "flex", alignItems: "center", gap: 4 }}>
+              <i className={`ti ${arrow}`} style={{ fontSize: 11 }} aria-hidden="true" />
+              {d.delta > 0 ? "+" : ""}{d.delta.toFixed(1)} vs last week
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main ProgressTabs ─────────────────────────────────────────────────────────
 
 export default function ProgressTabs({
   weeklyReview, trendSeries, analysisHtml, planningHtml, latestAnalysisDate, events, completedActivities,
 }: {
-  weeklyReview: { summary_html: string; week_start: string } | null;
+  weeklyReview: { summary_html: string; week_start: string; kpi_delta?: WeeklyKpiDelta | null } | null;
   trendSeries: TrendSeries[];
   analysisHtml: string | null;
   planningHtml: string | null;
@@ -843,6 +940,7 @@ export default function ProgressTabs({
         weeklyReview ? (
           <div>
             <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 16 }}>Week of {fmtDate(weeklyReview.week_start, true)}</p>
+            {weeklyReview.kpi_delta && <WeeklyKpiDeltas delta={weeklyReview.kpi_delta} />}
             <div className="report-content" dangerouslySetInnerHTML={{ __html: weeklyReview.summary_html }} />
           </div>
         ) : (

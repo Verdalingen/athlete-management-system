@@ -109,6 +109,28 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
             r["bmr_calories"] = entry.get("bmr_calories")
             r["respiration_avg"] = entry.get("respiration_average")
 
+    # ── Race predictions: dense daily history (up to 366 days in one call — Garmin
+    # recomputes every day, unlike VO2max/training-load which only get sampled) ──
+    for entry in garmin_data.get("race_prediction_history") or []:
+        d = entry.get("date")
+        if d:
+            r = row(d)
+            r["predicted_5k_secs"] = entry.get("predicted_5k_secs")
+            r["predicted_10k_secs"] = entry.get("predicted_10k_secs")
+            r["predicted_half_marathon_secs"] = entry.get("predicted_half_marathon_secs")
+            r["predicted_marathon_secs"] = entry.get("predicted_marathon_secs")
+
+    # Today-only value from the regular (short-range) extraction — keeps this current
+    # on every lightweight sync without needing the full historical range call again.
+    today_preds = garmin_data.get("race_predictions") or {}
+    today_date = today_preds.get("calendarDate")
+    if today_date:
+        r = row(today_date)
+        r["predicted_5k_secs"] = today_preds.get("time5K")
+        r["predicted_10k_secs"] = today_preds.get("time10K")
+        r["predicted_half_marathon_secs"] = today_preds.get("timeHalfMarathon")
+        r["predicted_marathon_secs"] = today_preds.get("timeMarathon")
+
     return list(by_date.values())
 
 

@@ -9,7 +9,7 @@ export default async function ProgressPage() {
 
   const activityHistoryStart = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
 
-  const [latestRes, dailyMetricsRes, fallbackTrendRes, weeklyReviewRes, athleteProfile, completedActivitiesRes, benchAndRaceRes] = await Promise.all([
+  const [latestRes, dailyMetricsRes, fallbackTrendRes, weeklyReviewRes, athleteProfile, completedActivitiesRes, benchRes] = await Promise.all([
     sb
       .from("analyses")
       .select("analysis_html, planning_html, report_date")
@@ -19,10 +19,12 @@ export default async function ProgressPage() {
 
     sb
       .from("daily_metrics")
-      .select("date, ctl, atl, tsb, acwr, ramp_7d, vo2max_running, vo2max_cycling, rhr, hrv_overnight, sleep_score, sleep_hours, body_battery, weight_kg, stress_avg, total_calories")
+      // No .limit() — with ascending order, a limit here silently drops the MOST
+      // RECENT days once the account has more than the limit's worth of rows (this
+      // account is already past 365), the opposite of what "recent trend" needs.
+      .select("date, ctl, atl, tsb, acwr, ramp_7d, vo2max_running, vo2max_cycling, rhr, hrv_overnight, sleep_score, sleep_hours, body_battery, weight_kg, stress_avg, total_calories, predicted_5k_secs, predicted_10k_secs, predicted_half_marathon_secs, predicted_marathon_secs")
       .eq("user_id", uid)
-      .order("date", { ascending: true })
-      .limit(365),
+      .order("date", { ascending: true }),
 
     sb
       .from("analyses")
@@ -34,7 +36,7 @@ export default async function ProgressPage() {
 
     sb
       .from("weekly_reviews")
-      .select("summary_html, week_start")
+      .select("summary_html, week_start, kpi_delta")
       .eq("user_id", uid)
       .order("week_start", { ascending: false })
       .limit(1),
@@ -47,13 +49,15 @@ export default async function ProgressPage() {
       .eq("user_id", uid)
       .gte("date", activityHistoryStart),
 
-    // Long-term strength/race trend — bench_e1rm_kg and predicted_5k_secs are
-    // per-report snapshot columns on `analyses` (same table the dashboard
-    // reads just the latest row from for its Goals cards), so the full
-    // history doubles as a ready-made time series with no new storage.
+    // Bench e1RM long-term trend — a per-report snapshot column on `analyses` (same
+    // table the dashboard reads just the latest row from for its Goals card), so the
+    // full history doubles as a ready-made time series with no new storage. Race-time
+    // predictions used to live here too but moved to daily_metrics (see migration 038)
+    // once dense daily history became available — Garmin recomputes a race prediction
+    // every day, unlike bench e1RM which only exists on days a bench session was logged.
     sb
       .from("analyses")
-      .select("report_date, bench_e1rm_kg, predicted_5k_secs")
+      .select("report_date, bench_e1rm_kg")
       .eq("user_id", uid)
       .order("report_date", { ascending: true }),
   ]);
@@ -64,7 +68,7 @@ export default async function ProgressPage() {
   const dailyRows: Record<string, any>[] = dailyMetricsRes.data ?? [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fallbackRows: { report_date: string; kpis: Record<string, any> }[] = fallbackTrendRes.data ?? [];
-  const benchAndRaceRows: { report_date: string; bench_e1rm_kg: number | null; predicted_5k_secs: number | null }[] = benchAndRaceRes.data ?? [];
+  const benchRows: { report_date: string; bench_e1rm_kg: number | null }[] = benchRes.data ?? [];
   const weeklyReview = weeklyReviewRes.data?.[0] ?? null;
   const events = (athleteProfile?.events ?? []).filter(
     (e: { date: string }) => e.date >= new Date().toISOString().slice(0, 10)
@@ -397,21 +401,38 @@ export default async function ProgressPage() {
     ];
   }
 
-  // ── Bench e1RM (Epley) + predicted 5K — long-term goal trends, independent
-  // of which branch built the series above (they come from `analyses`, not
-  // `daily_metrics`). No manual "enough data" gate here — ProgressTabs
-  // already drops any series with fewer than 3 non-null points
-  // (`activeSeries` filter), so duplicating that threshold here would just
-  // be a second place for it to drift out of sync.
+  // ── Bench e1RM (Epley) + Garmin race-time predictions — long-term goal trends,
+  // independent of which branch built the series above. Bench comes from `analyses`
+  // (one point per check-in, no daily equivalent); race predictions come from
+  // `daily_metrics` (migration 038) — Garmin recomputes those every single day, so
+  // this gets up to 365 real points per distance instead of one per weekly check-in.
+  // No manual "enough data" gate here — ProgressTabs already drops any series with
+  // fewer than 3 non-null points (`activeSeries` filter), so duplicating that
+  // threshold here would just be a second place for it to drift out of sync.
   trendSeries.push({
     label: "Bench e1RM (Epley)",
     unit: "kg", color: "#c084fc", decimals: 1, higherIsBetter: true,
-    data: benchAndRaceRows.map(r => ({ date: r.report_date, value: r.bench_e1rm_kg })),
+    data: benchRows.map(r => ({ date: r.report_date, value: r.bench_e1rm_kg })),
   });
   trendSeries.push({
     label: "Predicted 5K",
     unit: "min", color: "#38bdf8", decimals: 1, higherIsBetter: false,
-    data: benchAndRaceRows.map(r => ({ date: r.report_date, value: r.predicted_5k_secs != null ? r.predicted_5k_secs / 60 : null })),
+    data: dailyRows.map(r => ({ date: r.date, value: r.predicted_5k_secs != null ? r.predicted_5k_secs / 60 : null })),
+  });
+  trendSeries.push({
+    label: "Predicted 10K",
+    unit: "min", color: "#34d399", decimals: 1, higherIsBetter: false,
+    data: dailyRows.map(r => ({ date: r.date, value: r.predicted_10k_secs != null ? r.predicted_10k_secs / 60 : null })),
+  });
+  trendSeries.push({
+    label: "Predicted Half Marathon",
+    unit: "min", color: "#f59e0b", decimals: 1, higherIsBetter: false,
+    data: dailyRows.map(r => ({ date: r.date, value: r.predicted_half_marathon_secs != null ? r.predicted_half_marathon_secs / 60 : null })),
+  });
+  trendSeries.push({
+    label: "Predicted Marathon",
+    unit: "min", color: "#f87171", decimals: 1, higherIsBetter: false,
+    data: dailyRows.map(r => ({ date: r.date, value: r.predicted_marathon_secs != null ? r.predicted_marathon_secs / 60 : null })),
   });
 
   return (

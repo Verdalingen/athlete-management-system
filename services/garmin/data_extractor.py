@@ -395,6 +395,7 @@ class TriathlonCoachDataExtractor(DataExtractor):
                     "long_term_training_load_trend": self.get_long_term_training_load_trend(
                         lt_start, lt_end, lt_interval
                     ),
+                    "race_prediction_history": self.get_race_prediction_history(lt_start, lt_end),
                 }
             )
 
@@ -1239,6 +1240,36 @@ class TriathlonCoachDataExtractor(DataExtractor):
             len(trend["cycling"]),
         )
         return trend
+
+    def get_race_prediction_history(self, start_date: date, end_date: date) -> list[dict[str, Any]]:
+        """Daily 5k/10k/half/marathon race-time predictions for every day in the range.
+
+        Unlike VO2max/training-load (Garmin only emits a new estimate occasionally, so
+        those are sampled at an interval), the race predictor recomputes every single
+        day — one API call with a date range returns dense daily history directly, no
+        sampling needed. Confirmed live: a 366-day range returns 366 entries, one per
+        calendar day, each with all four distances populated.
+        """
+        raw = self._call_api(
+            self.garmin.client.get_race_predictions,
+            start_date.isoformat(), end_date.isoformat(), "daily",
+            default=[],
+            what="get_race_predictions (history)",
+        )
+        history: list[dict[str, Any]] = []
+        for entry in raw or []:
+            d = entry.get("calendarDate")
+            if not d:
+                continue
+            history.append({
+                "date": d,
+                "predicted_5k_secs": entry.get("time5K"),
+                "predicted_10k_secs": entry.get("time10K"),
+                "predicted_half_marathon_secs": entry.get("timeHalfMarathon"),
+                "predicted_marathon_secs": entry.get("timeMarathon"),
+            })
+        logger.info("Collected %d days of race prediction history", len(history))
+        return history
 
     def get_long_term_training_load_trend(
         self, start_date: date, end_date: date, interval_days: int = 14
