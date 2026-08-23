@@ -1256,8 +1256,14 @@ class TriathlonCoachDataExtractor(DataExtractor):
             default=[],
             what="get_race_predictions (history)",
         )
+        if not isinstance(raw, list):
+            logger.warning("Race prediction history returned %s, not a list", type(raw).__name__)
+            return []
+
         history: list[dict[str, Any]] = []
-        for entry in raw or []:
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
             d = entry.get("calendarDate")
             if not d:
                 continue
