@@ -830,13 +830,22 @@ def plan_shift_layout(
     ``_new_date``.
 
     Because rows are one-per-day and contiguous, re-laying the kept rows consecutively from
-    ``from_date + days`` is all that's needed: dropping exactly ``days`` rows from the segment
-    before an event makes that event land back on its real date automatically.
+    ``from_date + days`` is all that's needed: freeing ``pending`` rows from the segment before
+    an event makes that event land back on its real date automatically.
+
+    ``pending`` is how many days the plan is still running late, NOT ``days``. It starts at
+    ``days`` and falls to zero as rows are dropped. Compressing by ``days`` before *every*
+    event over-corrects: once the first event has been pulled back onto its real date the plan
+    is already in sync, so squeezing the next segment as well would delete a rest day for
+    nothing and land the second event a day EARLIER than it actually is. Conversely, if an
+    event could only be partly protected, the leftover debt carries forward and the next
+    segment gets a chance to pay it off.
     """
     start = date.fromisoformat(from_date)
     kept: list[dict] = []
     dropped: list[dict] = []
     warnings: list[str] = []
+    pending = days
 
     # Walk the plan in event-delimited segments, so an event only forces compression of the
     # work that actually precedes it — sessions after it are untouched.
@@ -850,18 +859,19 @@ def plan_shift_layout(
             boundary_rows = [r for r in rows[idx:] if r["date"] == boundary]
             idx += len(boundary_rows)
 
-        if boundary is not None:
+        if boundary is not None and pending > 0:
             candidates = sorted(
                 (r for r in segment if _removal_rank(r) is not None),
                 key=lambda r: (_removal_rank(r), r["date"]),
             )
-            to_drop = candidates[:days]
-            if len(to_drop) < days:
+            to_drop = candidates[:pending]
+            if len(to_drop) < pending:
                 warnings.append(
                     f"Could not fully protect the event on {boundary} — only {len(to_drop)} of "
-                    f"{days} day(s) could be freed before it without dropping a key session, so "
-                    "it moves later by the remainder."
+                    f"{pending} day(s) could be freed before it without dropping a key session, "
+                    "so it moves later by the remainder."
                 )
+            pending -= len(to_drop)
             drop_ids = {id(r) for r in to_drop}
             dropped.extend(to_drop)
             segment = [r for r in segment if id(r) not in drop_ids]

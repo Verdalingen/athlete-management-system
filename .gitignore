@@ -44,3 +44,7 @@ build/
 
 # === CLAUDE CODE ===
 .claude/
+
+# Coverage artifacts
+.coverage
+htmlcov/
