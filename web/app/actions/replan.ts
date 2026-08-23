@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 
-export type ReplanJobType = "daily" | "replan" | "seasonal";
+export type ReplanJobType = "daily" | "replan" | "seasonal" | "sync_kpis";
 export type ReplanJobStatus = "pending" | "running" | "done" | "error";
 
 export interface ReplanJob {

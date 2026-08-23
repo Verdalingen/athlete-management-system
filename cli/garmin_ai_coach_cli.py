@@ -6,9 +6,10 @@ import getpass
 import json
 import logging
 import os
+import re
 import sys
 from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,10 +26,13 @@ from services.garmin import ExtractionConfig, TriathlonCoachDataExtractor
 from services.garmin.client import GarminConnectClient
 from services.garmin.credentials import resolve_garmin_credentials
 from services.garmin.strength_uploader import PlannedExercise, PlannedSet, PlannedStrengthSession, delete_strength_workout, upload_strength_session
+from services.garmin.running_uploader import PlannedRunningSegment, PlannedRunningSession, delete_running_workout, estimate_running_duration_secs, normalize_recovery_segments, render_running_description, upload_running_session
 from services.outside.client import OutsideApiGraphQlClient
 from services.garmin.history_sync import build_daily_metrics_records, build_completed_activity_records, build_completed_exercise_set_records
 from services.garmin.training_paces import extract_predicted_5k_secs
-from services.supabase.plan_writer import write_plan, write_report, upsert_kpis, upsert_daily_metrics_batch, upsert_completed_activities, get_future_garmin_workout_ids, get_planned_exercises_by_date, upsert_completed_exercise_sets, expand_strength_session_slots, sync_todays_nutrition_target
+from services.supabase.client import get_supabase
+from services.supabase.plan_drift import analyze_plan_drift
+from services.supabase.plan_writer import shift_plan, write_plan, write_report, upsert_kpis, upsert_daily_metrics_batch, upsert_completed_activities, get_future_garmin_workout_ids, get_future_garmin_running_workout_ids, get_planned_exercises_by_date, upsert_completed_exercise_sets, expand_strength_session_slots, sync_todays_nutrition_target, get_sync_gap_days, write_weekly_review, render_coach_feedback_html, compute_weekly_kpi_delta, monday_of
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -180,6 +184,28 @@ def _reconcile_strength_focus_labels(
             day["focus"] = slot_name
 
 
+def _apply_running_descriptions(
+    scheduled_days: list[dict[str, Any]] | None,
+    running_sessions: list[dict[str, Any]],
+) -> None:
+    """Overwrite scheduled_days[i]["description"] for run dates with a description rendered
+    deterministically from that date's structured segments (running_uploader.render_running_
+    description) — the LLM's own attempt at the description field for run days is discarded, the
+    segments are the single source of truth. Also force-corrects any recovery/warmup/cooldown
+    segment that came back distance-based into time-based first (normalize_recovery_segments) —
+    distance is only meant for the interval rep itself. Mutates in place; call right after the AI
+    result comes back, before scheduled_days is saved/written or pushed to Garmin.
+    """
+    if not scheduled_days:
+        return
+    segments_by_date = {s["date"]: s["segments"] for s in running_sessions if s.get("segments")}
+    for day in scheduled_days:
+        segments = segments_by_date.get(day.get("date"))
+        if segments is not None:
+            normalize_recovery_segments(segments)
+            day["description"] = render_running_description(segments)
+
+
 def _save_html_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
     files_generated: list[str] = []
 
@@ -282,9 +308,13 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         logger.info("Extracting Garmin Connect data...")
         extractor = TriathlonCoachDataExtractor(email, password)
 
+        # Widen the lookback to cover any gap since the last successful sync — a fixed
+        # window silently drops whatever Garmin activities fall between "N days ago" and
+        # the actual last-synced date if the athlete goes longer than N days without a
+        # sync (see get_sync_gap_days's docstring; confirmed live as a real data gap).
         extraction_config = ExtractionConfig(
-            activities_range=extraction_settings["activities_days"],
-            metrics_range=extraction_settings["metrics_days"],
+            activities_range=get_sync_gap_days(extraction_settings["activities_days"]),
+            metrics_range=get_sync_gap_days(extraction_settings["metrics_days"]),
             include_detailed_activities=True,
             include_metrics=True,
         )
@@ -332,6 +362,11 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
             result["strength_sessions"] = expand_strength_session_slots(result["strength_sessions"])
             _reconcile_strength_focus_labels(result.get("scheduled_days"), result["strength_sessions"])
 
+        # Running sessions come back as structured segments (running_sessions) — render each
+        # date's description from its segments before anything downstream reads scheduled_days.
+        if result.get("running_sessions"):
+            _apply_running_descriptions(result.get("scheduled_days"), result["running_sessions"])
+
         logger.info("Saving results...")
 
         files_generated: list[str] = []
@@ -371,6 +406,7 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         logger.info("💰 Total cost: $%.2f (%d tokens)", cost_total, total_tokens)
 
         workout_ids: dict[str, Any] = {}
+        running_workout_ids: dict[str, Any] = {}
         if extraction_settings.get("upload_to_garmin", False):
             strength_sessions = result.get("strength_sessions") or []
             if strength_sessions:
@@ -383,8 +419,19 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
             else:
                 logger.info("📲 upload_to_garmin is enabled but no strength sessions found in plan.")
 
+            running_sessions = result.get("running_sessions") or []
+            if running_sessions:
+                logger.info("📲 Syncing %d running session(s) with Garmin Connect…", len(running_sessions))
+                old_running_ids = get_future_garmin_running_workout_ids(date.today().isoformat())
+                running_workout_ids = _sync_running_sessions(
+                    running_sessions, old_running_ids, email, password,
+                    scheduled_days=result.get("scheduled_days"),
+                )
+            else:
+                logger.info("📲 upload_to_garmin is enabled but no running sessions found in plan.")
+
         gd_dict = asdict(garmin_data)
-        _write_to_supabase(result, workout_ids, garmin_data=gd_dict)
+        _write_to_supabase(result, workout_ids, running_workout_ids, garmin_data=gd_dict)
         # Full extraction includes 360-day training load history — persist all of it.
         upsert_daily_metrics_batch(build_daily_metrics_records(gd_dict))
         upsert_completed_activities(build_completed_activity_records(gd_dict))
@@ -430,17 +477,60 @@ async def run_replan_from_config(
         logger.info("User note: %s", user_comment[:120])
         planning_context = f"{planning_context.rstrip()}\n\n## Athlete Note\n{user_comment.strip()}"
 
-    logger.info("Extracting recent Garmin data (14 days)…")
+    # Widen past 14 days if the athlete hasn't synced in longer than that — see
+    # get_sync_gap_days's docstring; a fixed window here previously left a real,
+    # permanent data gap for whatever fell between "14 days ago" and the actual last sync.
+    replan_lookback_days = get_sync_gap_days(14)
+    logger.info("Extracting recent Garmin data (%d days)…", replan_lookback_days)
     extractor = TriathlonCoachDataExtractor(email, password)
     garmin_data = extractor.extract_data(
         ExtractionConfig(
-            activities_range=14,
-            metrics_range=14,
+            activities_range=replan_lookback_days,
+            metrics_range=replan_lookback_days,
             include_detailed_activities=True,
             include_metrics=False,
             include_long_term_trends=False,
         )
     )
+
+    # Persist real activity before analysing drift, so an unsynced session doesn't read as a
+    # missed one — the difference between "you skipped it" and "we haven't looked yet".
+    upsert_completed_activities(build_completed_activity_records(asdict(garmin_data)))
+
+    # ── Drift: what actually happened vs. what was planned ──────────────────────────────
+    # A uniform shift has no judgment left in it (every session done, same order, just offset),
+    # so resolve it deterministically and skip the LLM entirely — "I did everything a day late"
+    # becomes free, instant, and impossible to mis-author. Every other case (reordered /
+    # shortfall / substituted) is a real coaching call, so the facts go into the prompt and the
+    # coach decides. Skipped when the athlete left a note: they're telling us something the
+    # activity data doesn't contain, and that deserves the coach's attention.
+    drift = analyze_plan_drift(lookback_days=replan_lookback_days)
+    if drift.get("pure_shift_days") and not user_comment:
+        shift_days = drift["pure_shift_days"]
+        logger.info("📆 Pure %d-day shift detected — resolving deterministically (no AI call).", shift_days)
+        shifted = shift_plan(from_date=date.today().isoformat(), days=shift_days)
+        for warning in shifted.get("warnings", []):
+            logger.warning("⚠️  %s", warning)
+        feedback = (
+            f"Every planned session was completed, just {shift_days} day(s) later than scheduled — "
+            f"so the whole plan moved with you, keeping the same order and spacing. "
+            f"{shifted['shifted']} day(s) moved; no training was lost."
+        )
+        if shifted.get("dropped"):
+            feedback += (
+                f" {len(shifted['dropped'])} day(s) were compressed so your race dates stay fixed."
+            )
+        return feedback
+
+    if drift.get("summary"):
+        logger.info("Plan drift — %s", drift["summary"][:200])
+        planning_context = (
+            f"{planning_context.rstrip()}\n\n=== WHAT ACTUALLY HAPPENED (measured, not reported) ===\n"
+            f"{drift['summary']}\n"
+            "Decide how to respond: slide the remaining plan to keep order, absorb the gap, drop "
+            "the lowest-value session, or re-anchor to the athlete's preferred days. State which "
+            "you chose and why in coach_feedback."
+        )
 
     now = datetime.now()
     current_date = {"date": now.strftime("%Y-%m-%d"), "day_name": now.strftime("%A")}
@@ -472,8 +562,30 @@ async def run_replan_from_config(
         result["strength_sessions"] = expand_strength_session_slots(result["strength_sessions"])
         _reconcile_strength_focus_labels(result.get("scheduled_days"), result["strength_sessions"])
 
+    # Running sessions come back as structured segments (running_sessions) — render each date's
+    # description from its segments before anything downstream reads scheduled_days.
+    if result.get("running_sessions"):
+        _apply_running_descriptions(result.get("scheduled_days"), result["running_sessions"])
+
     coach_feedback: str | None = result.get("coach_feedback")
     schedule_updated: bool = result.get("schedule_updated", True)
+
+    # Persist this check-in as the week's review — this is what the Progress page's
+    # "This week" tab reads. write_weekly_review() existed since migration 006 but had
+    # zero callers, so weekly_reviews was never written and the tab showed "No weekly
+    # review yet" forever, even after real check-ins. Written before the
+    # schedule_updated early-return below: a check-in that concludes "no changes needed"
+    # still produced a valid assessment worth showing.
+    if coach_feedback:
+        try:
+            week_start = monday_of(date.today())
+            write_weekly_review(
+                week_start=week_start,
+                summary_html=render_coach_feedback_html(coach_feedback),
+                kpi_delta=compute_weekly_kpi_delta(week_start) or None,
+            )
+        except Exception:
+            logger.exception("Failed to write weekly review — continuing check-in")
 
     if not schedule_updated:
         logger.info("✅ Check-in complete — coach assessed no schedule changes needed.")
@@ -493,6 +605,7 @@ async def run_replan_from_config(
     logger.info("✅ Check-in complete — schedule updated: %s", files)
 
     workout_ids: dict[str, Any] = {}
+    running_workout_ids: dict[str, Any] = {}
     if extraction_settings.get("upload_to_garmin", False):
         strength_sessions = result.get("strength_sessions") or []
         if strength_sessions:
@@ -502,8 +615,19 @@ async def run_replan_from_config(
         else:
             logger.info("📲 upload_to_garmin is enabled but no strength sessions in check-in.")
 
+        running_sessions = result.get("running_sessions") or []
+        if running_sessions:
+            logger.info("📲 Syncing %d running session(s) with Garmin Connect…", len(running_sessions))
+            old_running_ids = get_future_garmin_running_workout_ids(date.today().isoformat())
+            running_workout_ids = _sync_running_sessions(
+                running_sessions, old_running_ids, email, password,
+                scheduled_days=result.get("scheduled_days"),
+            )
+        else:
+            logger.info("📲 upload_to_garmin is enabled but no running sessions in check-in.")
+
     gd = asdict(garmin_data)
-    _write_to_supabase(result, workout_ids, garmin_data=gd)
+    _write_to_supabase(result, workout_ids, running_workout_ids, garmin_data=gd)
     _write_report_to_supabase(output_dir, garmin_data=gd)
     # Full extraction includes 360-day training load history — persist all of it.
     upsert_daily_metrics_batch(build_daily_metrics_records(gd))
@@ -534,6 +658,9 @@ def _write_report_to_supabase(
                 planning_html=planning_html,
                 bench_e1rm_kg=bench_e1rm,
                 predicted_5k_secs=predicted_5k,
+                predicted_10k_secs=_compute_predicted_race_secs(gd, "time10K"),
+                predicted_half_marathon_secs=_compute_predicted_race_secs(gd, "timeHalfMarathon"),
+                predicted_marathon_secs=_compute_predicted_race_secs(gd, "timeMarathon"),
                 max_heart_rate_bpm=max_hr,
                 kpis=_compute_kpis(gd),
                 personal_records=_extract_personal_records(gd),
@@ -669,23 +796,24 @@ def _compute_kpis(garmin_data: dict[str, Any]) -> dict[str, Any]:
     } if tr_raw else {}
 
     # ── Race predictions ────────────────────────────────────────────────
+    # Garmin's real race-predictor payload is flat with time5K/time10K/timeHalfMarathon/
+    # timeMarathon int-seconds keys — confirmed against a real live response. The previous
+    # guessed keys (fiveK, tenK, halfMarathon, raceTime5K, ...) never matched, so
+    # kpis.race_predictions.* silently stayed null for every analyses row ever written.
     preds_raw = garmin_data.get("race_predictions") or {}
 
-    def _pred_secs(keys: list[str]) -> int | None:
-        for k in keys:
-            v = preds_raw.get(k) or (preds_raw.get("racePredictions") or {}).get(k)
-            if v is None:
-                continue
-            secs = v if isinstance(v, (int, float)) else (v.get("time") or v.get("raceDuration"))
-            if secs:
-                return int(secs)
-        return None
+    def _pred_secs(key: str) -> int | None:
+        v = preds_raw.get(key)
+        if v is None:
+            return None
+        secs = v if isinstance(v, (int, float)) else (v.get("time") or v.get("raceDuration"))
+        return int(secs) if secs else None
 
     race_predictions = {
-        "5k_secs":            _pred_secs(["fiveK", "5k", "raceTime5K"]),
-        "10k_secs":           _pred_secs(["tenK", "10k", "raceTime10K"]),
-        "half_marathon_secs": _pred_secs(["halfMarathon", "raceTimeHalfMarathon"]),
-        "marathon_secs":      _pred_secs(["marathon", "raceTimeMarathon"]),
+        "5k_secs":            _pred_secs("time5K"),
+        "10k_secs":           _pred_secs("time10K"),
+        "half_marathon_secs": _pred_secs("timeHalfMarathon"),
+        "marathon_secs":      _pred_secs("timeMarathon"),
     }
 
     return {
@@ -756,6 +884,18 @@ def _compute_predicted_5k_secs(garmin_data: dict[str, Any]) -> int | None:
     return secs
 
 
+def _compute_predicted_race_secs(garmin_data: dict[str, Any], key: str) -> int | None:
+    """Extract a race-time prediction (seconds) from Garmin's race_predictions payload —
+    confirmed live flat with int-seconds keys time5K/time10K/timeHalfMarathon/timeMarathon
+    (see _compute_kpis' race_predictions block for the same mapping)."""
+    preds = garmin_data.get("race_predictions") or {}
+    v = preds.get(key)
+    if v is None:
+        return None
+    secs = v if isinstance(v, (int, float)) else (v.get("time") or v.get("raceDuration"))
+    return int(secs) if secs else None
+
+
 def _sync_completed_exercise_sets(garmin_data: dict[str, Any], days_back: int = 21) -> None:
     """Match completed Garmin exercise sets to planned exercises and persist them, for
     autoregulated weight progression. Best-effort: logs a warning and continues on failure rather
@@ -777,6 +917,7 @@ def _sync_completed_exercise_sets(garmin_data: dict[str, Any], days_back: int = 
 def _write_to_supabase(
     result: dict[str, Any],
     workout_ids: dict[str, Any],
+    running_workout_ids: dict[str, Any] | None = None,
     garmin_data: dict[str, Any] | None = None,
 ) -> None:
     """Write the completed plan to Supabase. Logs a warning and continues on failure."""
@@ -791,6 +932,8 @@ def _write_to_supabase(
             scheduled_days=result.get("scheduled_days") or [],
             strength_sessions=result.get("strength_sessions") or [],
             garmin_workout_ids=workout_ids,
+            running_sessions=result.get("running_sessions") or [],
+            running_workout_ids=running_workout_ids or {},
         )
         logger.info("📊 Plan saved to Supabase (id=%s)", plan_id)
         analysis_html = result.get("analysis_html") or ""
@@ -815,12 +958,60 @@ def _write_to_supabase(
                 planning_html=planning_html,
                 bench_e1rm_kg=bench_e1rm,
                 predicted_5k_secs=predicted_5k,
+                predicted_10k_secs=_compute_predicted_race_secs(gd, "time10K"),
+                predicted_half_marathon_secs=_compute_predicted_race_secs(gd, "timeHalfMarathon"),
+                predicted_marathon_secs=_compute_predicted_race_secs(gd, "timeMarathon"),
                 max_heart_rate_bpm=max_hr,
                 kpis=_compute_kpis(gd),
                 personal_records=_extract_personal_records(gd),
             )
     except Exception as exc:
         logger.warning("⚠️  Supabase write failed (plan still saved locally): %s", exc)
+
+
+_DATE_PREFIX_RE = re.compile(r"^([A-Za-z]{3} \d{1,2}) · ")
+
+
+def _orphaned_workout_ids_by_date(client: Any, dates: list[str]) -> dict[str, list[int]]:
+    """Find Garmin workouts whose title carries one of the given dates' "<Mon> <Day> · "
+    prefix (our own upload naming convention — see workout_name construction below),
+    regardless of what Supabase currently remembers.
+
+    Supabase's garmin_workout_id columns are the primary record of what to delete before a
+    resync, but a crash between a successful Garmin upload and the Supabase write that
+    persists its ID (real incident: a NameError killed a run after 18 running workouts were
+    already live on Garmin but before their IDs reached Supabase) leaves those workouts
+    permanently untracked — no future sync would ever know to remove them, since cleanup only
+    ever trusts Supabase. Matching by the date embedded in the title instead is self-healing:
+    it finds and removes duplicates for a date even if Supabase's record of that date's ID is
+    stale, missing, or was never written. Caveat: the title's "Mon Day" has no year, so a
+    same-month-and-day workout from a different year would false-positive match — acceptable
+    given the alternative (silently accumulating orphans forever) is worse.
+    """
+    prefix_to_date = {}
+    for d in dates:
+        try:
+            prefix_to_date[datetime.strptime(d, "%Y-%m-%d").strftime("%b %-d")] = d
+        except ValueError:
+            continue
+    if not prefix_to_date:
+        return {}
+
+    all_workouts = client.get_workouts(0, 500)
+    if len(all_workouts) >= 500:
+        logger.warning(
+            "Garmin workout library returned %d entries (limit) — orphan detection may miss "
+            "older entries beyond this page.", len(all_workouts),
+        )
+
+    found: dict[str, list[int]] = {}
+    for w in all_workouts:
+        match = _DATE_PREFIX_RE.match(w.get("workoutName") or "")
+        session_date = prefix_to_date.get(match.group(1)) if match else None
+        workout_id = w.get("workoutId")
+        if session_date and workout_id:
+            found.setdefault(session_date, []).append(int(workout_id))
+    return found
 
 
 def _sync_strength_sessions(
@@ -842,18 +1033,27 @@ def _sync_strength_sessions(
     new_workout_ids: dict[str, Any] = {}
 
     try:
-        # Remove old planned sessions that haven't happened yet
+        # Remove old planned sessions that haven't happened yet — union of what Supabase
+        # remembers and what's actually on Garmin for these dates (see
+        # _orphaned_workout_ids_by_date's docstring for why both are needed).
+        to_delete: dict[str, set[int]] = {}
         for session_date, entry in old_workout_ids.items():
-            if session_date >= today:
-                workout_id = entry.get("workout_id")
-                if workout_id:
-                    try:
-                        delete_strength_workout(client, int(workout_id))
-                    except Exception:
-                        logger.warning(
-                            "Could not delete old workoutId=%s for %s — skipping",
-                            workout_id, session_date,
-                        )
+            if session_date >= today and entry.get("workout_id"):
+                to_delete.setdefault(session_date, set()).add(int(entry["workout_id"]))
+        for session_date, ids in _orphaned_workout_ids_by_date(
+            client, [s["date"] for s in new_sessions]
+        ).items():
+            to_delete.setdefault(session_date, set()).update(ids)
+
+        for session_date, ids in to_delete.items():
+            for workout_id in ids:
+                try:
+                    delete_strength_workout(client, workout_id)
+                except Exception:
+                    logger.warning(
+                        "Could not delete old workoutId=%s for %s — skipping",
+                        workout_id, session_date,
+                    )
 
         # Upload new sessions
         for s in new_sessions:
@@ -899,6 +1099,93 @@ def _sync_strength_sessions(
     return new_workout_ids
 
 
+def _sync_running_sessions(
+    new_sessions: list[dict[str, Any]],
+    old_workout_ids: dict[str, Any],
+    email: str,
+    password: str,
+    scheduled_days: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Delete future planned Garmin running workouts, then upload new sessions. Single connection.
+
+    Mirrors _sync_strength_sessions() above. Sessions whose date is in the past are assumed
+    completed and left untouched. Returns {date: {workout_id, schedule_id, name}} for the newly
+    uploaded sessions.
+
+    scheduled_days supplies each date's `focus` label (e.g. "VO2max", "Tempo") for the Garmin
+    workout name — running_sessions itself carries no name field, unlike strength sessions whose
+    name comes from the template slot.
+    """
+    today = date.today().isoformat()
+    focus_by_date = {d["date"]: d.get("focus") for d in (scheduled_days or [])}
+
+    gc = GarminConnectClient()
+    gc.connect(email=email, password=password)
+    client = gc.client
+    new_workout_ids: dict[str, Any] = {}
+
+    try:
+        to_delete: dict[str, set[int]] = {}
+        for session_date, entry in old_workout_ids.items():
+            if session_date >= today and entry.get("workout_id"):
+                to_delete.setdefault(session_date, set()).add(int(entry["workout_id"]))
+        for session_date, ids in _orphaned_workout_ids_by_date(
+            client, [s["date"] for s in new_sessions]
+        ).items():
+            to_delete.setdefault(session_date, set()).update(ids)
+
+        for session_date, ids in to_delete.items():
+            for workout_id in ids:
+                try:
+                    delete_running_workout(client, workout_id)
+                except Exception:
+                    logger.warning(
+                        "Could not delete old running workoutId=%s for %s — skipping",
+                        workout_id, session_date,
+                    )
+
+        for s in new_sessions:
+            segments = [
+                PlannedRunningSegment(
+                    segment_type=seg["segment_type"],
+                    zone=seg.get("zone"),
+                    duration_secs=seg.get("duration_secs"),
+                    distance_meters=seg.get("distance_meters"),
+                    pace_low=seg.get("pace_low"),
+                    pace_high=seg.get("pace_high"),
+                    repeat_count=seg.get("repeat_count", 1),
+                    note=seg.get("note"),
+                )
+                for seg in s.get("segments", [])
+            ]
+            if not segments:
+                continue
+            raw_date = s["date"]
+            try:
+                date_prefix = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%b %-d")
+            except ValueError:
+                date_prefix = raw_date
+            focus = focus_by_date.get(raw_date)
+            workout_name = f"{date_prefix} · {focus}" if focus else f"{date_prefix} · Run"
+            session = PlannedRunningSession(
+                name=workout_name,
+                date=raw_date,
+                segments=segments,
+                estimated_duration_secs=estimate_running_duration_secs(s.get("segments", [])),
+            )
+            try:
+                entry = upload_running_session(client, session)
+                new_workout_ids[session.date] = entry
+                logger.info(
+                    "✅ '%s' → workoutId=%s scheduled on %s",
+                    session.name, entry["workout_id"], session.date,
+                )
+            except Exception:
+                logger.exception("❌ Failed to upload '%s'", session.name)
+    finally:
+        gc.disconnect()
+    return new_workout_ids
+
 
 async def process_queue(config_path: Path) -> None:
     """Process pending replan jobs queued via the web UI."""
@@ -929,7 +1216,9 @@ async def process_queue(config_path: Path) -> None:
 
         sb.table("replan_jobs").update({
             "status": "running",
-            "started_at": datetime.now().isoformat(),
+            # UTC-aware — a naive local timestamp gets misread as already-UTC by Postgres,
+            # skewing "how long ago" displays by the local UTC offset (verified live).
+            "started_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", job_id).execute()
 
         try:
@@ -965,12 +1254,14 @@ async def process_queue(config_path: Path) -> None:
             elif job_type == "seasonal":
                 await run_analysis_from_config(config_path, user_comment=user_comment)
                 coach_feedback = None
+            elif job_type == "sync_kpis":
+                coach_feedback = cmd_sync_kpis(config_path)
             else:
                 raise ValueError(f"Unknown job type: {job_type}")
 
             done_payload: dict = {
                 "status": "done",
-                "completed_at": datetime.now().isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
             }
             if coach_feedback:
                 done_payload["coach_feedback"] = coach_feedback
@@ -981,7 +1272,7 @@ async def process_queue(config_path: Path) -> None:
             sb.table("replan_jobs").update({
                 "status": "error",
                 "error_message": str(exc)[:500],
-                "completed_at": datetime.now().isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", job_id).execute()
             logger.error("❌ Job %s failed: %s", job_id, exc)
 
@@ -1017,12 +1308,17 @@ def _format_timedelta(td: timedelta) -> str:
     return f"{minutes}m"
 
 
-def cmd_sync_kpis(config_path: Path) -> None:
+def cmd_sync_kpis(config_path: Path) -> str | None:
     """Lightweight KPI sync — no AI, no plan generation.
 
     Skips unless at least KPI_SYNC_MIN_INTERVAL has elapsed since the last
     successful run (tracked via a local stamp file storing an ISO timestamp),
     so the LaunchAgent can fire frequently without over-syncing.
+
+    Returns a short status string describing what happened (used as a queued
+    job's coach_feedback so the web UI's manual refresh button can tell the
+    athlete "already up to date" apart from a silent no-op), or None when the
+    caller doesn't need it (LaunchAgent invocation via --sync-kpis).
     """
     now = datetime.now()
 
@@ -1048,7 +1344,10 @@ def cmd_sync_kpis(config_path: Path) -> None:
                     _format_timedelta(remaining),
                     _format_timedelta(KPI_SYNC_MIN_INTERVAL),
                 )
-                return
+                return (
+                    f"Already up to date — last synced {_format_timedelta(elapsed)} ago "
+                    f"(next refresh eligible in {_format_timedelta(remaining)})."
+                )
 
     config_parser = ConfigParser(config_path)
     _, email = config_parser.get_athlete_info()
@@ -1058,10 +1357,13 @@ def cmd_sync_kpis(config_path: Path) -> None:
 
     # Minimal extraction: only what's needed for daily metrics (activity summaries
     # so completed sessions sync to the calendar — no per-activity detail calls;
-    # no long-term trends, 3-day window to capture last night's sleep)
+    # normally a 3-day window to capture last night's sleep, widened automatically if
+    # the athlete hasn't synced in longer than that — summaries-only keeps a wider
+    # pull cheap even across a real gap (see get_sync_gap_days's docstring).
+    sync_lookback_days = get_sync_gap_days(3)
     extraction_config = ExtractionConfig(
-        activities_range=3,
-        metrics_range=3,
+        activities_range=sync_lookback_days,
+        metrics_range=sync_lookback_days,
         include_detailed_activities=True,
         activity_summaries_only=True,
         include_metrics=True,
@@ -1076,7 +1378,18 @@ def cmd_sync_kpis(config_path: Path) -> None:
     kpis = _compute_kpis(gd)
     personal_records = _extract_personal_records(gd)
 
-    upsert_kpis(kpis=kpis, personal_records=personal_records or None)
+    # Race predictions come from one cheap, always-fetched API call (unlike bench e1RM,
+    # which needs per-set activity detail this lightweight extraction doesn't pull) — so
+    # persist them on every KPI sync, not just once a week at Check-In. That's what gives
+    # the dashboard's evolution charts enough points to actually render a trend.
+    upsert_kpis(
+        kpis=kpis,
+        personal_records=personal_records or None,
+        predicted_5k_secs=_compute_predicted_5k_secs(gd),
+        predicted_10k_secs=_compute_predicted_race_secs(gd, "time10K"),
+        predicted_half_marathon_secs=_compute_predicted_race_secs(gd, "timeHalfMarathon"),
+        predicted_marathon_secs=_compute_predicted_race_secs(gd, "timeMarathon"),
+    )
 
     # Also persist today's row into the dense time-series table for trend charts.
     # (Minimal extraction only covers ~3 days, so this adds/updates a small window.)
@@ -1095,6 +1408,84 @@ def cmd_sync_kpis(config_path: Path) -> None:
 
     _SYNC_STAMP.write_text(now.isoformat())
     logger.info("✅ KPI sync complete at %s.", now.isoformat(timespec="seconds"))
+    return f"Synced at {now.strftime('%H:%M')}."
+
+
+def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = None) -> str:
+    """Slide the remaining plan forward N days, then re-push the moved workouts to Garmin.
+
+    The DB-level move (including race-collision compression) is plan_writer.shift_plan; this
+    wrapper handles the Garmin side, which shift_plan deliberately leaves alone: the workouts
+    are still scheduled on their OLD dates in Garmin, so every moved session has to be deleted
+    and re-uploaded. Reuses the same _sync_* helpers a check-in uses, which already
+    delete-and-replace by date.
+    """
+    if days == 0:
+        return "Nothing to do — 0 days."
+    start = from_date or date.today().isoformat()
+
+    result = shift_plan(from_date=start, days=days)
+    for warning in result.get("warnings", []):
+        logger.warning("⚠️  %s", warning)
+    for d in result.get("dropped", []):
+        logger.info("   dropped %s (%s)", d["date"], "rest day" if d.get("is_rest") else d.get("focus") or "session")
+    if not result.get("shifted"):
+        return result.get("warnings", ["Nothing was shifted."])[0]
+
+    cp = ConfigParser(config_path)
+    _, email = cp.get_athlete_info()
+    if not cp.get_extraction_config().get("upload_to_garmin", False):
+        logger.info("📲 upload_to_garmin disabled — plan moved in the app only.")
+        return f"Shifted {result['shifted']} day(s) by +{days}."
+
+    password = cp.get_password()
+    today_iso = date.today().isoformat()
+    sb = get_supabase()
+    uid = os.environ.get("SUPABASE_USER_ID", "")
+
+    strength = (
+        sb.table("strength_sessions").select("id, date, name, estimated_duration_secs")
+        .eq("user_id", uid).gte("date", today_iso).order("date").execute()
+    ).data or []
+    new_sessions = []
+    for s in strength:
+        exercises = (
+            sb.table("exercises").select("*").eq("session_id", s["id"]).order("display_order").execute()
+        ).data or []
+        new_sessions.append({
+            "date": s["date"], "name": s["name"], "exercises": exercises,
+            "estimated_duration_secs": s["estimated_duration_secs"],
+        })
+    if new_sessions:
+        logger.info("📲 Re-pushing %d strength session(s) after shift…", len(new_sessions))
+        ids = _sync_strength_sessions(
+            new_sessions, get_future_garmin_workout_ids(today_iso), email, password
+        )
+        for d, entry in ids.items():
+            sb.table("strength_sessions").update({"garmin_workout_id": entry["workout_id"]}) \
+                .eq("user_id", uid).eq("date", d).execute()
+
+    days_rows = (
+        sb.table("scheduled_days").select("date, focus, running_segments")
+        .eq("user_id", uid).gte("date", today_iso)
+        .not_.is_("running_segments", "null").order("date").execute()
+    ).data or []
+    running = [{"date": r["date"], "segments": r["running_segments"]} for r in days_rows if r["running_segments"]]
+    if running:
+        logger.info("📲 Re-pushing %d running session(s) after shift…", len(running))
+        ids = _sync_running_sessions(
+            running, get_future_garmin_running_workout_ids(today_iso), email, password,
+            scheduled_days=[{"date": r["date"], "focus": r.get("focus")} for r in days_rows],
+        )
+        for d, entry in ids.items():
+            sb.table("scheduled_days").update({"garmin_workout_id": entry["workout_id"]}) \
+                .eq("user_id", uid).eq("date", d).execute()
+
+    summary = f"Shifted {result['shifted']} day(s) by +{days}."
+    if result.get("dropped"):
+        summary += f" Compressed {len(result['dropped'])} day(s) to keep races on their dates."
+    logger.info("✅ %s", summary)
+    return summary
 
 
 def cmd_sync_history(config_path: Path) -> None:
@@ -1155,11 +1546,19 @@ def main():
     group.add_argument("--sync-history", type=Path, metavar="CONFIG",
                        help="Backfill up to 365 days of trend data from Garmin into daily_metrics. "
                             "Run once after initial setup, then daily sync keeps it current.")
+    group.add_argument("--shift", type=Path, metavar="CONFIG",
+                       help="Slide the remaining plan forward N days (--days, default 1), preserving "
+                            "session order and relative spacing. Fixed races stay anchored — the "
+                            "segment before them is compressed instead. Re-pushes moved workouts to Garmin.")
     group.add_argument("--set-password", type=Path, metavar="CONFIG",
                        help="Securely store Garmin password in the system keychain (run once, never stored in files)")
     group.add_argument("--init-config", type=Path, help="Create a configuration template file")
 
     parser.add_argument("--output-dir", type=Path, help="Override output directory from config")
+    parser.add_argument("--days", type=int, default=1,
+                        help="Days to slide the plan forward with --shift (default 1).")
+    parser.add_argument("--from-date", type=str, default=None,
+                        help="First date to shift with --shift (default: today).")
 
     args = parser.parse_args()
 
@@ -1214,6 +1613,15 @@ def main():
             logger.info("❌ KPI sync cancelled")
         except Exception as e:
             logger.error("❌ KPI sync failed: %s", e)
+            sys.exit(1)
+
+    if args.shift:
+        try:
+            cmd_shift_plan(args.shift, days=args.days, from_date=args.from_date)
+        except KeyboardInterrupt:
+            logger.info("❌ Shift cancelled")
+        except Exception as e:
+            logger.error("❌ Shift failed: %s", e)
             sys.exit(1)
 
     if args.sync_history:

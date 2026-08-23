@@ -237,7 +237,8 @@ function CalendarPicker({
 
 // ── Modal config ──────────────────────────────────────────────────────────────
 
-const MODAL_CONFIG: Record<ReplanJobType, {
+// sync_kpis is queued directly by RefreshDataButton.tsx, no modal — excluded here.
+const MODAL_CONFIG: Record<Exclude<ReplanJobType, "sync_kpis">, {
   title: string;
   cost: string;
   time: string;
@@ -285,7 +286,7 @@ interface Props {
 export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [activeModal, setActiveModal] = useState<ReplanJobType | null>(null);
+  const [activeModal, setActiveModal] = useState<Exclude<ReplanJobType, "sync_kpis"> | null>(null);
   const [comment, setComment] = useState("");
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [jobs, setJobs] = useState<ReplanJob[]>(initialJobs);
@@ -311,7 +312,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
     }
   }, [selectedDates]);
 
-  function openModal(type: ReplanJobType) {
+  function openModal(type: Exclude<ReplanJobType, "sync_kpis">) {
     setComment("");
     setSelectedDates([]);
     setError(null);
@@ -487,7 +488,10 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
                       {STATUS_LABEL[job.status] ?? job.status}
                     </span>
                     <span style={{ color: "var(--muted)" }}>
-                      {job.type === "daily" ? "Reschedule" : job.type === "replan" ? "Check-In" : "New Season"}
+                      {job.type === "daily" ? "Reschedule"
+                        : job.type === "replan" ? "Check-In"
+                        : job.type === "sync_kpis" ? "Data Refresh"
+                        : "New Season"}
                     </span>
                     <span style={{ color: "var(--dim)" }}>·</span>
                     <span style={{ color: "var(--dim)" }}><TimeAgo iso={job.created_at} /></span>

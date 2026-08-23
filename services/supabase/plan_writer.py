@@ -1,9 +1,10 @@
 """Write a completed replan to Supabase."""
 from __future__ import annotations
 
+import html as _html
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from .athlete_profile import get_weight_goal_direction
@@ -19,35 +20,68 @@ def write_report(
     report_date: str | None = None,
     bench_e1rm_kg: float | None = None,
     predicted_5k_secs: int | None = None,
+    predicted_10k_secs: int | None = None,
+    predicted_half_marathon_secs: int | None = None,
+    predicted_marathon_secs: int | None = None,
     max_heart_rate_bpm: int | None = None,
     kpis: dict | None = None,
     personal_records: list | None = None,
 ) -> str | None:
-    """Persist the latest analysis/planning HTML reports. Returns the row UUID."""
+    """Persist the latest analysis/planning HTML reports. Returns the row UUID.
+
+    Upserts onto the same report_date row upsert_kpis() creates/updates rather than
+    always inserting — a blind insert here used to create a second `analyses` row
+    for the same date whenever both this and upsert_kpis() ran the same day (e.g. a
+    morning sync-kpis cron followed by a same-day Check-In), leaving the web dashboard
+    to nondeterministically pick whichever of the two rows a plain `.limit(1)` query
+    happened to return — confirmed live: one such duplicate had every kpis.* field
+    null, causing the dashboard's readiness pills to intermittently vanish.
+    """
     if not analysis_html and not planning_html:
         return None
     sb = get_supabase()
     user_id = _user_id()
     today = report_date or str(date.today())
-    payload: dict = {
-        "user_id": user_id,
-        "report_date": today,
-        "analysis_html": analysis_html or "",
-        "planning_html": planning_html or "",
-    }
+
+    fields: dict = {}
+    if analysis_html is not None:
+        fields["analysis_html"] = analysis_html
+    if planning_html is not None:
+        fields["planning_html"] = planning_html
     if bench_e1rm_kg is not None:
-        payload["bench_e1rm_kg"] = bench_e1rm_kg
+        fields["bench_e1rm_kg"] = bench_e1rm_kg
     if predicted_5k_secs is not None:
-        payload["predicted_5k_secs"] = predicted_5k_secs
+        fields["predicted_5k_secs"] = predicted_5k_secs
+    if predicted_10k_secs is not None:
+        fields["predicted_10k_secs"] = predicted_10k_secs
+    if predicted_half_marathon_secs is not None:
+        fields["predicted_half_marathon_secs"] = predicted_half_marathon_secs
+    if predicted_marathon_secs is not None:
+        fields["predicted_marathon_secs"] = predicted_marathon_secs
     if max_heart_rate_bpm is not None:
-        payload["max_heart_rate_bpm"] = max_heart_rate_bpm
+        fields["max_heart_rate_bpm"] = max_heart_rate_bpm
     if kpis is not None:
-        payload["kpis"] = kpis
+        fields["kpis"] = kpis
     if personal_records is not None:
-        payload["personal_records"] = personal_records
-    row = sb.table("analyses").insert(payload).execute()
-    report_id = row.data[0]["id"]
-    logger.info("📋 Report saved to Supabase (id=%s)", report_id)
+        fields["personal_records"] = personal_records
+    fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    existing = sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).order("updated_at", desc=True).limit(1).execute()
+    if existing.data:
+        report_id = existing.data[0]["id"]
+        sb.table("analyses").update(fields).eq("id", report_id).execute()
+        logger.info("📋 Report updated in Supabase (id=%s)", report_id)
+    else:
+        # Fresh row for this date — analysis_html/planning_html always present (insert-only
+        # NOT NULL columns), same coercion the old unconditional insert used.
+        payload = {
+            "user_id": user_id, "report_date": today,
+            "analysis_html": analysis_html or "", "planning_html": planning_html or "",
+            **{k: v for k, v in fields.items() if k not in ("analysis_html", "planning_html")},
+        }
+        row = sb.table("analyses").insert(payload).execute()
+        report_id = row.data[0]["id"]
+        logger.info("📋 Report saved to Supabase (id=%s)", report_id)
     return report_id
 
 
@@ -55,17 +89,47 @@ def upsert_kpis(
     kpis: dict,
     personal_records: list | None = None,
     report_date: str | None = None,
+    predicted_5k_secs: int | None = None,
+    predicted_10k_secs: int | None = None,
+    predicted_half_marathon_secs: int | None = None,
+    predicted_marathon_secs: int | None = None,
 ) -> None:
     """Upsert a KPI snapshot for today. Creates a row if none exists for this date,
-    otherwise updates only the kpis (and personal_records) columns in place."""
+    otherwise updates only the kpis (and personal_records) columns in place.
+
+    The four predicted_*_secs kwargs are optional because they come from Garmin's
+    race predictor, which — unlike bench e1RM (needs per-set activity detail only the
+    full Check-In extraction fetches) — is a single cheap API call already made on
+    every extraction regardless of config. Accepting them here (not just in
+    write_report()) means the lightweight, frequent KPI-sync path can populate these
+    dedicated trend columns too, instead of only getting one data point per weekly
+    Check-In — a real fix for the dashboard's evolution charts having too few points
+    to render most race distances.
+    """
     sb = get_supabase()
     user_id = _user_id()
     today = report_date or str(date.today())
 
+    # Explicitly UTC-aware — datetime.now().isoformat() (naive, local system time)
+    # gets misinterpreted as already-UTC by Postgres, silently skewing this by the
+    # local UTC offset (verified live: a CEST run showed as 2h ahead of true UTC,
+    # breaking the web dashboard's "last synced Xh ago" freshness display).
+    now = datetime.now(timezone.utc).isoformat()
+
+    race_fields: dict = {}
+    if predicted_5k_secs is not None:
+        race_fields["predicted_5k_secs"] = predicted_5k_secs
+    if predicted_10k_secs is not None:
+        race_fields["predicted_10k_secs"] = predicted_10k_secs
+    if predicted_half_marathon_secs is not None:
+        race_fields["predicted_half_marathon_secs"] = predicted_half_marathon_secs
+    if predicted_marathon_secs is not None:
+        race_fields["predicted_marathon_secs"] = predicted_marathon_secs
+
     existing = sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).limit(1).execute()
     if existing.data:
         row_id = existing.data[0]["id"]
-        update: dict = {"kpis": kpis}
+        update: dict = {"kpis": kpis, "updated_at": now, **race_fields}
         if personal_records is not None:
             update["personal_records"] = personal_records
         sb.table("analyses").update(update).eq("id", row_id).execute()
@@ -77,6 +141,8 @@ def upsert_kpis(
             "analysis_html": "",
             "planning_html": "",
             "kpis": kpis,
+            "updated_at": now,
+            **race_fields,
         }
         if personal_records is not None:
             payload["personal_records"] = personal_records
@@ -109,6 +175,9 @@ def upsert_daily_metrics_batch(
         "total_calories", "active_calories", "bmr_calories",
         # Sickness Watch signals (see web/DESIGN.md)
         "respiration_avg", "sleep_stress_avg", "body_battery_overnight_gain",
+        # Dense daily race-time predictions (Garmin recomputes these every day —
+        # unlike bench e1RM, which stays on analyses since it's check-in-sparse)
+        "predicted_5k_secs", "predicted_10k_secs", "predicted_half_marathon_secs", "predicted_marathon_secs",
     }
 
     rows = []
@@ -344,7 +413,7 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
             "calories": round(calories), "protein_g": protein_g, "carbs_g": carbs_g,
             "fat_g": fat_g, "fiber_g": fiber_g, "water_ml": water_ml,
             "workout_context": workout_context, "notes": notes,
-            "source": "planner", "updated_at": datetime.now().isoformat(),
+            "source": "planner", "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         sb.table("nutrition_daily_targets").upsert(row, on_conflict="user_id,date").execute()
         logger.info(
@@ -380,7 +449,7 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
         "workout_context": workout_context,
         "notes": template.get("notes"),
         "source": "planner",
-        "updated_at": datetime.now().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     sb.table("nutrition_daily_targets").upsert(row, on_conflict="user_id,date").execute()
     logger.info("Synced template nutrition target for %s (day_type=%s): %s kcal", today_str, lookup_type, template["calories"])
@@ -485,6 +554,114 @@ def _sync_garmin_weight(sb, uid: str, weight_records: list[dict]) -> None:
     logger.info("⚖️  body_weight_log: synced %d Garmin weight entries", len(rows))
 
 
+def monday_of(d: date | str) -> str:
+    """Monday (ISO date string) of the week containing `d` — the `week_start` key
+    weekly_reviews is unique on."""
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+def _split_insight_label(item: str) -> tuple[str | None, str]:
+    """Split a leading "Short label: body" prefix out of a feedback line, so the UI can
+    show it as a heading. Returns (label, body) or (None, item) when there's no clean
+    prefix — guards keep it from firing on a mid-sentence colon (a real label is short,
+    and won't contain sentence punctuation)."""
+    label, sep, rest = item.partition(":")
+    rest = rest.strip()
+    if not sep or not rest or len(label) > 24 or any(c in label for c in ".,(;"):
+        return None, item
+    return label.strip(), rest
+
+
+def render_coach_feedback_html(coach_feedback: str) -> str:
+    """Convert the weekly planner's plain-text `coach_feedback` into the HTML the
+    Progress page's "This week" tab renders.
+
+    coach_feedback is LLM-authored free text (per WeeklyPlanOutput's schema: "3-4 bullet
+    points covering what the Garmin data shows..."), newline-separated, optionally prefixed
+    with "-" or "⚠️". The frontend injects summary_html via dangerouslySetInnerHTML, so every
+    piece of model text is HTML-escaped here and only the wrapper markup is ours — never pass
+    model output through as raw HTML.
+
+    Each line becomes its own `.insight` card rather than a run-on bullet, since these are
+    genuinely separate assessments (observation / adjustment / thing to watch) and read as a
+    wall of text otherwise. Warning styling keys off the "⚠️" prefix, which is deterministic
+    — it's emitted by our own post-generation checks in weekly_planner_node.py, not guessed
+    from the model's wording — plus an explicit "Watch item"/"Caution" label, which the
+    schema tells the model to produce. Anything unrecognized gets the neutral treatment.
+    """
+    lines = [ln.strip() for ln in (coach_feedback or "").splitlines()]
+    items = [ln.lstrip("-•").strip() for ln in lines if ln.strip()]
+    if not items:
+        return ""
+
+    out = ['<ul class="insight-list">']
+    for item in items:
+        label, body = _split_insight_label(item)
+        is_warn = item.startswith("⚠") or (
+            label is not None and label.lower() in ("watch item", "watch", "caution", "warning")
+        )
+        cls = "insight insight-warn" if is_warn else "insight"
+        inner = _html.escape(body)
+        if label is not None:
+            inner = f'<span class="insight-label">{_html.escape(label)}</span>{inner}'
+        out.append(f'<li class="{cls}">{inner}</li>')
+    out.append("</ul>")
+    return "".join(out)
+
+
+# Metrics summarized in a weekly review's kpi_delta, and whether a rise is an improvement.
+# (None = direction isn't inherently good or bad, so the UI shows it uncolored — same
+# no-editorializing stance DESIGN.md settled on for DeltaBadge.)
+_WEEKLY_DELTA_METRICS: dict[str, bool | None] = {
+    "ctl": True, "atl": None, "tsb": None,
+    "hrv_overnight": True, "rhr": False, "sleep_hours": True,
+}
+
+
+def compute_weekly_kpi_delta(week_start: str, user_id: str | None = None) -> dict:
+    """Average each tracked metric over the review week vs. the week before it.
+
+    Returns {metric: {"current": x, "prior": y, "delta": x - y, "higher_is_better": bool|None}},
+    skipping any metric with no data on either side. Averaged (not last-value) so one noisy
+    night doesn't define the week.
+    """
+    sb = get_supabase()
+    uid = user_id or _user_id()
+    start = date.fromisoformat(week_start)
+    prior_start = start - timedelta(days=7)
+    cols = ", ".join(["date", *_WEEKLY_DELTA_METRICS])
+    rows = (
+        sb.table("daily_metrics").select(cols)
+        .eq("user_id", uid)
+        .gte("date", prior_start.isoformat())
+        .lte("date", (start + timedelta(days=6)).isoformat())
+        .execute()
+    ).data or []
+
+    def avg(metric: str, lo: date, hi: date) -> float | None:
+        vals = [
+            float(r[metric]) for r in rows
+            if r.get(metric) is not None and lo <= date.fromisoformat(r["date"]) <= hi
+        ]
+        return sum(vals) / len(vals) if vals else None
+
+    delta: dict = {}
+    for metric, higher_is_better in _WEEKLY_DELTA_METRICS.items():
+        current = avg(metric, start, start + timedelta(days=6))
+        prior = avg(metric, prior_start, start - timedelta(days=1))
+        if current is None or prior is None:
+            continue
+        delta[metric] = {
+            "current": round(current, 1),
+            "prior": round(prior, 1),
+            "delta": round(current - prior, 1),
+            "higher_is_better": higher_is_better,
+        }
+    return delta
+
+
 def write_weekly_review(
     *,
     week_start: str,
@@ -546,6 +723,24 @@ def get_future_garmin_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
     return {row["date"]: {"workout_id": row["garmin_workout_id"]} for row in (result.data or [])}
 
 
+def get_future_garmin_running_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
+    """Return {date: {"workout_id": id}} for every currently-stored 'run' scheduled_days row with
+    a Garmin workout scheduled on/after from_date. Mirrors get_future_garmin_workout_ids() above —
+    call this BEFORE write_plan() for the same reason (write_plan() replaces scheduled_days rows)."""
+    sb = get_supabase()
+    user_id = _user_id()
+    result = (
+        sb.table("scheduled_days")
+        .select("date, garmin_workout_id")
+        .eq("user_id", user_id)
+        .eq("session_type", "run")
+        .gte("date", from_date)
+        .not_.is_("garmin_workout_id", "null")
+        .execute()
+    )
+    return {row["date"]: {"workout_id": row["garmin_workout_id"]} for row in (result.data or [])}
+
+
 def _estimate_session_duration_secs(exercises: list[dict[str, Any]]) -> int:
     """Rough session length from the athlete's fixed 3-min-rest-between-every-set rule, plus a
     small per-set work allowance and a fixed warm-up/transition buffer."""
@@ -575,6 +770,236 @@ def get_next_strength_slot() -> str:
     if last_slot not in _SLOT_ROTATION:
         return "A"
     return _SLOT_ROTATION[(_SLOT_ROTATION.index(last_slot) + 1) % 3]
+
+
+def get_sync_gap_days(default_days: int, cap_days: int = 400) -> int:
+    """Widen a sync's lookback window to cover any gap since the last successful sync, instead
+    of a fixed day count that silently drops whatever's older than it.
+
+    Every extraction window in this app (Check-In, New Season, the lightweight sync_kpis) is
+    `[today - N days, today]` for a fixed N — correct when syncs happen roughly on schedule, but
+    if the athlete goes without syncing for longer than N days, whatever Garmin activities fall
+    in the gap between "N days ago" and "the actual last synced date" are never fetched by *any*
+    future sync (each one only ever looks back N days from *its own* run date) — confirmed live:
+    an 18-day gap (no sync 2026-07-23 to 2026-08-13) left 2026-07-23 through 2026-07-30 with zero
+    daily_metrics/completed_activities rows forever, even after the next Check-In ran, because
+    that Check-In's fixed 14-day window only reached back to 2026-07-30.
+
+    daily_metrics is used as the "last synced" proxy since every sync path touches it. Capped at
+    cap_days (default ~13 months) so a truly stale/abandoned account doesn't trigger a pathological
+    full-history pull through the "recent" extraction path — that's cmd_sync_history's job.
+    """
+    sb = get_supabase()
+    user_id = _user_id()
+    result = (
+        sb.table("daily_metrics").select("date")
+        .eq("user_id", user_id).order("date", desc=True).limit(1).execute()
+    )
+    rows = result.data or []
+    if not rows:
+        return default_days
+    last_date = date.fromisoformat(rows[0]["date"])
+    gap_days = (date.today() - last_date).days
+    return max(default_days, min(gap_days, cap_days))
+
+
+def _removal_rank(row: dict) -> int | None:
+    """Drop order when compressing before a fixed event. Lower goes first; None = never drop.
+
+    Rest days first: if you're shifting because you took an unplanned rest day, you've already
+    banked the rest, so repaying it from a scheduled one keeps every training session AND the
+    race date. Non-key sessions next. Key sessions are never dropped automatically.
+    """
+    if row.get("is_rest"):
+        return 0
+    if not row.get("is_key"):
+        return 1
+    return None
+
+
+def plan_shift_layout(
+    rows: list[dict],
+    race_dates: list[str],
+    from_date: str,
+    days: int,
+) -> tuple[list[dict], list[dict], list[str]]:
+    """Pure date arithmetic behind shift_plan — no I/O, so it can be tested directly.
+
+    ``rows`` is the ordered list of scheduled_days on/after ``from_date`` (one row per calendar
+    day, rest days included). Returns (kept, dropped, warnings); each kept row carries a
+    ``_new_date``.
+
+    Because rows are one-per-day and contiguous, re-laying the kept rows consecutively from
+    ``from_date + days`` is all that's needed: dropping exactly ``days`` rows from the segment
+    before an event makes that event land back on its real date automatically.
+    """
+    start = date.fromisoformat(from_date)
+    kept: list[dict] = []
+    dropped: list[dict] = []
+    warnings: list[str] = []
+
+    # Walk the plan in event-delimited segments, so an event only forces compression of the
+    # work that actually precedes it — sessions after it are untouched.
+    idx = 0
+    for boundary in [*race_dates, None]:
+        if boundary is None:
+            segment, boundary_rows = rows[idx:], []
+        else:
+            segment = [r for r in rows[idx:] if r["date"] < boundary]
+            idx += len(segment)
+            boundary_rows = [r for r in rows[idx:] if r["date"] == boundary]
+            idx += len(boundary_rows)
+
+        if boundary is not None:
+            candidates = sorted(
+                (r for r in segment if _removal_rank(r) is not None),
+                key=lambda r: (_removal_rank(r), r["date"]),
+            )
+            to_drop = candidates[:days]
+            if len(to_drop) < days:
+                warnings.append(
+                    f"Could not fully protect the event on {boundary} — only {len(to_drop)} of "
+                    f"{days} day(s) could be freed before it without dropping a key session, so "
+                    "it moves later by the remainder."
+                )
+            drop_ids = {id(r) for r in to_drop}
+            dropped.extend(to_drop)
+            segment = [r for r in segment if id(r) not in drop_ids]
+
+        kept.extend(segment)
+        kept.extend(boundary_rows)
+
+    cursor = start + timedelta(days=days)
+    for row in kept:
+        row["_new_date"] = cursor.isoformat()
+        cursor += timedelta(days=1)
+    return kept, dropped, warnings
+
+
+def shift_plan(
+    from_date: str,
+    days: int = 1,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Slide every scheduled day on/after ``from_date`` forward by ``days``, preserving order.
+
+    This is the 'sequence anchoring' operation: what matters physiologically is the *relative
+    spacing* of sessions, not which weekday they land on, so a uniform shift keeps the plan
+    intact — the legs/tempo gap, the strength rotation, and (now that the bench wave counts
+    sessions rather than calendar weeks) the periodisation all come along unchanged.
+
+    Races are the one thing that genuinely cannot move. Where a shift would push sessions past
+    a fixed event, the segment before that event is *compressed* instead: exactly ``days`` rows
+    are removed from it so the event still lands on its real date. Removal order is rest days
+    first, then non-key sessions; key sessions are never dropped (the shift is refused for that
+    segment and reported instead). Dropping a planned rest day is the intended common case —
+    if you're shifting because you took an unplanned rest day, you've already banked the rest,
+    so repaying it from a scheduled one preserves every training session and the race date.
+
+    Scheduled days are one row per calendar day (rest days included), so the kept rows are
+    simply re-laid consecutively from ``from_date + days``.
+
+    Database-only: re-pushing the moved workouts to Garmin is the caller's job (the CLI does it
+    via _sync_strength_sessions/_sync_running_sessions, which already delete-and-replace).
+    Returns a summary of what moved, what was dropped, and anything it refused to do.
+    """
+    sb = get_supabase()
+    uid = user_id or _user_id()
+    start = date.fromisoformat(from_date)
+
+    plan = (
+        sb.table("plans").select("id").eq("user_id", uid)
+        .order("created_at", desc=True).limit(1).execute()
+    ).data
+    if not plan:
+        return {"shifted": 0, "dropped": [], "warnings": ["No active plan to shift."]}
+    plan_id = plan[0]["id"]
+
+    rows = (
+        sb.table("scheduled_days").select("*")
+        .eq("user_id", uid).eq("plan_id", plan_id)
+        .gte("date", from_date).order("date").execute()
+    ).data or []
+    if not rows:
+        return {"shifted": 0, "dropped": [], "warnings": ["No scheduled days on or after that date."]}
+
+    profile = (
+        sb.table("athlete_profile").select("events")
+        .eq("user_id", uid).maybe_single().execute()
+    ).data or {}
+    # Only events that fall inside the range being shifted can collide with it.
+    last_date = date.fromisoformat(rows[-1]["date"])
+    race_dates = sorted({
+        ev["date"] for ev in (profile.get("events") or [])
+        if ev.get("date") and start < date.fromisoformat(ev["date"]) <= last_date + timedelta(days=days)
+    })
+
+    kept, dropped, warnings = plan_shift_layout(rows, race_dates, from_date, days)
+    updates = [(r["id"], r["_new_date"]) for r in kept if r["_new_date"] != r["date"]]
+
+    for row in dropped:
+        sb.table("strength_sessions").delete().eq("user_id", uid).eq("date", row["date"]).execute()
+        sb.table("scheduled_days").delete().eq("id", row["id"]).execute()
+
+    # Move latest-first so an in-flight update never collides with a date still occupied by a
+    # row that hasn't moved yet (scheduled_days/strength_sessions are keyed per user+date).
+    for row_id, new_date in sorted(updates, key=lambda u: u[1], reverse=True):
+        old_date = next(r["date"] for r in kept if r["id"] == row_id)
+        sb.table("scheduled_days").update({"date": new_date}).eq("id", row_id).execute()
+        sb.table("strength_sessions").update({"date": new_date}) \
+            .eq("user_id", uid).eq("date", old_date).execute()
+
+    logger.info(
+        "📆 Shifted plan +%dd from %s — %d day(s) moved, %d dropped",
+        days, from_date, len(updates), len(dropped),
+    )
+    return {
+        "shifted": len(updates),
+        "dropped": [{"date": r["date"], "focus": r.get("focus"), "is_rest": r.get("is_rest")} for r in dropped],
+        "warnings": warnings,
+    }
+
+
+# A logged "strength" activity shorter than this is treated as a mis-log or an abandoned
+# session rather than a real bench session — confirmed against real data, where 8-minute
+# strength_training entries sit alongside genuine 45-80 minute ones. Entries with no recorded
+# duration are counted (don't discard data we can't judge).
+_MIN_REAL_STRENGTH_SESSION_SECS = 900
+
+
+def count_completed_bench_sessions(
+    wave_start: str | None,
+    before_date: str | None = None,
+    user_id: str | None = None,
+) -> int:
+    """How many bench sessions the athlete has actually completed since the wave started.
+
+    Every strength template slot includes a barbell bench press (the "bench every session"
+    split — see the project_bench_and_strength_structure_redesign memory), so a completed
+    strength session *is* a completed bench session; counting distinct strength dates is exact
+    here, not an approximation. Pass ``before_date`` to exclude sessions on/after the first
+    date being re-expanded, so a session can't be counted as both completed and upcoming.
+
+    Returns 0 when no wave start is set, which makes the wave begin at the first scheduled
+    session — matching the previous date-based fallback.
+    """
+    if not wave_start:
+        return 0
+    sb = get_supabase()
+    uid = user_id or _user_id()
+    query = (
+        sb.table("completed_activities").select("date, duration_secs")
+        .eq("user_id", uid).eq("activity_type", "strength_training")
+        .gte("date", wave_start)
+    )
+    if before_date:
+        query = query.lt("date", before_date)
+    rows = query.execute().data or []
+    return len({
+        r["date"] for r in rows
+        if r.get("duration_secs") is None
+        or r["duration_secs"] >= _MIN_REAL_STRENGTH_SESSION_SECS
+    })
 
 
 def expand_strength_session_slots(slot_assignments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -624,24 +1049,50 @@ def expand_strength_session_slots(slot_assignments: list[dict[str, Any]]) -> lis
         by_slot.setdefault(row["slot"], []).append(row)
 
     profile = (
-        sb.table("athlete_profile").select("bench_wave_start_date")
+        sb.table("athlete_profile").select("bench_wave_start_date, recurring_session_requests")
         .eq("user_id", user_id).maybe_single().execute()
     ).data or {}
     wave_start_str = profile.get("bench_wave_start_date")
 
+    # Block length follows the athlete's own strength cadence, so the wave means "4 weeks of
+    # training" for a 2x/week lifter and a 5x/week one alike. Prefer the athlete's stated
+    # recurring pattern; fall back to what the plan itself schedules per week.
+    strength_requests = [
+        r for r in (profile.get("recurring_session_requests") or [])
+        if r.get("session_type") == "strength"
+    ]
+    if strength_requests:
+        strength_per_week = len(strength_requests)
+    elif corrected_slots:
+        span_days = max(
+            1,
+            (date.fromisoformat(max(corrected_slots)) - date.fromisoformat(min(corrected_slots))).days + 1,
+        )
+        strength_per_week = max(1, round(len(corrected_slots) / (span_days / 7)))
+    else:
+        strength_per_week = None
+
+    # Bench wave position = how many bench sessions actually precede this one, not how many
+    # calendar weeks have elapsed (see bench_wave.compute_bench_prescription). Past sessions
+    # are counted from real completed work; future ones are projected by their position in the
+    # upcoming sequence, so the wave stays correct when the plan is shifted.
+    first_scheduled = next(iter(corrected_slots), None)
+    completed_before = count_completed_bench_sessions(
+        wave_start_str, before_date=first_scheduled, user_id=user_id
+    )
+
     sessions: list[dict[str, Any]] = []
-    for session_date_str, slot in corrected_slots.items():
+    for offset, (session_date_str, slot) in enumerate(corrected_slots.items()):
         rows = by_slot.get(slot)
         if not rows:
             logger.warning("No strength_session_templates rows for slot %r on %s — skipping", slot, session_date_str)
             continue
         session_date = date.fromisoformat(session_date_str)
-        wave_start = date.fromisoformat(wave_start_str) if wave_start_str else session_date
 
         exercises = []
         for row in rows:
             if row["is_dynamic_bench"]:
-                prescription = compute_bench_prescription(session_date, wave_start)
+                prescription = compute_bench_prescription(completed_before + offset, strength_per_week)
                 sets, reps_min, reps_max, rir = (
                     prescription["sets"], prescription["reps_min"], prescription["reps_max"], prescription["rir"],
                 )
@@ -675,6 +1126,8 @@ def write_plan(
     scheduled_days: list[dict[str, Any]],
     strength_sessions: list[dict[str, Any]],
     garmin_workout_ids: dict[str, dict[str, Any]],
+    running_sessions: list[dict[str, Any]] | None = None,
+    running_workout_ids: dict[str, dict[str, Any]] | None = None,
 ) -> str:
     """Persist a full replan to Supabase. Returns the new plan UUID."""
     sb = get_supabase()
@@ -708,6 +1161,10 @@ def write_plan(
     ).gte("end_date", start_date).execute()
 
     # ── Insert scheduled_days ────────────────────────────────────────────────
+    segments_by_date = {
+        s["date"]: s["segments"] for s in (running_sessions or []) if s.get("segments")
+    }
+    running_workout_ids = running_workout_ids or {}
     if scheduled_days:
         sb.table("scheduled_days").insert([
             {
@@ -719,6 +1176,8 @@ def write_plan(
                 "description": d.get("description", ""),
                 "is_key": d.get("is_key_session", False),
                 "is_rest": d.get("is_rest", False),
+                "running_segments": segments_by_date.get(d["date"]),
+                "garmin_workout_id": running_workout_ids.get(d["date"], {}).get("workout_id"),
             }
             for d in scheduled_days
         ]).execute()
