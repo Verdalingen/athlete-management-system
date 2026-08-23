@@ -131,28 +131,29 @@ Create a detailed training plan covering all {num_days} days listed in Upcoming 
   (e.g. "prefers fewer sets taken to failure") override or water down a number the athlete stated
   explicitly and specifically for that session. General preferences only fill in what a Recurring
   Session Request left unspecified.
-- **Brevity**: Use standard, compact notation (e.g., "5' Z4" not "5 minutes at Zone 4 effort") —
-  but brevity means terse NOTATION, not fewer session components. A running session's description
-  must still cover every component (warm-up, main effort, cool-down, drills) per the description
-  rule below; write each component tersely rather than omitting any of them.
-- **Use Current Training Paces (hard rule)**: Every running session — easy aerobic, tempo/
-  threshold, AND VO2max intervals — must state a specific pace, not just a zone letter. Use the
-  Current Training Paces given in the Inputs section below for every pace you write; these are
-  computed fresh from the athlete's actual recent fitness (a real predicted-race-time formula), not
-  invented. Do NOT derive a pace from the athlete's stated goal/target race time instead — the goal
-  pace is where training is headed, not where it starts, and prescribing goal pace as today's
-  session target is unsafe and unachievable. As the athlete's fitness improves over successive
-  Check-Ins, the Current Training Paces you're given will themselves get faster and converge toward
-  the goal — you don't need to (and must not) accelerate that yourself by writing a faster number
-  than what's provided.
-  Wrong: athlete's goal is a sub-10:00 3000m (3:20/km average); VO2max interval description says
-  "@3:15-3:25/km" because that's close to the goal pace, even though Current Training Paces below
-  states something slower.
-  Right: VO2max interval description uses the exact vo2max pace range given in Current Training
+- **Brevity**: Use standard, compact notation for markdown plan text (e.g., "5' Z4" not "5 minutes
+  at Zone 4 effort") — but brevity means terse notation in the markdown, not fewer segments. A
+  running session's structured segments (running_sessions field, see the Structured Running
+  Sessions rule below) must still cover every component (warm-up, main effort, cool-down, drills)
+  as its own segment.
+- **Use Current Training Paces (hard rule)**: Every running segment — easy aerobic, tempo/
+  threshold, AND VO2max intervals — must carry a specific pace (pace_low/pace_high on its
+  RunningSegment), not just a zone letter. Use the Current Training Paces given in the Inputs
+  section below for every pace you set; these are computed fresh from the athlete's actual recent
+  fitness (a real predicted-race-time formula), not invented. Do NOT derive a pace from the
+  athlete's stated goal/target race time instead — the goal pace is where training is headed, not
+  where it starts, and prescribing goal pace as today's session target is unsafe and unachievable.
+  As the athlete's fitness improves over successive Check-Ins, the Current Training Paces you're
+  given will themselves get faster and converge toward the goal — you don't need to (and must not)
+  accelerate that yourself by setting a faster pace than what's provided.
+  Wrong: athlete's goal is a sub-10:00 3000m (3:20/km average); a VO2max interval segment gets
+  pace_low/pace_high near 3:15-3:25/km because that's close to the goal pace, even though Current
+  Training Paces below states something slower.
+  Right: every VO2max interval segment uses the exact vo2max pace range given in Current Training
   Paces below, regardless of how it compares to the athlete's longer-term goal pace.
-  If Current Training Paces is empty/unavailable (no current fitness data yet), use zone letters
-  only and do not write a specific pace number for that session — never fall back to a goal-derived
-  estimate.
+  If Current Training Paces is empty/unavailable (no current fitness data yet), set `zone` only and
+  leave pace_low/pace_high null on every segment for that session — never fall back to a
+  goal-derived estimate.
 
 ## Inputs
 ### Season Plan
@@ -220,12 +221,12 @@ Session Order hard rule above for how the rotation continues from there.
   finalizing — count how many days this week are Rest vs genuinely easy sessions; if the athlete's
   baseline is N and physiology/metrics gave no red flag, the week should have more than N sessions,
   with the extra days being easy training, not Rest.
-- Re-read the description rule above before finalizing — for every running session, confirm its
-  description names warm-up, main effort, and cool-down (and drills/strides if applicable) as
-  separate components, not just the main effort. A description containing only one duration/effort
-  segment for a non-trivial run is a sign a component was dropped — add it back before proceeding.
-- Re-read the Strides Placement rule above before finalizing — confirm any strides are attached to
-  an easy run, not a tempo/threshold or interval session.
+- Re-read the Structured Running Sessions rule below before finalizing — for every running
+  session, confirm its segments include warm-up, main effort, and cool-down (and drills/strides if
+  applicable) as separate segments, not just the main effort. A session with only one segment for
+  a non-trivial run is a sign a component was dropped — add it back before proceeding.
+- Re-read the Strides Placement rule below before finalizing — confirm any strides segment is
+  attached to an easy run, not a tempo/threshold or interval session.
 """
 
 WEEKLY_PLANNER_CHECKIN_INSTRUCTIONS = """
@@ -263,6 +264,39 @@ NOT exercises. See the Strength Session Content hard rule above: the athlete's s
 spread the 3 slots across the week rather than clustering, same as any other session-placement
 decision.
 
+## Structured Running Sessions (running_sessions field)
+When outputting the final markdown plan, also populate the `running_sessions` field with one
+`{{date, segments}}` entry for every "run" day in the schedule — this is the source of truth for
+that day's run (used both to render its display description and to push a structured workout to
+the athlete's watch), NOT the `description` field on that day's `scheduled_days` entry, which is
+ignored and overwritten downstream for run days. Do not spend effort making description agree with
+segments by hand.
+
+Each segment needs:
+- segment_type: "warmup", "interval", "recovery", "cooldown", or "steady" (a continuous
+  non-interval effort, e.g. a plain easy run or tempo run with no repeats).
+- zone: required on every segment except a bare jog-recovery with no target effort.
+- EITHER duration_secs OR distance_meters, never both. Use duration_secs for warm-up/cool-down/
+  jog-recovery (time you spend, not distance-anchored), distance_meters for interval reps
+  (distance-anchored, e.g. 400m/800m/1km reps).
+- pace_low/pace_high: see the Use Current Training Paces hard rule above — required whenever
+  Current Training Paces has data for that zone, omitted otherwise.
+- repeat_count: how many times this exact segment repeats, e.g. 6 for "6x400m". 1 for
+  non-repeated segments (warm-up, cool-down, a single steady run).
+
+A session MUST include every real component as its own segment — warm-up, the main effort
+(interval/tempo/steady), cool-down, and any drills/strides — not just the main effort in
+isolation, same requirement as before, just as segments instead of notation.
+Wrong: a single "steady" segment for the whole session (warm-up/cool-down silently dropped).
+Right: warmup segment (Z2, duration_secs) + interval segment (Z5, distance_meters, repeat_count=5,
+pace_low/pace_high set) + recovery segment (jog, duration_secs, no pace) + cooldown segment (Z2,
+duration_secs).
+Strides placement (hard rule): if strides are part of the week, they belong as a trailing segment
+on an EASY run's session, not a tempo/threshold or interval session. Legs are fresh after an easy
+run, so the neuromuscular stimulus is high-quality with minimal added fatigue; tacking them onto a
+tempo/interval session means running near-max-velocity strides on already-fatigued legs, which
+blunts the stimulus and adds injury risk right when the athlete should be recovering.
+
 ## Day-by-Day Schedule (scheduled_days field)
 When outputting the final markdown plan, populate `scheduled_days` with one entry per day covering
 every date in the Upcoming Weeks list ({num_days} entries). In check-in mode, only populate this
@@ -283,27 +317,10 @@ Rules:
     text and the actual slot content should always match.
   Other: "Rest", "Active Recovery", "Cross-Train"
   Never use bare "Easy", "Moderate", "Hard", or "Run" alone.
-- description: compact notation as written in the plan (e.g. "4x(800m Z5 @3:50/km, 2min r)").
-  Empty string for rest days. MUST include every component of the session, each with its own
-  duration or distance — warm-up, the main effort (intervals/tempo/etc.), cool-down, and any
-  drills/strides — not just the main effort in isolation.
-  Every timed/distance segment needs BOTH a zone letter AND a pace where a pace is available (see
-  Use Current Training Paces above) — pace alone without a zone is incomplete, even for interval
-  reps. Do not drop the zone letter just because a pace is present.
-  Wrong: "20min continuous Z3 @4:15/km" (main effort only, warm-up/cool-down silently dropped).
-  Right: "15min Z2 warm-up + 20min Z3 continuous @4:15/km + 10min Z2 cool-down".
-  Right (intervals): "15min Z2 warm-up + 5x(1km Z5 @3:50-4:00/km, 2:30min jog r) + 10min Z2
-  cool-down" — note the interval reps carry both Z5 AND the pace, not pace alone (no strides here —
-  see the strides placement rule below).
-  Strides placement (hard rule): if strides are part of the week, they belong at the end of an
-  EASY run, not a tempo/threshold or interval session. Legs are fresh after an easy run, so the
-  neuromuscular stimulus is high-quality with minimal added fatigue; tacking them onto a
-  tempo/interval session means running near-max-velocity strides on already-fatigued legs, which
-  blunts the stimulus and adds injury risk right when the athlete should be recovering.
-  Wrong: "15min Z2 warm-up + 20min Z3 continuous @4:15/km + 10min Z2 cool-down + 4x100m strides"
-  (strides tacked onto a tempo session).
-  Right: "35min continuous Z2 + 4x100m strides" (strides on an easy day, tempo/interval days stay
-  strides-free).
+- description: for session_type="run", leave this as a short placeholder (e.g. the focus text) —
+  it is ignored and overwritten from the running_sessions segments for that date, see the
+  Structured Running Sessions rule above. For "strength", use compact notation matching the
+  slot's content (e.g. "Bench 5×5 @ 97.5kg + row 4×8"). Empty string for rest days.
 - is_key_session: true for hard interval sessions, long runs >75min, and heavy strength days.
   Most easy aerobic runs should be is_key_session=false AND is_rest=false — this is a real,
   expected middle category, not an edge case. Marking every non-rest day as key indicates you are
@@ -316,24 +333,64 @@ def _check_recurring_requests_honored(
     scheduled_days: list[dict[str, Any]] | None,
     recurring_session_requests: list[dict[str, Any]] | None,
 ) -> list[str]:
-    """Post-generation visibility check: for each 'must' recurring session request tied to a
-    specific day, verify the generated schedule actually contains a matching day/session-type
-    entry. A miss does not trigger a regeneration (out of scope for v1 — real risk of retry
-    loops for uncertain benefit) — it only surfaces a warning so honoring rates are visible."""
+    """Post-generation visibility check on the athlete's recurring pattern.
+
+    Checks VOLUME per session type, not weekday placement. Weekday identity is a convenience,
+    not a training variable — an athlete who does Tuesday's run on Wednesday has missed nothing,
+    and flagging that as a violation is what previously forced the plan to re-pin to a fixed
+    weekday grid and made drift impossible to absorb. What actually must hold is that the week
+    still contains the requested sessions.
+
+    A request may opt back into hard weekday placement with day_flexibility="fixed" (a class, a
+    training partner, a standing commitment) — those are still checked by day.
+
+    Surfaces warnings only; never triggers regeneration (same philosophy as the other checks —
+    real risk of retry loops for uncertain benefit).
+    """
     if not recurring_session_requests or not scheduled_days:
         return []
 
+    weeks = max(1, round(len(scheduled_days) / 7))
     warnings: list[str] = []
+
+    # ── Volume, per session type ──
+    wanted: dict[str, int] = {}
     for req in recurring_session_requests:
         if req.get("importance") != "must":
             continue
+        req_type = req.get("session_type")
+        if not req_type or req_type == "other":
+            continue
+        wanted[req_type] = wanted.get(req_type, 0) + 1
+
+    got: dict[str, int] = {}
+    for day in scheduled_days:
+        if day.get("is_rest"):
+            continue
+        st = day.get("session_type")
+        if st and st != "rest":
+            got[st] = got.get(st, 0) + 1
+
+    for req_type, per_week in wanted.items():
+        expected = per_week * weeks
+        actual = got.get(req_type, 0)
+        # Tolerate one short across the whole window — a taper or deload week legitimately
+        # trims a session, and this check shouldn't fight real coaching decisions.
+        if actual < expected - 1:
+            warnings.append(
+                f"⚠️ Planned only {actual} {req_type} session(s) over {weeks} week(s); the athlete's "
+                f"recurring pattern asks for about {expected}. Verify this was intentional."
+            )
+
+    # ── Hard weekday pins only ──
+    for req in recurring_session_requests:
+        if req.get("importance") != "must" or req.get("day_flexibility") != "fixed":
+            continue
         day_of_week = req.get("day_of_week")
         if not day_of_week:
-            continue  # no specific day to verify against
-
+            continue
         req_type = req.get("session_type")
         label = req.get("label") or req_type or "session"
-
         matched = any(
             str(day.get("day_name") or "").lower() == day_of_week.lower()
             and (not req_type or req_type == "other" or day.get("session_type") == req_type)
@@ -341,8 +398,10 @@ def _check_recurring_requests_honored(
         )
         if not matched:
             warnings.append(
-                f"⚠️ Could not confirm '{label}' ({day_of_week.capitalize()}) was scheduled this week — please verify."
+                f"⚠️ '{label}' is pinned to {day_of_week.capitalize()} (day_flexibility=fixed) but "
+                "no matching session was scheduled on that day — please verify."
             )
+
 
     return warnings
 
@@ -419,6 +478,208 @@ def _check_strength_recovery_spacing(
 _ROTATION = ["A", "B", "C"]
 
 
+
+def _fix_weekly_volume(
+    scheduled_days: list[dict[str, Any]] | None,
+    strength_sessions: list[dict[str, Any]] | None,
+    running_sessions: list[dict[str, Any]] | None,
+    recurring_session_requests: list[dict[str, Any]] | None,
+) -> list[str]:
+    """Enforce the athlete's weekly session volume by inserting what the planner left out.
+
+    Session count per week is mechanically checkable AND mechanically fixable, which by this
+    codebase's own standard means it shouldn't depend on the LLM getting it right — the same
+    reasoning that moved slot rotation, legs-before-hard-runs and running descriptions into
+    Python. Three real check-ins under-scheduled strength (2/week against a 3/week pattern),
+    each time filling the gap with rest days, and prompt fixes alone did not hold.
+
+    Converts REST days into the missing session type — never overwrites real training, so this
+    can only add work the athlete already committed to, never displace something the coach
+    deliberately placed. Strength insertions take the next rotation slot (the real slot letter
+    is recomputed downstream by expand_strength_session_slots anyway) and skip days adjacent to
+    another strength session so Recovery Spacing isn't violated on the way in. Runs are inserted
+    as plain easy aerobic volume — the lowest-risk thing to add and, per Frequency vs Load, the
+    kind of session that adds frequency at minimal load cost.
+
+    Only complete weeks are enforced; a partial week at either end of the window would otherwise
+    look short simply because it's truncated. Returns warnings for anything it couldn't place.
+    """
+    if not scheduled_days or not recurring_session_requests:
+        return []
+
+    required: dict[str, int] = {}
+    preferred_days: dict[str, list[str]] = {}
+    for req in recurring_session_requests:
+        if req.get("importance") == "must" and req.get("session_type"):
+            st = req["session_type"]
+            required[st] = required.get(st, 0) + 1
+            if req.get("day_of_week"):
+                preferred_days.setdefault(st, []).append(req["day_of_week"].lower())
+    if not required:
+        return []
+
+    by_date = {d["date"]: d for d in scheduled_days if d.get("date")}
+    strength_sessions = strength_sessions if strength_sessions is not None else []
+    running_sessions = running_sessions if running_sessions is not None else []
+    warnings: list[str] = []
+
+    weeks: dict[str, list[str]] = {}
+    for iso in sorted(by_date):
+        d = date.fromisoformat(iso)
+        weeks.setdefault((d - timedelta(days=d.weekday())).isoformat(), []).append(iso)
+
+    def is_strength(iso: str) -> bool:
+        day = by_date.get(iso)
+        return bool(day) and day.get("session_type") == "strength" and not day.get("is_rest")
+
+    for week_start, dates in sorted(weeks.items()):
+        if len(dates) < 7:
+            continue  # truncated week — not a real shortfall
+
+        counts: dict[str, int] = {}
+        for iso in dates:
+            day = by_date[iso]
+            if not day.get("is_rest") and day.get("session_type") not in (None, "rest"):
+                counts[day["session_type"]] = counts.get(day["session_type"], 0) + 1
+
+        for session_type, needed in required.items():
+            missing = needed - counts.get(session_type, 0)
+
+            # Before inserting anything: if this type is short AND the athlete has preferred days
+            # for it, snap the existing sessions onto that grid first. A week where the planner
+            # put strength on Tue+Thu has NO legal slot left — Mon, Wed and Fri are each adjacent
+            # to one of them — so no amount of slot-hunting can fix it. Relocating Tue->Mon and
+            # Thu->Wed frees Friday legally. The athlete's own pattern is spacing-valid by
+            # construction, which is exactly why it's the right thing to fall back to.
+            if missing > 0 and preferred_days.get(session_type):
+                wanted = [
+                    iso for iso in dates
+                    if date.fromisoformat(iso).strftime("%A").lower() in preferred_days[session_type]
+                ][:needed]
+                for target in wanted:
+                    tgt = by_date[target]
+                    if tgt.get("session_type") == session_type and not tgt.get("is_rest"):
+                        continue
+                    if tgt.get("is_key_session"):
+                        continue  # never displace a key session
+                    donor = next(
+                        (iso for iso in dates
+                         if iso not in wanted
+                         and by_date[iso].get("session_type") == session_type
+                         and not by_date[iso].get("is_rest")),
+                        None,
+                    )
+                    if donor is None:
+                        continue
+                    a, b = by_date[target], by_date[donor]
+                    keys = ("session_type", "focus", "description", "is_rest", "is_key_session")
+                    swapped = {k: b.get(k) for k in keys}
+                    for k in keys:
+                        b[k] = a.get(k)
+                    a.update(swapped)
+                    for coll in (running_sessions, strength_sessions):
+                        for entry in coll:
+                            if entry.get("date") == donor:
+                                entry["date"] = target
+                            elif entry.get("date") == target:
+                                entry["date"] = donor
+                    logger.info(
+                        "Auto-corrected weekly volume: relocated %s session %s -> %s to restore the "
+                        "athlete's preferred pattern", session_type, donor, target,
+                    )
+
+            while missing > 0:
+                def is_free(iso: str) -> bool:
+                    day = by_date[iso]
+                    return bool(day.get("is_rest") or day.get("session_type") in (None, "rest"))
+
+                def spacing_ok(iso: str) -> bool:
+                    if session_type != "strength":
+                        return True
+                    d = date.fromisoformat(iso)
+                    return not any(
+                        is_strength(n) for n in
+                        ((d - timedelta(days=1)).isoformat(), (d + timedelta(days=1)).isoformat())
+                    )
+
+                wanted_dows = preferred_days.get(session_type, [])
+                on_preferred = [
+                    iso for iso in dates
+                    if date.fromisoformat(iso).strftime("%A").lower() in wanted_dows
+                ]
+
+                # 1) a free day that is already one of the athlete's preferred days for this type
+                slot_iso = next((iso for iso in on_preferred if is_free(iso) and spacing_ok(iso)), None)
+                # 2) any other free day that doesn't breach spacing
+                if slot_iso is None:
+                    slot_iso = next((iso for iso in dates if is_free(iso) and spacing_ok(iso)), None)
+                # 3) The week drifted into a shape with no legal room — e.g. strength landed on
+                #    Tue/Thu, leaving both rest days adjacent to it. Reclaim a preferred day by
+                #    displacing whatever non-key session sits there onto a free day. The athlete's
+                #    own pattern is spacing-valid by construction, so snapping back to it is the
+                #    safest correction available, and it never touches a key session.
+                if slot_iso is None:
+                    for iso in on_preferred:
+                        day = by_date[iso]
+                        if is_free(iso) or day.get("is_key_session") or day.get("session_type") == session_type:
+                            continue
+                        target = next((o for o in dates if is_free(o) and o != iso), None)
+                        if target is None or not spacing_ok(iso):
+                            continue
+                        by_date[target].update({
+                            "session_type": day.get("session_type"), "focus": day.get("focus"),
+                            "description": day.get("description"), "is_rest": False,
+                            "is_key_session": False,
+                        })
+                        for coll in (running_sessions, strength_sessions):
+                            for entry in coll:
+                                if entry.get("date") == iso:
+                                    entry["date"] = target
+                        logger.info(
+                            "Auto-corrected weekly volume: displaced %s from %s to %s to reclaim a "
+                            "preferred %s day", day.get("focus"), iso, target, session_type,
+                        )
+                        slot_iso = iso
+                        break
+
+                if slot_iso is None:
+                    warnings.append(
+                        f"⚠️ Week of {week_start} is {missing} {session_type} session(s) short of "
+                        "the athlete's weekly pattern and no rest day was free to place them — "
+                        "please verify."
+                    )
+                    break
+
+                day = by_date[slot_iso]
+                day["is_rest"] = False
+                day["session_type"] = session_type
+                if session_type == "strength":
+                    day["focus"] = "Strength"
+                    day["description"] = "Strength session (from saved template)"
+                    strength_sessions.append({"date": slot_iso, "slot": "A"})
+                else:
+                    day["focus"] = "Easy Aerobic"
+                    day["description"] = "45min Z2 easy aerobic"
+                    running_sessions.append({
+                        "date": slot_iso,
+                        "segments": [{
+                            "segment_type": "steady", "zone": "Z2",
+                            "duration_secs": 2700, "distance_meters": None,
+                            "pace_low": None, "pace_high": None,
+                            "repeat_count": 1, "note": None,
+                        }],
+                    })
+                day["is_key_session"] = False
+                logger.info(
+                    "Auto-corrected weekly volume: inserted a %s session on %s (week of %s was short)",
+                    session_type, slot_iso, week_start,
+                )
+                missing -= 1
+
+    scheduled_days[:] = list(by_date.values())
+    return warnings
+
+
 def _fix_legs_before_hard_runs(
     scheduled_days: list[dict[str, Any]] | None,
     strength_sessions: list[dict[str, Any]] | None,
@@ -449,6 +710,20 @@ def _fix_legs_before_hard_runs(
     the two days, and moves the matching entry in `strength_sessions`. Mutates both lists in place.
     Returns a warning for any violation it couldn't safely resolve within that window — visibility
     fallback, same philosophy as the other post-generation checks.
+
+    NOTE (found investigating a real batch of 6 identical warnings, see MEMORY.md /
+    project_leg_spacing_structural_limit): swapping *which slot* lands on which day-of-week
+    (rather than relocating a session's date) was tried here and reverted — it doesn't survive
+    expand_strength_session_slots() in services/supabase/plan_writer.py, which deliberately
+    discards whatever `slot` this function assigns and re-derives every slot from strict
+    chronological rotation continuation (by design, to block LLM slot-hallucination). Only a real
+    date change (this function's actual mechanism) sticks. For this athlete's current template —
+    3 strength sessions/week (Mon/Wed/Fri) where every slot includes some upper-body work by design
+    ("bench every session"), plus fixed weekly key-run days — every non-strength day sits within 1
+    day of *some* strength session, so the Recovery Spacing check below blocks every candidate
+    keyed on "any shared bucket." That's a structural property of the current template, not a bug
+    in this search: see the memory note for the tradeoffs (narrower bucket-check vs. moving strength
+    off Wed/Fri vs. accepting the warning) — do not "fix" this again without re-reading it first.
     """
     if not scheduled_days or not strength_sessions or not templates:
         return []
@@ -626,16 +901,27 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
             scheduled_days = [d.model_dump() for d in agent_output.scheduled_days]
             logger.info("Weekly planner produced %d scheduled day(s)", len(scheduled_days))
 
+        running_sessions = None
+        if agent_output.running_sessions:
+            running_sessions = [r.model_dump() for r in agent_output.running_sessions]
+            logger.info("Weekly planner produced %d running session(s)", len(running_sessions))
+
         coach_feedback = agent_output.coach_feedback
         # Run the auto-correcting fix first — it mutates scheduled_days/strength_sessions in
         # place, so the checks below see the corrected dates, not the LLM's raw (possibly
         # violating) ones.
+        # Volume first: it inserts sessions, and the legs/spacing fix below must then see
+        # (and be able to correct) the inserted placements, not the pre-insert schedule.
+        volume_warnings = _fix_weekly_volume(
+            scheduled_days, strength_sessions, running_sessions,
+            state.get("recurring_session_requests"),
+        )
         legs_warnings = _fix_legs_before_hard_runs(scheduled_days, strength_sessions, strength_template_rows)
         recurring_warnings = _check_recurring_requests_honored(
             scheduled_days, state.get("recurring_session_requests")
         )
         spacing_warnings = _check_strength_recovery_spacing(scheduled_days, strength_sessions, strength_template_rows)
-        all_warnings = recurring_warnings + spacing_warnings + legs_warnings
+        all_warnings = volume_warnings + recurring_warnings + spacing_warnings + legs_warnings
         if all_warnings:
             logger.warning(
                 "Post-generation checks: %d recurring-request miss(es), %d recovery-spacing issue(s), "
@@ -653,6 +939,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
             "weekly_plan": agent_output.model_dump(),
             "strength_sessions": strength_sessions,
             "scheduled_days": scheduled_days,
+            "running_sessions": running_sessions,
             "coach_feedback": coach_feedback,
             "schedule_updated": agent_output.schedule_updated,
             "costs": [create_cost_entry("weekly_planner", execution_time)],

@@ -49,6 +49,7 @@ class TrainingAnalysisState(MessagesState):
     race_strategy: str | None
     strength_sessions: list[dict[str, Any]] | None
     scheduled_days: list[dict[str, Any]] | None
+    running_sessions: list[dict[str, Any]] | None
 
     synthesis_complete: Annotated[bool, lambda x, y: x or y]
     season_plan_complete: Annotated[bool, lambda x, y: x or y]
@@ -131,6 +132,7 @@ def create_initial_state(
         race_strategy=None,
         strength_sessions=None,
         scheduled_days=None,
+        running_sessions=None,
         synthesis_complete=False,
         season_plan_complete=False,
         analysis_html=None,

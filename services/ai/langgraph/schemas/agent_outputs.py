@@ -29,6 +29,53 @@ class StrengthSessionSlot(BaseModel):
     slot: Literal["A", "B", "C"] = Field(..., description="Which of the athlete's 3 saved strength session templates to schedule on this date.")
 
 
+class RunningSegment(BaseModel):
+    """One phase of a run: warm-up, interval, recovery, cool-down, or a continuous steady
+    effort. Exactly one of duration_secs/distance_meters is set — time-based for warm-up/
+    cool-down/jog-recovery, distance-based for interval reps."""
+    segment_type: Literal["warmup", "interval", "recovery", "cooldown", "steady"] = Field(
+        ..., description="What kind of phase this is."
+    )
+    zone: Literal["Z1", "Z2", "Z3", "Z4", "Z5"] | None = Field(
+        None, description="Training zone letter. Required for every segment except a bare "
+        "jog-recovery with no target effort."
+    )
+    duration_secs: int | None = Field(
+        None, description="Time-based segment length in seconds. Set this OR distance_meters, "
+        "not both."
+    )
+    distance_meters: int | None = Field(
+        None, description="Distance-based segment length in meters. Set this OR duration_secs, "
+        "not both."
+    )
+    pace_low: str | None = Field(
+        None, description="Fast end of the pace range, 'M:SS' per km, from Current Training "
+        "Paces. Omit only when Current Training Paces has no data for this zone."
+    )
+    pace_high: str | None = Field(
+        None, description="Slow end of the pace range, 'M:SS' per km, from Current Training "
+        "Paces."
+    )
+    repeat_count: int = Field(
+        1, description="How many times this exact segment repeats consecutively, e.g. 6 for "
+        "'6x400m'. 1 for non-repeated segments like warm-up/cool-down."
+    )
+    note: str | None = Field(None, description="Short free-text annotation, e.g. 'jog'.")
+
+
+class RunningSessionData(BaseModel):
+    """Structured running workout for one scheduled day — the single source of truth for that
+    day's run. description on the matching ScheduledDay is rendered FROM these segments
+    deterministically (services/garmin/running_uploader.py::render_running_description), not
+    authored separately — do not try to make description and segments agree by hand, only the
+    segments matter."""
+    date: str = Field(..., description="ISO date YYYY-MM-DD, must match a 'run' scheduled_day.")
+    segments: list[RunningSegment] = Field(
+        ..., description="Ordered list of segments making up the full session, in execution "
+        "order (e.g. warmup, then repeated interval+recovery, then cooldown)."
+    )
+
+
 class ScheduledDay(BaseModel):
     """One planned training day — the machine-readable form of a single row in the weekly plan."""
 
@@ -42,8 +89,10 @@ class ScheduledDay(BaseModel):
         ...,
         description=(
             "Compact workout notation matching the plan "
-            "(e.g. '4x(800m @ 3:50/km, 2min r)' or 'Bench 5×5 @ 97.5kg + row 4×8'). "
-            "Empty string for rest days."
+            "(e.g. 'Bench 5×5 @ 97.5kg + row 4×8'). Empty string for rest days. "
+            "For session_type='run', this field is IGNORED and overwritten deterministically "
+            "from the matching RunningSessionData entry in running_sessions — do not spend "
+            "effort authoring it precisely for run days, only the segments matter."
         )
     )
     is_key_session: bool = Field(
@@ -80,6 +129,15 @@ class WeeklyPlanOutput(BaseModel):
             "One entry per day across the planning horizon. "
             "Populate only when output is the markdown plan. "
             "In check-in mode, leave empty if schedule_updated is False."
+        )
+    )
+    running_sessions: list[RunningSessionData] | None = Field(
+        None,
+        description=(
+            "For each 'run' scheduled_day, its structured segment breakdown (warm-up/interval/"
+            "recovery/cooldown) — the source of truth for that day's run, used to render the "
+            "display description and to push a structured workout to Garmin Connect. Populate "
+            "only when output is the markdown plan, one entry per 'run' day in scheduled_days."
         )
     )
     coach_feedback: str | None = Field(

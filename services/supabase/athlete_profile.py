@@ -225,20 +225,51 @@ def build_planning_context(user_id: str) -> str:
     # ── Recurring session requests ──────────────────────────────────────────
     lines.append("")
     lines.append(
-        "=== RECURRING SESSION REQUESTS (plan around these every week; deviate only for a "
-        "stated reason such as taper, injury, or illness) ==="
+        "=== RECURRING SESSION PATTERN ===\n"
+        "WHAT the week contains is the commitment: these session types, at this weekly volume, "
+        "in this order. WHICH WEEKDAY each lands on is a PREFERENCE, not part of the session's "
+        "identity — weekday placement is a convenience, not a training variable, so you may "
+        "shift the pattern off its preferred days when reality calls for it (a missed day, "
+        "travel, illness). Relative spacing and order are what must be preserved.\n"
+        "Entries marked [FIXED DAY] are the exception — a class, a training partner, a standing "
+        "commitment — and must stay on the stated weekday.\n"
+        "When the plan has drifted off the preferred days, converge back when it is CHEAP (a "
+        "rest day can absorb the difference at no training cost) and let it ride when "
+        "re-syncing would cost a real session."
     )
     requests = profile.get("recurring_session_requests") or []
     if requests:
+        # State the weekly volume as an explicit number. The preferred-day list alone does NOT
+        # convey it: when days were hard pins, three Mon/Wed/Fri entries implicitly forced three
+        # strength sessions, but softening them to preferences removed that anchor — and a real
+        # check-in then planned 2 strength/week while its own narrative claimed 3. Volume is the
+        # commitment; the day is not. Say so in numbers.
+        must_by_type: dict[str, int] = {}
+        for req in requests:
+            if req.get("importance") == "must" and req.get("session_type"):
+                must_by_type[req["session_type"]] = must_by_type.get(req["session_type"], 0) + 1
+        if must_by_type:
+            volume = ", ".join(
+                f"{n}x {_SESSION_TYPE_LABELS.get(t, t)}" for t, n in sorted(must_by_type.items())
+            )
+            lines.append(
+                f"WEEKLY VOLUME (hard requirement — every week, including weeks where placement "
+                f"drifts off the preferred days): {volume}. Count these before finalizing each "
+                "week. Reducing volume requires an explicit stated reason (taper, illness, "
+                "injury, or a readiness signal) named in coach_feedback."
+            )
+            lines.append("")
         for req in requests:
             day = req.get("day_of_week")
             day_label = day.capitalize() if day else "Any day"
             type_label = _SESSION_TYPE_LABELS.get(req.get("session_type"), "Session")
             label = req.get("label") or type_label
             importance = "always include" if req.get("importance") == "must" else "include when possible"
+            fixed = req.get("day_flexibility") == "fixed"
+            day_part = f"{day_label} [FIXED DAY]" if fixed else f"prefers {day_label}"
             desc = req.get("description")
             desc_part = f' — "{desc}"' if desc else ""
-            lines.append(f"- {day_label}: {label} ({type_label}){desc_part} [{importance}]")
+            lines.append(f"- {label} ({type_label}), {day_part}{desc_part} [{importance}]")
     else:
         lines.append("No specific recurring requests.")
 
@@ -246,9 +277,29 @@ def build_planning_context(user_id: str) -> str:
     lines.append("")
     lines.append("=== SOFT PREFERENCES (weigh these; athlete has not stated they are mandatory) ===")
 
-    sessions_per_week = profile.get("sessions_per_week")
+    # Reconcile against the recurring pattern before stating it. A stale sessions_per_week that
+    # undercounts the athlete's own recurring requests puts two contradictory numbers in one
+    # prompt — and the model anchors on the smaller one: with "5 baseline" alongside a 7-session
+    # pattern, a real check-in planned exactly 5 (2 strength + 3 runs + 2 rest), silently
+    # dropping a third of the strength work. The explicit pattern is the more specific signal,
+    # so it sets the floor.
+    stated_per_week = profile.get("sessions_per_week")
+    pattern_per_week = sum(
+        1 for r in (profile.get("recurring_session_requests") or [])
+        if r.get("importance") == "must" and r.get("session_type")
+    )
+    sessions_per_week = max(stated_per_week or 0, pattern_per_week) or None
     if sessions_per_week:
-        lines.append(f"- Current weekly sessions: {sessions_per_week} (a baseline, not a cap — expand with readiness)")
+        note = ""
+        if pattern_per_week and stated_per_week and pattern_per_week > stated_per_week:
+            note = (
+                f" (the athlete's stated baseline is {stated_per_week}, but their own recurring "
+                f"pattern already commits to {pattern_per_week} — the pattern wins)"
+            )
+        lines.append(
+            f"- Current weekly sessions: {sessions_per_week} (a FLOOR, not a cap — expand with "
+            f"readiness; never plan fewer without a stated recovery reason){note}"
+        )
     if profile.get("training_enjoyments"):
         lines.append(f"- Enjoys: {profile['training_enjoyments']}")
     if profile.get("training_dislikes"):
