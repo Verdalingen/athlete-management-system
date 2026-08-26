@@ -1180,32 +1180,12 @@ def count_completed_bench_sessions(
     })
 
 
-def expand_strength_session_slots(slot_assignments: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Expand {date, slot} pairs — what the weekly planner now decides for strength sessions —
-    into full StrengthSessionData-shaped dicts (date, name, slot, exercises,
-    estimated_duration_secs), using the athlete's saved strength_session_templates for exercise
-    identity/order/sets/reps and compute_bench_prescription() for the one dynamic (barbell bench)
-    row per session.
+def _recompute_slots_from_rotation(ordered: list[dict[str, Any]]) -> dict[str, str]:
+    """Continue the A -> B -> C rotation from the athlete's last scheduled session.
 
-    The LLM decides which calendar dates get a strength session (a real judgment call — recovery
-    spacing, proximity to hard runs) but the slot LETTER on each date is always recomputed here by
-    strictly continuing the A -> B -> C rotation from the athlete's last scheduled session — the
-    LLM's own `slot` guess is only used for its spacing reasoning while generating and is
-    discarded/overridden here, so a mislabeled rotation can never actually reach Supabase or Garmin.
-
-    The LLM no longer authors exercise content at all for strength sessions — call this before
-    write_plan() so its `strength_sessions` argument is these fully-expanded dicts, not raw LLM
-    output.
+    Ignores whatever `slot` each assignment already carries (only logged, not
+    trusted) — see expand_strength_session_slots' docstring for why.
     """
-    from .bench_wave import compute_bench_prescription
-
-    sb = get_supabase()
-    user_id = _user_id()
-
-    ordered = sorted(
-        (a for a in slot_assignments if a.get("date")),
-        key=lambda a: a["date"],
-    )
     next_slot = get_next_strength_slot()
     corrected_slots: dict[str, str] = {}
     for assignment in ordered:
@@ -1217,6 +1197,48 @@ def expand_strength_session_slots(slot_assignments: list[dict[str, Any]]) -> lis
                 assignment["date"], assignment.get("slot"), next_slot,
             )
         next_slot = _SLOT_ROTATION[(_SLOT_ROTATION.index(next_slot) + 1) % 3]
+    return corrected_slots
+
+
+def expand_strength_session_slots(
+    slot_assignments: list[dict[str, Any]],
+    trust_given_slot: bool = False,
+) -> list[dict[str, Any]]:
+    """Expand {date, slot} pairs — what the weekly planner now decides for strength sessions —
+    into full StrengthSessionData-shaped dicts (date, name, slot, exercises,
+    estimated_duration_secs), using the athlete's saved strength_session_templates for exercise
+    identity/order/sets/reps and compute_bench_prescription() for the one dynamic (barbell bench)
+    row per session.
+
+    By default (trust_given_slot=False): the LLM decides which calendar dates get a strength
+    session (a real judgment call — recovery spacing, proximity to hard runs) but the slot LETTER
+    on each date is always recomputed here by strictly continuing the A -> B -> C rotation from
+    the athlete's last scheduled session — the LLM's own `slot` guess is only used for its spacing
+    reasoning while generating and is discarded/overridden here, so a mislabeled rotation can
+    never actually reach Supabase or Garmin. This is what the (non-check-in) full-redraft path
+    still uses.
+
+    trust_given_slot=True: use each assignment's `slot` verbatim instead of recomputing it from
+    rotation. Only the solver-driven check-in path passes this — solve_schedule() has already
+    decided which specific slot (leg-carrying or not) belongs on which specific date to satisfy a
+    real SpacingConstraint, and silently overriding that with pure rotation counting would make
+    the solver's placement pointless. The exercise-content-filling logic below (templates lookup,
+    is_dynamic_bench -> compute_bench_prescription, duration estimate) is identical either way.
+    """
+    from .bench_wave import compute_bench_prescription
+
+    sb = get_supabase()
+    user_id = _user_id()
+
+    ordered = sorted(
+        (a for a in slot_assignments if a.get("date")),
+        key=lambda a: a["date"],
+    )
+
+    if trust_given_slot:
+        corrected_slots: dict[str, str] = {a["date"]: a["slot"] for a in ordered}
+    else:
+        corrected_slots = _recompute_slots_from_rotation(ordered)
 
     templates = rows(
         sb.table("strength_session_templates").select("*")

@@ -7,14 +7,18 @@ from typing import Any
 
 from services.ai.ai_settings import AgentRole
 from services.ai.langgraph.schemas.agent_outputs import WeeklyPlanOutput
+from services.ai.langgraph.schemas.checkin_outputs import CheckinContentOutput, CheckinTranslationOutput
 from services.ai.langgraph.state.training_analysis_state import TrainingAnalysisState
 from services.ai.langgraph.utils.message_helper import normalize_langchain_messages
 from services.ai.langgraph.utils.output_helper import extract_agent_content, extract_expert_output
 from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 from services.garmin.training_paces import build_training_paces_context
+from services.scheduling.live_state import compute_checkin_fixed_days, resolve_today_pin
+from services.scheduling.solver import FREE, solve_schedule
 from services.supabase.athlete_profile import build_strength_templates_context, get_strength_session_templates
 from services.supabase.plan_writer import get_next_strength_slot
+from services.supabase.program_specs import fetch_checkin_context, get_active_program_spec
 
 from .node_base import (
     configure_node_tools,
@@ -326,6 +330,87 @@ Rules:
   expected middle category, not an edge case. Marking every non-rest day as key indicates you are
   not building the easy aerobic base your methodology calls for.
 - is_rest: true for complete rest and active recovery days.
+"""
+
+
+RUNNING_SESSION_CONTENT_RULES = """## Structured Running Session Content
+For each date listed above, author its segments (warm-up, interval, recovery, cooldown, or
+steady):
+- segment_type: "warmup", "interval", "recovery", "cooldown", or "steady" (a continuous
+  non-interval effort, e.g. a plain easy run or tempo run with no repeats).
+- zone: required on every segment except a bare jog-recovery with no target effort.
+- EITHER duration_secs OR distance_meters, never both. Use duration_secs for warm-up/cool-down/
+  jog-recovery (time you spend, not distance-anchored), distance_meters for interval reps
+  (distance-anchored, e.g. 400m/800m/1km reps).
+- pace_low/pace_high: use the Current Training Paces given below for every pace you set — these
+  are computed fresh from the athlete's actual recent fitness, not invented. Do NOT derive a pace
+  from a longer-term goal time. If Current Training Paces has no data for a zone, set `zone` only
+  and leave pace_low/pace_high null — never fall back to a goal-derived estimate.
+- repeat_count: how many times this exact segment repeats, e.g. 6 for "6x400m". 1 for
+  non-repeated segments (warm-up, cool-down, a single steady run).
+
+A session MUST include every real component as its own segment — warm-up, the main effort,
+cool-down, and any drills/strides — not just the main effort in isolation.
+Strides placement (hard rule): if strides are part of the session, they belong as a trailing
+segment on an EASY run, not a tempo/threshold or interval session.
+"""
+
+CHECKIN_TRANSLATION_PROMPT = """## Task
+This is a weekly check-in against an existing, solver-managed schedule — NOT a full replan. You
+are not deciding which dates get which sessions; a scheduling solver already enforces the
+athlete's ProgramSpec (weekly volume targets, spacing rules, day preferences). Your job:
+
+1. **Assess** the past week using the Garmin activity data vs the season plan's phase intent.
+2. **Translate** the athlete's note (if any, under "Athlete Note" inside User Context below) or
+   any detected drift into `overrides` — a short list of {{date, session_type_key}} instructions
+   that FORCE a specific date to a specific session type (session_type_key must be one of the
+   Active Program Spec keys listed below). Only propose an override where it's genuinely required
+   (e.g. "I did Monday's strength a day late" -> pin today to that strength session type; "skip
+   Thursday's tempo, feeling sick" -> pin Thursday to a rest/easy type). Most check-ins need zero
+   overrides — do not invent one just to have something to say. A date you don't mention keeps
+   whatever is already scheduled for it.
+3. **Write `assessment`** — 3-4 concise bullet points: what the data shows, how it compares to the
+   season plan's phase, anything to watch, what (if anything) you're adjusting and why.
+
+## Inputs
+### Season Plan
+```markdown
+{season_plan}
+```
+### Active Program Spec — valid session_type_keys
+```json
+{session_type_keys}
+```
+### Athlete Context
+- Name: {athlete_name}
+- Date: ```json {current_date} ```
+- Upcoming Weeks: ```json {week_dates} ```
+- **User Context**: ``` {planning_context} ```
+- **Already scheduled this window** (context only — do not propose an override for a date unless
+  you are deliberately changing it): ```json {existing_summary} ```
+
+### Expert Analysis
+- Metrics: ``` {metrics_analysis} ```
+- Activity: ``` {activity_analysis} ```
+- Physiology: ``` {physiology_analysis} ```
+"""
+
+CHECKIN_CONTENT_PROMPT = """## Task
+The scheduling solver has placed the following running session(s) this window that need content
+authored. You are NOT deciding placement, only content — see the rules below.
+
+## Dates needing content
+```json
+{run_dates_json}
+```
+(each entry: date, session_type_key, label)
+
+## Current Training Paces (read-only)
+```markdown
+{training_paces}
+```
+
+{running_session_rules}
 """
 
 
@@ -833,13 +918,20 @@ def _fix_legs_before_hard_runs(
     return warnings
 
 
-async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | str]:
-    logger.info("Starting weekly planner node")
+async def _execute_full_redraft(
+    state: TrainingAnalysisState,
+    supabase_user_id: str,
+    agent_start_time: datetime,
+) -> dict[str, list | str]:
+    """The original weekly-planner behavior: the LLM redrafts the entire multi-week schedule.
 
+    Structure is patched by the hand-written _fix_* functions below. Still
+    used for non-check-in (full pipeline) runs, which have no active
+    ProgramSpec-driven alternative yet — see _execute_checkin for the
+    solver-driven check-in path.
+    """
     hitl_enabled = state.get("hitl_enabled", True)
     logger.info("Weekly planner node: HITL %s", "enabled" if hitl_enabled else "disabled")
-
-    agent_start_time = datetime.now()
 
     tools = configure_node_tools(
         agent_name="weekly_planner",
@@ -849,11 +941,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
 
     num_days = len(state.get("week_dates") or []) or 28
     checkin_mode = state.get("checkin_mode", False)
-    logger.info("Weekly planner node: check-in mode %s", "on" if checkin_mode else "off")
 
-    supabase_user_id = os.environ.get("SUPABASE_USER_ID")
-    if not supabase_user_id:
-        raise ValueError("SUPABASE_USER_ID must be set to load strength session templates")
     strength_template_rows = get_strength_session_templates(supabase_user_id)
     strength_templates = build_strength_templates_context(supabase_user_id)
     next_strength_slot = get_next_strength_slot()
@@ -904,68 +992,324 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
             )
         return await llm_with_structure.ainvoke(messages_with_qa)
 
-    async def node_execution():
-        agent_output: WeeklyPlanOutput = await retry_with_backoff(
-            call_weekly_planning, AI_ANALYSIS_CONFIG, "Weekly Planning"
+    agent_output: WeeklyPlanOutput = await retry_with_backoff(
+        call_weekly_planning, AI_ANALYSIS_CONFIG, "Weekly Planning"
+    )
+
+    execution_time = (datetime.now() - agent_start_time).total_seconds()
+    log_node_completion("Weekly planning", execution_time)
+
+    strength_sessions = None
+    if agent_output.strength_sessions:
+        strength_sessions = [s.model_dump() for s in agent_output.strength_sessions]
+        logger.info("Weekly planner produced %d strength session(s)", len(strength_sessions))
+
+    scheduled_days = None
+    if agent_output.scheduled_days:
+        scheduled_days = [d.model_dump() for d in agent_output.scheduled_days]
+        logger.info("Weekly planner produced %d scheduled day(s)", len(scheduled_days))
+
+    running_sessions = None
+    if agent_output.running_sessions:
+        running_sessions = [r.model_dump() for r in agent_output.running_sessions]
+        logger.info("Weekly planner produced %d running session(s)", len(running_sessions))
+
+    coach_feedback = agent_output.coach_feedback
+    # Run the auto-correcting fix first — it mutates scheduled_days/strength_sessions in
+    # place, so the checks below see the corrected dates, not the LLM's raw (possibly
+    # violating) ones.
+    # Volume first: it inserts sessions, and the legs/spacing fix below must then see
+    # (and be able to correct) the inserted placements, not the pre-insert schedule.
+    volume_warnings = _fix_weekly_volume(
+        scheduled_days, strength_sessions, running_sessions,
+        state.get("recurring_session_requests"),
+        language=state.get("language", "en"),
+    )
+    legs_warnings = _fix_legs_before_hard_runs(scheduled_days, strength_sessions, strength_template_rows)
+    recurring_warnings = _check_recurring_requests_honored(
+        scheduled_days, state.get("recurring_session_requests")
+    )
+    spacing_warnings = _check_strength_recovery_spacing(scheduled_days, strength_sessions, strength_template_rows)
+    all_warnings = volume_warnings + recurring_warnings + spacing_warnings + legs_warnings
+    if all_warnings:
+        logger.warning(
+            "Post-generation checks: %d recurring-request miss(es), %d recovery-spacing issue(s), "
+            "%d legs-before-hard-run issue(s)",
+            len(recurring_warnings), len(spacing_warnings), len(legs_warnings),
+        )
+        warning_text = "\n".join(all_warnings)
+        coach_feedback = f"{coach_feedback.rstrip()}\n\n{warning_text}" if coach_feedback else warning_text
+
+    if coach_feedback:
+        logger.info("Coach feedback: %s", coach_feedback[:120])
+    logger.info("Schedule updated: %s", agent_output.schedule_updated)
+
+    return {
+        "weekly_plan": agent_output.model_dump(),
+        "strength_sessions": strength_sessions,
+        "scheduled_days": scheduled_days,
+        "running_sessions": running_sessions,
+        "coach_feedback": coach_feedback,
+        "schedule_updated": agent_output.schedule_updated,
+        "costs": [create_cost_entry("weekly_planner", execution_time)],
+    }
+
+
+async def _execute_checkin(
+    state: TrainingAnalysisState,
+    supabase_user_id: str,
+    agent_start_time: datetime,
+) -> dict[str, list | str]:
+    """Solver-driven check-in path (Phase 4): solve_schedule() decides placement, not the LLM.
+
+    The LLM only translates the athlete's note into overrides the solver must
+    honor, then authors content for whatever run dates the solver actually
+    placed fresh.
+    """
+    active_spec = get_active_program_spec(supabase_user_id)
+    if active_spec is None:
+        raise ValueError(
+            "No active program_specs row for this athlete — run a full season-planning pass "
+            "first (New Season) before checking in."
         )
 
-        execution_time = (datetime.now() - agent_start_time).total_seconds()
-        log_node_completion("Weekly planning", execution_time)
+    window_dates = [date.fromisoformat(d["date"]) for d in state["week_dates"]]
+    today = date.today()
 
-        strength_sessions = None
-        if agent_output.strength_sessions:
-            strength_sessions = [s.model_dump() for s in agent_output.strength_sessions]
-            logger.info("Weekly planner produced %d strength session(s)", len(strength_sessions))
+    today_row, today_strength_row, existing = fetch_checkin_context(supabase_user_id, window_dates)
+    today_pin = resolve_today_pin(today, today_row, today_strength_row, active_spec)
 
-        scheduled_days = None
-        if agent_output.scheduled_days:
-            scheduled_days = [d.model_dump() for d in agent_output.scheduled_days]
-            logger.info("Weekly planner produced %d scheduled day(s)", len(scheduled_days))
+    valid_keys = [st.key for st in active_spec.session_types]
+    existing_summary = {d.isoformat(): row.get("session_type") for d, row in sorted(existing.items())}
 
-        running_sessions = None
-        if agent_output.running_sessions:
-            running_sessions = [r.model_dump() for r in agent_output.running_sessions]
-            logger.info("Weekly planner produced %d running session(s)", len(running_sessions))
+    base_llm = ModelSelector.get_llm(AgentRole.WEEKLY_PLANNER)
+    qa_messages = normalize_langchain_messages(state.get("weekly_planner_messages", []))
+    translation_messages = [
+        {"role": "system", "content": (
+            get_workflow_context("weekly_planner")
+            + WEEKLY_PLANNER_SYSTEM_PROMPT
+            + get_language_instructions(state.get("language"))
+        )},
+        {"role": "user", "content": CHECKIN_TRANSLATION_PROMPT.format(
+            season_plan=extract_agent_content(state.get("season_plan")),
+            session_type_keys=json.dumps(valid_keys, indent=2),
+            athlete_name=state["athlete_name"],
+            current_date=json.dumps(state["current_date"], indent=2),
+            week_dates=json.dumps(state["week_dates"], indent=2),
+            planning_context=state["planning_context"],
+            existing_summary=json.dumps(existing_summary, indent=2),
+            metrics_analysis=_safe_expert(state.get("metrics_outputs"), "for_weekly_planner"),
+            activity_analysis=_safe_expert(state.get("activity_outputs"), "for_weekly_planner"),
+            physiology_analysis=_safe_expert(state.get("physiology_outputs"), "for_weekly_planner"),
+        )},
+        *qa_messages,
+    ]
+    translation_llm = base_llm.with_structured_output(CheckinTranslationOutput)
 
-        coach_feedback = agent_output.coach_feedback
-        # Run the auto-correcting fix first — it mutates scheduled_days/strength_sessions in
-        # place, so the checks below see the corrected dates, not the LLM's raw (possibly
-        # violating) ones.
-        # Volume first: it inserts sessions, and the legs/spacing fix below must then see
-        # (and be able to correct) the inserted placements, not the pre-insert schedule.
-        volume_warnings = _fix_weekly_volume(
-            scheduled_days, strength_sessions, running_sessions,
-            state.get("recurring_session_requests"),
-            language=state.get("language", "en"),
+    # Bounded corrective retry (narrower than season_planner_node's 3-attempt budget — this is
+    # only validating that override keys are real, not re-authoring a whole spec) for an
+    # override referencing an unknown session_type_key.
+    translation_output: CheckinTranslationOutput | None = None
+    feedback: str | None = None
+    overrides: dict[date, str] = {}
+    for _attempt in range(2):
+        messages = (
+            translation_messages if not feedback
+            else [*translation_messages, {"role": "user", "content": feedback}]
         )
-        legs_warnings = _fix_legs_before_hard_runs(scheduled_days, strength_sessions, strength_template_rows)
-        recurring_warnings = _check_recurring_requests_honored(
-            scheduled_days, state.get("recurring_session_requests")
+
+        async def call_translation() -> CheckinTranslationOutput:
+            return await translation_llm.ainvoke(messages)
+
+        translation_output = await retry_with_backoff(
+            call_translation, AI_ANALYSIS_CONFIG, "Check-in Translation"
         )
-        spacing_warnings = _check_strength_recovery_spacing(scheduled_days, strength_sessions, strength_template_rows)
-        all_warnings = volume_warnings + recurring_warnings + spacing_warnings + legs_warnings
-        if all_warnings:
-            logger.warning(
-                "Post-generation checks: %d recurring-request miss(es), %d recovery-spacing issue(s), "
-                "%d legs-before-hard-run issue(s)",
-                len(recurring_warnings), len(spacing_warnings), len(legs_warnings),
-            )
-            warning_text = "\n".join(all_warnings)
-            coach_feedback = f"{coach_feedback.rstrip()}\n\n{warning_text}" if coach_feedback else warning_text
-
-        if coach_feedback:
-            logger.info("Coach feedback: %s", coach_feedback[:120])
-        logger.info("Schedule updated: %s", agent_output.schedule_updated)
-
-        return {
-            "weekly_plan": agent_output.model_dump(),
-            "strength_sessions": strength_sessions,
-            "scheduled_days": scheduled_days,
-            "running_sessions": running_sessions,
-            "coach_feedback": coach_feedback,
-            "schedule_updated": agent_output.schedule_updated,
-            "timings": [create_timing_entry("weekly_planner", execution_time)],
+        bad = [o for o in translation_output.translation.overrides if o.session_type_key not in valid_keys]
+        if not bad:
+            overrides = {
+                date.fromisoformat(o.date): o.session_type_key
+                for o in translation_output.translation.overrides
+            }
+            break
+        feedback = (
+            f"These overrides referenced unknown session_type_key values: "
+            f"{[o.session_type_key for o in bad]}. Valid keys are: {valid_keys}. Revise."
+        )
+    else:
+        # Exhausted retries with bad keys — drop the invalid ones rather than fail the whole
+        # check-in over a translation mistake; still solve with whatever's valid.
+        assert translation_output is not None  # set on every loop iteration above
+        overrides = {
+            date.fromisoformat(o.date): o.session_type_key
+            for o in translation_output.translation.overrides
+            if o.session_type_key in valid_keys
         }
+        logger.warning("Check-in translation kept referencing unknown session_type_keys — dropped them")
+
+    assert translation_output is not None  # set on every loop iteration or the else branch above
+    assessment = translation_output.translation.assessment
+
+    fixed = compute_checkin_fixed_days(window_dates, existing, overrides, active_spec)
+    fixed.update(today_pin)
+    result = solve_schedule(active_spec, window_dates, pinned_events=fixed)
+
+    fallback_warning = None
+    if not result.feasible:
+        logger.warning("Check-in solve infeasible with overrides %s: %s", overrides, result.infeasible_reasons)
+        fixed_without_overrides = compute_checkin_fixed_days(window_dates, existing, {}, active_spec)
+        fixed_without_overrides.update(today_pin)
+        result = solve_schedule(active_spec, window_dates, pinned_events=fixed_without_overrides)
+        if not result.feasible:
+            raise ValueError(
+                "The athlete's active program is infeasible independent of this check-in "
+                f"({result.infeasible_reasons}) — run a new season-planning pass."
+            )
+        fallback_warning = (
+            f"⚠️ Could not honor the requested schedule change(s) without breaking the athlete's "
+            f"program rules ({'; '.join(result.infeasible_reasons or [])}) — kept the existing "
+            "schedule instead."
+        )
+        overrides = {}
+        fixed = fixed_without_overrides
+
+    assignments = result.assignments or {}
+
+    # Content is only needed for dates the solver actually decided (not carried forward
+    # unchanged from `fixed`) that turned out to be run-kind — everything else either isn't a
+    # run or already has real content written to Supabase from a prior check-in.
+    content_needed = [
+        d for d in window_dates
+        if assignments.get(d, FREE) != FREE
+        and d not in fixed
+        and active_spec.session_type(assignments[d]).session_kind == "run"
+    ]
+
+    running_content_by_date: dict[date, list[dict]] = {}
+    if content_needed:
+        content_targets = [
+            {
+                "date": d.isoformat(),
+                "session_type_key": assignments[d],
+                "label": active_spec.session_type(assignments[d]).label,
+            }
+            for d in content_needed
+        ]
+        content_messages = [
+            {"role": "system", "content": (
+                WEEKLY_PLANNER_SYSTEM_PROMPT + get_language_instructions(state.get("language"))
+            )},
+            {"role": "user", "content": CHECKIN_CONTENT_PROMPT.format(
+                run_dates_json=json.dumps(content_targets, indent=2),
+                training_paces=build_training_paces_context(state.get("garmin_data") or {}),
+                running_session_rules=RUNNING_SESSION_CONTENT_RULES,
+            )},
+        ]
+        content_llm = base_llm.with_structured_output(CheckinContentOutput)
+        content_output: CheckinContentOutput = await retry_with_backoff(
+            lambda: content_llm.ainvoke(content_messages), AI_ANALYSIS_CONFIG, "Check-in Content"
+        )
+        for entry in content_output.running_content:
+            try:
+                running_content_by_date[date.fromisoformat(entry.date)] = [s.model_dump() for s in entry.segments]
+            except ValueError:
+                continue
+
+    # Reconstruct scheduled_days/strength_sessions/running_sessions for the whole window from
+    # the solver's assignments + spec metadata — write_plan() replaces the full overlapping
+    # date range, so this must be complete, not a diff.
+    scheduled_days: list[dict] = []
+    strength_sessions: list[dict] = []
+    running_sessions: list[dict] = []
+    for d in window_dates:
+        key = assignments.get(d)
+        day_name = d.strftime("%A")
+
+        if key is None or key == FREE:
+            scheduled_days.append({
+                "date": d.isoformat(), "day_name": day_name, "session_type": "rest",
+                "focus": "Rest", "description": "", "is_key_session": False, "is_rest": True,
+            })
+            continue
+
+        st = active_spec.session_type(key)
+        if st.session_kind == "strength":
+            slot = key.rsplit("-", 1)[-1].upper()
+            strength_sessions.append({"date": d.isoformat(), "slot": slot})
+            scheduled_days.append({
+                "date": d.isoformat(), "day_name": day_name, "session_type": "strength",
+                "focus": st.label, "description": "Strength session (from saved template)",
+                "is_key_session": st.is_key, "is_rest": False,
+            })
+        elif st.session_kind == "run":
+            existing_row = existing.get(d)
+            segments = running_content_by_date.get(d)
+            if segments is None and existing_row and existing_row.get("running_segments"):
+                segments = existing_row["running_segments"]
+            if segments is None:
+                # Missing content degrades to a plain easy-aerobic placeholder, not a hard
+                # failure — mirrors _fix_weekly_volume's old insertion fallback.
+                segments = [{
+                    "segment_type": "steady", "zone": "Z2", "duration_secs": 2700,
+                    "distance_meters": None, "pace_low": None, "pace_high": None,
+                    "repeat_count": 1, "note": None,
+                }]
+            running_sessions.append({"date": d.isoformat(), "segments": segments})
+            scheduled_days.append({
+                "date": d.isoformat(), "day_name": day_name, "session_type": "run",
+                "focus": st.label, "description": st.label,
+                "is_key_session": st.is_key, "is_rest": False,
+            })
+        elif st.session_kind == "rest":
+            scheduled_days.append({
+                "date": d.isoformat(), "day_name": day_name, "session_type": "rest",
+                "focus": "Rest", "description": "", "is_key_session": False, "is_rest": True,
+            })
+        else:
+            scheduled_days.append({
+                "date": d.isoformat(), "day_name": day_name, "session_type": "cross",
+                "focus": st.label, "description": st.label,
+                "is_key_session": st.is_key, "is_rest": False,
+            })
+
+    coach_feedback = assessment
+    if fallback_warning:
+        coach_feedback = f"{coach_feedback.rstrip()}\n\n{fallback_warning}" if coach_feedback else fallback_warning
+
+    schedule_updated = bool(overrides) or bool(content_needed)
+    if coach_feedback:
+        logger.info("Check-in coach feedback: %s", coach_feedback[:120])
+    logger.info("Check-in schedule updated: %s", schedule_updated)
+
+    execution_time = (datetime.now() - agent_start_time).total_seconds()
+    log_node_completion("Weekly planning (check-in)", execution_time)
+
+    return {
+        "weekly_plan": {"output": assessment},
+        "strength_sessions": strength_sessions if schedule_updated else None,
+        "scheduled_days": scheduled_days if schedule_updated else None,
+        "running_sessions": running_sessions if schedule_updated else None,
+        "coach_feedback": coach_feedback,
+        "schedule_updated": schedule_updated,
+        "costs": [create_cost_entry("weekly_planner", execution_time)],
+    }
+
+
+async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | str]:
+    logger.info("Starting weekly planner node")
+
+    checkin_mode = state.get("checkin_mode", False)
+    logger.info("Weekly planner node: check-in mode %s", "on" if checkin_mode else "off")
+
+    supabase_user_id = os.environ.get("SUPABASE_USER_ID")
+    if not supabase_user_id:
+        raise ValueError("SUPABASE_USER_ID must be set to load strength session templates")
+
+    agent_start_time = datetime.now()
+
+    async def node_execution():
+        if checkin_mode:
+            return await _execute_checkin(state, supabase_user_id, agent_start_time)
+        return await _execute_full_redraft(state, supabase_user_id, agent_start_time)
 
     return await execute_node_with_error_handling(
         node_name="Weekly planner",

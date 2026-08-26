@@ -269,6 +269,19 @@ def _save_expert_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
     return files_generated
 
 
+def _raise_if_node_errors(result: dict[str, Any]) -> None:
+    """Raise loudly on a failed node instead of letting empty data through silently.
+
+    A node failure returns {"errors": [...]} (execute_node_with_error_handling)
+    instead of raising — nothing downstream ever checked this before, so a
+    failed node's absent scheduled_days/strength_sessions silently defaulted
+    to [] and write_plan() would still insert an empty plan, deleting the
+    real overlapping plan via its date-range cleanup.
+    """
+    if result.get("errors"):
+        raise RuntimeError("; ".join(result["errors"]))
+
+
 def _save_plan_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
     files_generated: list[str] = []
 
@@ -367,6 +380,8 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
             skip_synthesis=skip_synthesis,
             language=config_parser.get_language(),
         )
+
+        _raise_if_node_errors(result)
 
         # The weekly planner only decides {date, slot} for strength sessions now — expand into full
         # exercise lists from the athlete's saved templates (+ deterministic bench wave) here, once,
@@ -547,6 +562,8 @@ async def run_replan_from_config(
         week_dates=week_dates,
         language=config_parser.get_language(),
     )
+
+    _raise_if_node_errors(result)
 
     # The weekly planner only decides {date, slot} for strength sessions now — expand into full
     # exercise lists from the athlete's saved templates (+ deterministic bench wave) here, once,
