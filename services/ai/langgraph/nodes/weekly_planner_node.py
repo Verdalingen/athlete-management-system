@@ -15,7 +15,7 @@ from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 from services.garmin.training_paces import build_training_paces_context
 from services.scheduling.live_state import compute_checkin_fixed_days, resolve_today_pin
-from services.scheduling.solver import FREE, solve_schedule
+from services.scheduling.solver import FREE, SLOTS, solve_schedule
 from services.supabase.athlete_profile import build_strength_templates_context, get_strength_session_templates
 from services.supabase.plan_writer import get_next_strength_slot
 from services.supabase.program_specs import fetch_checkin_context, get_active_program_spec
@@ -404,7 +404,10 @@ authored. You are NOT deciding placement, only content — see the rules below.
 ```json
 {run_dates_json}
 ```
-(each entry: date, session_type_key, label)
+(each entry: date, time_slot, session_type_key, label. time_slot is null unless the athlete's
+program allows more than one session a day, in which case a date may appear more than once with
+different time_slot values — author each independently and echo the same time_slot back on your
+output entry so it can be matched to the right one.)
 
 ## Current Training Paces (read-only)
 ```markdown
@@ -1184,27 +1187,41 @@ async def _execute_checkin(
         overrides = {}
         fixed = fixed_without_overrides
 
-    assignments = result.assignments or {}
+    # Normalize both solver modes into one (date, time_slot) -> key shape so the rest of this
+    # function only has to handle one shape. Single-session mode's plain dict[date, str] becomes
+    # every entry at the 'day' slot — exactly how solve_schedule's own whole-day pins already
+    # surface in slot_assignments under multi-session mode (a fixed date gets one synthetic
+    # (date, "day") cell, never 4 real slots), so a whole-day-fixed date behaves identically
+    # either way below.
+    if active_spec.allow_multi_session_days:
+        cell_assignments: dict[tuple[date, str], str] = dict(result.slot_assignments or {})
+    else:
+        cell_assignments = {(d, "day"): key for d, key in (result.assignments or {}).items()}
 
-    # Content is only needed for dates the solver actually decided (not carried forward
+    def _slot_sort_key(slot: str) -> int:
+        return SLOTS.index(slot) if slot in SLOTS else -1  # "day" sorts first, there's only one
+
+    # Content is only needed for cells the solver actually decided (not carried forward
     # unchanged from `fixed`) that turned out to be run-kind — everything else either isn't a
     # run or already has real content written to Supabase from a prior check-in.
     content_needed = [
-        d for d in window_dates
-        if assignments.get(d, FREE) != FREE
-        and d not in fixed
-        and active_spec.session_type(assignments[d]).session_kind == "run"
+        cell for cell, key in cell_assignments.items()
+        if key and key != FREE
+        and cell[0] not in fixed
+        and active_spec.session_type(key).session_kind == "run"
     ]
+    content_needed.sort(key=lambda cell: (cell[0], _slot_sort_key(cell[1])))
 
-    running_content_by_date: dict[date, list[dict]] = {}
+    running_content_by_cell: dict[tuple[date, str], list[dict]] = {}
     if content_needed:
         content_targets = [
             {
-                "date": d.isoformat(),
-                "session_type_key": assignments[d],
-                "label": active_spec.session_type(assignments[d]).label,
+                "date": cell[0].isoformat(),
+                "time_slot": cell[1] if cell[1] != "day" else None,
+                "session_type_key": cell_assignments[cell],
+                "label": active_spec.session_type(cell_assignments[cell]).label,
             }
-            for d in content_needed
+            for cell in content_needed
         ]
         content_messages = [
             {"role": "system", "content": (
@@ -1222,66 +1239,84 @@ async def _execute_checkin(
         )
         for entry in content_output.running_content:
             try:
-                running_content_by_date[date.fromisoformat(entry.date)] = [s.model_dump() for s in entry.segments]
+                entry_date = date.fromisoformat(entry.date)
             except ValueError:
                 continue
+            running_content_by_cell[(entry_date, entry.time_slot or "day")] = [
+                s.model_dump() for s in entry.segments
+            ]
 
     # Reconstruct scheduled_days/strength_sessions/running_sessions for the whole window from
     # the solver's assignments + spec metadata — write_plan() replaces the full overlapping
-    # date range, so this must be complete, not a diff.
+    # date range, so this must be complete, not a diff. Under single-session mode (the default)
+    # every date contributes at most one cell here, so this is byte-identical to the old
+    # date-keyed loop; under multi-session mode a date can contribute several.
     scheduled_days: list[dict] = []
     strength_sessions: list[dict] = []
     running_sessions: list[dict] = []
     for d in window_dates:
-        key = assignments.get(d)
         day_name = d.strftime("%A")
+        day_cells = sorted(
+            (cell for cell in cell_assignments if cell[0] == d),
+            key=lambda cell: _slot_sort_key(cell[1]),
+        )
+        active_cells = [c for c in day_cells if cell_assignments[c] and cell_assignments[c] != FREE]
 
-        if key is None or key == FREE:
+        if not active_cells:
             scheduled_days.append({
                 "date": d.isoformat(), "day_name": day_name, "session_type": "rest",
                 "focus": "Rest", "description": "", "is_key_session": False, "is_rest": True,
+                "time_slot": "day",
             })
             continue
 
-        st = active_spec.session_type(key)
-        if st.session_kind == "strength":
-            slot = key.rsplit("-", 1)[-1].upper()
-            strength_sessions.append({"date": d.isoformat(), "slot": slot})
-            scheduled_days.append({
-                "date": d.isoformat(), "day_name": day_name, "session_type": "strength",
-                "focus": st.label, "description": "Strength session (from saved template)",
-                "is_key_session": st.is_key, "is_rest": False,
-            })
-        elif st.session_kind == "run":
-            existing_row = existing.get(d)
-            segments = running_content_by_date.get(d)
-            if segments is None and existing_row and existing_row.get("running_segments"):
-                segments = existing_row["running_segments"]
-            if segments is None:
-                # Missing content degrades to a plain easy-aerobic placeholder, not a hard
-                # failure — mirrors _fix_weekly_volume's old insertion fallback.
-                segments = [{
-                    "segment_type": "steady", "zone": "Z2", "duration_secs": 2700,
-                    "distance_meters": None, "pace_low": None, "pace_high": None,
-                    "repeat_count": 1, "note": None,
-                }]
-            running_sessions.append({"date": d.isoformat(), "segments": segments})
-            scheduled_days.append({
-                "date": d.isoformat(), "day_name": day_name, "session_type": "run",
-                "focus": st.label, "description": st.label,
-                "is_key_session": st.is_key, "is_rest": False,
-            })
-        elif st.session_kind == "rest":
-            scheduled_days.append({
-                "date": d.isoformat(), "day_name": day_name, "session_type": "rest",
-                "focus": "Rest", "description": "", "is_key_session": False, "is_rest": True,
-            })
-        else:
-            scheduled_days.append({
-                "date": d.isoformat(), "day_name": day_name, "session_type": "cross",
-                "focus": st.label, "description": st.label,
-                "is_key_session": st.is_key, "is_rest": False,
-            })
+        for cell in active_cells:
+            key = cell_assignments[cell]
+            row_slot = cell[1]
+            st = active_spec.session_type(key)
+            if st.session_kind == "strength":
+                template_slot = key.rsplit("-", 1)[-1].upper()
+                strength_sessions.append({"date": d.isoformat(), "slot": template_slot, "time_slot": row_slot})
+                scheduled_days.append({
+                    "date": d.isoformat(), "day_name": day_name, "session_type": "strength",
+                    "focus": st.label, "description": "Strength session (from saved template)",
+                    "is_key_session": st.is_key, "is_rest": False, "time_slot": row_slot,
+                })
+            elif st.session_kind == "run":
+                # existing.get(d) is still date-only (not slot-aware — a deferred, flagged gap:
+                # if a date has two existing run rows this fallback can't tell them apart), which
+                # only matters when fresh content is missing for a date that already had multiple
+                # committed run sessions before this check-in.
+                existing_row = existing.get(d)
+                segments = running_content_by_cell.get(cell)
+                if segments is None and existing_row and existing_row.get("running_segments"):
+                    segments = existing_row["running_segments"]
+                if segments is None:
+                    # Missing content degrades to a plain easy-aerobic placeholder, not a hard
+                    # failure — mirrors _fix_weekly_volume's old insertion fallback.
+                    segments = [{
+                        "segment_type": "steady", "zone": "Z2", "duration_secs": 2700,
+                        "distance_meters": None, "pace_low": None, "pace_high": None,
+                        "repeat_count": 1, "note": None,
+                    }]
+                running_sessions.append({"date": d.isoformat(), "segments": segments, "time_slot": row_slot})
+                scheduled_days.append({
+                    "date": d.isoformat(), "day_name": day_name, "session_type": "run",
+                    "focus": st.label, "description": st.label,
+                    "is_key_session": st.is_key, "is_rest": False, "time_slot": row_slot,
+                })
+            elif st.session_kind == "rest":
+                scheduled_days.append({
+                    "date": d.isoformat(), "day_name": day_name, "session_type": "rest",
+                    "focus": "Rest", "description": "", "is_key_session": False, "is_rest": True,
+                    "time_slot": row_slot,
+                })
+            else:
+                scheduled_days.append({
+                    "date": d.isoformat(), "day_name": day_name, "session_type": "cross",
+                    "focus": st.label, "description": st.label,
+                    "is_key_session": st.is_key, "is_rest": False, "time_slot": row_slot,
+                })
 
     coach_feedback = assessment
     if fallback_warning:

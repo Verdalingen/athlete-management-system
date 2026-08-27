@@ -104,3 +104,35 @@ class TestTrustGivenSlot:
         default_a = next(s for s in default_sessions if s["slot"] == "A")
         trusted_a = next(s for s in trusted_sessions if s["slot"] == "A")
         assert default_a["exercises"] == trusted_a["exercises"]
+
+
+class TestMultiSessionSameDate:
+    """Migration 044: two strength sessions can land on the same calendar date at different
+    time_slot values (allow_multi_session_days=True). corrected_slots is keyed by
+    (date, time_slot), not bare date — before this fix the second same-date assignment silently
+    overwrote the first in the dict, losing a whole session."""
+
+    ASSIGNMENTS = [
+        {"date": "2026-09-01", "slot": "A", "time_slot": "morning"},
+        {"date": "2026-09-01", "slot": "C", "time_slot": "evening"},
+    ]
+
+    def test_both_same_date_sessions_survive_with_trust_given_slot(self):
+        sessions = plan_writer.expand_strength_session_slots(self.ASSIGNMENTS, trust_given_slot=True)
+        assert len(sessions) == 2
+        by_slot_time_slot = {(s["slot"], s["time_slot"]): s["date"] for s in sessions}
+        assert by_slot_time_slot == {("A", "morning"): "2026-09-01", ("C", "evening"): "2026-09-01"}
+
+    def test_both_same_date_sessions_survive_with_rotation(self):
+        sessions = plan_writer.expand_strength_session_slots(self.ASSIGNMENTS)
+        assert len(sessions) == 2
+        # last persisted = B -> continues C, A — morning sorts before evening, so morning gets
+        # the first rotation slot and evening the second, each keeping its own time_slot.
+        by_time_slot = {s["time_slot"]: s["slot"] for s in sessions}
+        assert by_time_slot == {"morning": "C", "evening": "A"}
+
+    def test_time_slot_defaults_to_day_when_absent(self):
+        sessions = plan_writer.expand_strength_session_slots(
+            [{"date": "2026-09-01", "slot": "A"}], trust_given_slot=True
+        )
+        assert sessions[0]["time_slot"] == "day"

@@ -206,6 +206,162 @@ class TestBasicFeasibility:
             solve_schedule(spec, [date(2026, 8, 24), date(2026, 8, 24)])
 
 
+class TestMultiSessionPerDay:
+    """allow_multi_session_days=True: more than one session can share a calendar day, and
+    SpacingConstraint's gap-hours math becomes genuinely sub-day-resolution — the whole point
+    of the time_slot model (see solver.py's module docstring for why the old day-granularity
+    approximation made any spacing threshold at or below 24h a structural no-op)."""
+
+    def test_default_spec_never_populates_slot_assignments(self):
+        spec = ProgramSpec(
+            session_types=[ProgramSessionType(key="x", category="x", label="X", session_kind="run")],
+        )
+        assert spec.allow_multi_session_days is False
+        window = [date(2026, 8, 24)]
+        result = solve_schedule(spec, window)
+        assert result.feasible
+        assert result.assignments is not None
+        assert result.slot_assignments is None
+
+    def test_pinned_slot_events_requires_the_opt_in_flag(self):
+        spec = ProgramSpec(
+            session_types=[ProgramSessionType(key="x", category="x", label="X", session_kind="run")],
+        )
+        with pytest.raises(ValueError):
+            solve_schedule(
+                spec, [date(2026, 8, 24)],
+                pinned_slot_events={(date(2026, 8, 24), "morning"): "x"},
+            )
+
+    def test_two_independent_same_day_sessions_are_placed(self):
+        d = date(2026, 8, 24)
+        spec = ProgramSpec(
+            session_types=[
+                ProgramSessionType(key="easy-run", category="run-easy", label="Easy", session_kind="run"),
+                ProgramSessionType(key="strength", category="leg-strength", label="Strength", session_kind="strength"),
+            ],
+            day_pins=[
+                DayPin(session_type_key="easy-run", fixed_date=d, time_slot="morning", flexibility="fixed"),
+                DayPin(session_type_key="strength", fixed_date=d, time_slot="afternoon", flexibility="fixed"),
+            ],
+            allow_multi_session_days=True,
+        )
+        result = solve_schedule(spec, [d])
+        assert result.feasible
+        assert result.assignments is None
+        assert result.slot_assignments is not None
+        assert result.slot_assignments[(d, "morning")] == "easy-run"
+        assert result.slot_assignments[(d, "afternoon")] == "strength"
+
+    def test_spacing_constraint_violated_by_slots_too_close_within_a_day(self):
+        # morning=7h, midday=12h -> 5h apart, under a 6h floor.
+        d = date(2026, 8, 24)
+        spec = ProgramSpec(
+            session_types=[
+                ProgramSessionType(key="strength", category="leg-strength", label="S", session_kind="strength"),
+                ProgramSessionType(key="run", category="key-run", label="R", session_kind="run", is_key=True),
+            ],
+            spacing_constraints=[
+                SpacingConstraint(from_category="leg-strength", to_category="key-run", min_gap_hours=6, direction="before"),
+            ],
+            day_pins=[
+                DayPin(session_type_key="strength", fixed_date=d, time_slot="morning", flexibility="fixed"),
+                DayPin(session_type_key="run", fixed_date=d, time_slot="midday", flexibility="fixed"),
+            ],
+            allow_multi_session_days=True,
+        )
+        result = solve_schedule(spec, [d])
+        assert not result.feasible
+        assert result.infeasible_reasons is not None
+        assert any("spacing" in r for r in result.infeasible_reasons)
+
+    def test_spacing_constraint_satisfied_by_slots_far_enough_apart_within_a_day(self):
+        # morning=7h, afternoon=15h -> 8h apart, clears a 6h floor.
+        d = date(2026, 8, 24)
+        spec = ProgramSpec(
+            session_types=[
+                ProgramSessionType(key="strength", category="leg-strength", label="S", session_kind="strength"),
+                ProgramSessionType(key="run", category="key-run", label="R", session_kind="run", is_key=True),
+            ],
+            spacing_constraints=[
+                SpacingConstraint(from_category="leg-strength", to_category="key-run", min_gap_hours=6, direction="before"),
+            ],
+            day_pins=[
+                DayPin(session_type_key="strength", fixed_date=d, time_slot="morning", flexibility="fixed"),
+                DayPin(session_type_key="run", fixed_date=d, time_slot="afternoon", flexibility="fixed"),
+            ],
+            allow_multi_session_days=True,
+        )
+        result = solve_schedule(spec, [d])
+        assert result.feasible
+        assert result.slot_assignments is not None
+        assert result.slot_assignments[(d, "morning")] == "strength"
+        assert result.slot_assignments[(d, "afternoon")] == "run"
+
+    def test_weekly_target_counts_across_all_slots_of_a_day(self):
+        # Two easy-run sessions the same day (morning + evening) should count as 2 toward a
+        # weekly target of 2, in a week with no other run days.
+        monday = date(2026, 8, 24)
+        window = [monday + timedelta(days=i) for i in range(7)]
+        spec = ProgramSpec(
+            session_types=[
+                ProgramSessionType(key="easy-run", category="run-easy", label="Easy", session_kind="run"),
+                ProgramSessionType(key="rest", category="rest", label="Rest", session_kind="rest"),
+            ],
+            weekly_targets=[WeeklyTarget(session_type_key="easy-run", min_per_week=2, max_per_week=2)],
+            day_pins=[
+                DayPin(session_type_key="easy-run", fixed_date=monday, time_slot="morning", flexibility="fixed"),
+                DayPin(session_type_key="easy-run", fixed_date=monday, time_slot="evening", flexibility="fixed"),
+            ],
+            allow_multi_session_days=True,
+        )
+        result = solve_schedule(spec, window)
+        assert result.feasible
+        assert result.slot_assignments is not None
+        week_easy_runs = sum(
+            1 for (d, _slot), key in result.slot_assignments.items()
+            if monday <= d < monday + timedelta(days=7) and key == "easy-run"
+        )
+        assert week_easy_runs == 2
+
+    def test_rest_day_requires_every_slot_free_not_just_one(self):
+        # A day with even one real (non-rest) session anywhere in it doesn't count toward
+        # min_rest_days_per_week — generalizes the single-session model's all-or-nothing rest
+        # day to "nothing but FREE/rest-kind occupies this day".
+        monday = date(2026, 8, 24)
+        window = [monday + timedelta(days=i) for i in range(7)]
+        spec = ProgramSpec(
+            session_types=[
+                ProgramSessionType(key="strength", category="strength", label="S", session_kind="strength"),
+                ProgramSessionType(key="rest", category="rest", label="Rest", session_kind="rest"),
+            ],
+            rest_policy=RestPolicy(min_rest_days_per_week=7),  # every single day must be pure rest
+            day_pins=[
+                DayPin(session_type_key="strength", fixed_date=monday, time_slot="morning", flexibility="fixed"),
+            ],
+            allow_multi_session_days=True,
+        )
+        result = solve_schedule(spec, window)
+        assert not result.feasible
+        assert result.infeasible_reasons is not None
+        assert any("rest_policy" in r for r in result.infeasible_reasons)
+
+    def test_whole_day_pin_forbids_any_other_session_that_date(self):
+        # pinned_events (not pinned_slot_events) fixes the WHOLE date even under
+        # allow_multi_session_days — no cells get created for it at all.
+        d = date(2026, 8, 24)
+        spec = ProgramSpec(
+            session_types=[
+                ProgramSessionType(key="race", category="race", label="Race", session_kind="run", is_key=True),
+                ProgramSessionType(key="strength", category="strength", label="S", session_kind="strength"),
+            ],
+            allow_multi_session_days=True,
+        )
+        result = solve_schedule(spec, [d], pinned_events={d: "race"})
+        assert result.feasible
+        assert result.slot_assignments == {(d, "day"): "race"}
+
+
 class TestProgramSpecValidation:
     """A malformed spec should fail at construction.
 

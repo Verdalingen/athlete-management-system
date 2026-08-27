@@ -55,6 +55,13 @@ class CheckinSessionContent(BaseModel):
     """
 
     date: str = Field(..., description="ISO date YYYY-MM-DD — must be one of the solver-placed run dates given in the prompt.")
+    time_slot: str | None = Field(
+        default=None,
+        description="Which slot on that date this content is for — only meaningful (and only "
+        "ever more than one entry per date) when the athlete's program allows multiple "
+        "sessions per day. Must match one of the slots given in the prompt for that date. "
+        "Leave unset for a single-session day.",
+    )
     segments: list[RunningSegment] = Field(
         ...,
         description="Ordered segments covering the full session (warm-up, main effort, "

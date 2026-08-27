@@ -23,6 +23,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+# The 4 real time-of-day buckets a session can be scheduled into. Deliberately excludes the
+# storage-layer 'day' sentinel (migration 044) — that value only exists on scheduled_days/
+# strength_sessions rows to mean "unslotted, single-session-per-date convention"; a ProgramSpec
+# never authors 'day' itself, only these 4 real slots (or leaves time_slot unset for "any slot").
+TimeSlot = Literal["morning", "midday", "afternoon", "evening"]
+
 
 class ProgramSessionType(BaseModel):
     """One kind of session this athlete's program uses.
@@ -109,6 +115,12 @@ class DayPin(BaseModel):
     ] | None = None
     fixed_date: date | None = None
     flexibility: Literal["fixed", "preferred"] = "preferred"
+    time_slot: TimeSlot | None = Field(
+        default=None,
+        description="Pin to a specific time-of-day slot within the day, if set. None means "
+        "'that day, any slot' — today's behavior, unaffected. Only meaningful when the spec "
+        "has allow_multi_session_days=True; ignored otherwise.",
+    )
 
     @model_validator(mode="after")
     def _check_exactly_one_anchor(self) -> DayPin:
@@ -195,6 +207,13 @@ class ProgramSpec(BaseModel):
     progression_schemes: list[ProgressionScheme] = Field(default_factory=list)
     rest_policy: RestPolicy = Field(default_factory=lambda: RestPolicy())
     horizon_weeks: int = Field(default=6, gt=0)
+    allow_multi_session_days: bool = Field(
+        default=False,
+        description="Opt-in: when True, the solver may place more than one session per "
+        "calendar day, across morning/midday/afternoon/evening slots. Off by default so "
+        "every spec that predates this field — and every athlete who hasn't asked for it — "
+        "keeps exactly one session/day, byte-identical to before this field existed.",
+    )
 
     @model_validator(mode="after")
     def _check_session_type_keys_unique(self) -> ProgramSpec:

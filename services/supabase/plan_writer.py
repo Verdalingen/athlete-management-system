@@ -1250,16 +1250,28 @@ def count_completed_bench_sessions(
     })
 
 
-def _recompute_slots_from_rotation(ordered: list[dict[str, Any]]) -> dict[str, str]:
+# Chronological order for sorting/rotating same-date strength sessions since migration 044 —
+# local rather than imported from services.scheduling, matching this file's existing style of
+# not reaching into the solver layer for a plain ordering.
+_TIME_SLOT_ORDER = ("morning", "midday", "afternoon", "evening", "day")
+
+
+def _recompute_slots_from_rotation(
+    ordered: list[dict[str, Any]],
+) -> dict[tuple[str, str], str]:
     """Continue the A -> B -> C rotation from the athlete's last scheduled session.
 
     Ignores whatever `slot` each assignment already carries (only logged, not
-    trusted) — see expand_strength_session_slots' docstring for why.
+    trusted) — see expand_strength_session_slots' docstring for why. Keyed by
+    (date, time_slot) rather than bare date so two strength sessions on the same
+    calendar date (multi-session-day, migration 044) both keep their own rotation
+    slot instead of one silently overwriting the other in the dict.
     """
     next_slot = get_next_strength_slot()
-    corrected_slots: dict[str, str] = {}
+    corrected_slots: dict[tuple[str, str], str] = {}
     for assignment in ordered:
-        corrected_slots[assignment["date"]] = next_slot
+        key = (assignment["date"], assignment.get("time_slot", "day"))
+        corrected_slots[key] = next_slot
         if assignment.get("slot") != next_slot:
             logger.warning(
                 "Strength rotation correction: %s was labeled %r by the planner, forcing %r to "
@@ -1302,11 +1314,14 @@ def expand_strength_session_slots(
 
     ordered = sorted(
         (a for a in slot_assignments if a.get("date")),
-        key=lambda a: a["date"],
+        key=lambda a: (a["date"], _TIME_SLOT_ORDER.index(a.get("time_slot", "day"))
+                       if a.get("time_slot", "day") in _TIME_SLOT_ORDER else 99),
     )
 
     if trust_given_slot:
-        corrected_slots: dict[str, str] = {a["date"]: a["slot"] for a in ordered}
+        corrected_slots: dict[tuple[str, str], str] = {
+            (a["date"], a.get("time_slot", "day")): a["slot"] for a in ordered
+        }
     else:
         corrected_slots = _recompute_slots_from_rotation(ordered)
 
@@ -1334,9 +1349,10 @@ def expand_strength_session_slots(
     if strength_requests:
         strength_per_week = len(strength_requests)
     elif corrected_slots:
+        scheduled_dates = [key[0] for key in corrected_slots]
         span_days = max(
             1,
-            (date.fromisoformat(max(corrected_slots)) - date.fromisoformat(min(corrected_slots))).days + 1,
+            (date.fromisoformat(max(scheduled_dates)) - date.fromisoformat(min(scheduled_dates))).days + 1,
         )
         strength_per_week = max(1, round(len(corrected_slots) / (span_days / 7)))
     else:
@@ -1346,13 +1362,14 @@ def expand_strength_session_slots(
     # calendar weeks have elapsed (see bench_wave.compute_bench_prescription). Past sessions
     # are counted from real completed work; future ones are projected by their position in the
     # upcoming sequence, so the wave stays correct when the plan is shifted.
-    first_scheduled = next(iter(corrected_slots), None)
+    first_scheduled_key = next(iter(corrected_slots), None)
+    first_scheduled = first_scheduled_key[0] if first_scheduled_key else None
     completed_before = count_completed_bench_sessions(
         wave_start_str, before_date=first_scheduled, user_id=user_id
     )
 
     sessions: list[dict[str, Any]] = []
-    for offset, (session_date_str, slot) in enumerate(corrected_slots.items()):
+    for offset, ((session_date_str, time_slot), slot) in enumerate(corrected_slots.items()):
         rows_for_slot = by_slot.get(slot)
         if not rows_for_slot:
             logger.warning("No strength_session_templates rows for slot %r on %s — skipping", slot, session_date_str)
@@ -1381,6 +1398,7 @@ def expand_strength_session_slots(
 
         sessions.append({
             "date": session_date_str,
+            "time_slot": time_slot,
             "name": f"Strength {slot} - {rows_for_slot[0]['slot_name']}",
             "slot": slot,
             "slot_name": rows_for_slot[0]["slot_name"],
