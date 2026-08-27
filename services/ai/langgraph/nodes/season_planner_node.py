@@ -165,14 +165,14 @@ satisfiable before it takes effect, so be concrete and precise here, not just de
 
 ### Existing Strength Session Types (fixed — real saved data, do not redefine)
 {strength_types_block}{mismatch_block}
-These already have a weekly target and the athlete's fixed 48h leg-spacing-before-key-run rule
+These already have a weekly target and the athlete's fixed 24h leg-spacing-before-key-run rule
 applied automatically — do not redefine them in program_spec.new_session_types, and never invent
 a different strength session type.
 
 ### Your job in program_spec
 - new_session_types: define every run/cross/rest session type your Weekly Session Structure
   calls for (e.g. 'tempo-run', 'easy-run', 'rest'). Label any hard/key run type's category as
-  exactly 'key-run' — the fixed 48h leg-spacing rule above only binds to that exact category name.
+  exactly 'key-run' — the fixed 24h leg-spacing rule above only binds to that exact category name.
 - weekly_targets: how many times per week each of your new session types occurs.
 - spacing_constraints: any further spacing rules beyond the fixed leg-spacing one above (e.g. no
   two key runs on adjacent days).

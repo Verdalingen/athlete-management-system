@@ -90,7 +90,7 @@ class TestBuildDeterministicLegSpacingConstraint:
         sc = build_deterministic_leg_spacing_constraint()
         assert sc.from_category == "leg-strength"
         assert sc.to_category == "key-run"
-        assert sc.min_gap_hours == 48
+        assert sc.min_gap_hours == 24
         assert sc.direction == "before"
 
     def test_custom_gap(self):

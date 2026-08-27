@@ -1,7 +1,7 @@
 """Deterministic (non-LLM) pieces of a ProgramSpec, built from real Supabase data.
 
-Strength session types and the 48h leg-spacing floor are real saved data / a
-physiological safety constant, not a coaching judgment call — Python owns them
+Strength session types and the leg-spacing floor are real saved data / a
+research-grounded safety constant, not a coaching judgment call — Python owns them
 outright so the season planner never has to (or gets a chance to) reinvent them.
 Shared by services/ai/langgraph/nodes/season_planner_node.py (the live pipeline)
 and scripts/bootstrap_program_spec.py (the manual bootstrap tool), so there is
@@ -111,12 +111,24 @@ def build_deterministic_weekly_targets(
     return targets, None
 
 
-def build_deterministic_leg_spacing_constraint(min_gap_hours: int = 48) -> SpacingConstraint:
-    """The 48h leg-before-key-run rule, Python-owned.
+def build_deterministic_leg_spacing_constraint(min_gap_hours: int = 24) -> SpacingConstraint:
+    """The leg-before-key-run spacing rule, Python-owned.
 
     A physiological safety floor, not a periodization choice — the season
     planner may add further spacing_constraints on top, never weaken or
     remove this one.
+
+    24h, not the 48h originally hardcoded in weekly_planner_node.py: a
+    research pass (2026-08-26) found no primary source directly validating a
+    48h threshold specifically — the best real evidence (Robineau et al.
+    2016, JSCR) tested 0h/6h/24h gaps between strength and aerobic sessions
+    and found 0h significantly worse but no difference between 6h and 24h.
+    24h is what that evidence actually supports; 48h was an unverified
+    heuristic extrapolated from general DOMS/recovery timelines. Note this
+    system approximates hour-gaps as calendar-day-difference * 24 (no
+    time-of-day tracking) — see solver.py's _gap_hours — so 24h in practice
+    means "not the same calendar day," not "a full buffer day between them"
+    the way 48h did.
 
     Contract: the season planner must label any hard/key run session type it
     authors with category 'key-run' for this constraint to actually bind —

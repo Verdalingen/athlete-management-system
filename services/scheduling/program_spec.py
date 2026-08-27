@@ -75,9 +75,11 @@ class WeeklyTarget(BaseModel):
 class SpacingConstraint(BaseModel):
     """A minimum gap between two session categories.
 
-    Generalizes the hardcoded 48h leg-before-hard-run rule in
+    Generalizes the hardcoded leg-before-hard-run rule in
     weekly_planner_node.py::_fix_legs_before_hard_runs into per-athlete data —
     a different athlete's spec can use a different threshold, or none at all.
+    (The rule's own value moved from an unresearched 48h to a research-backed
+    24h in 2026-08-26 — see spec_bootstrap.py::build_deterministic_leg_spacing_constraint.)
 
     direction='before': if a from_category session lands on day d1 and a
     to_category session lands on a later day d2, (d2 - d1) must be >= min_gap_hours.

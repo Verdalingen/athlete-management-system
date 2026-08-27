@@ -58,7 +58,9 @@ def adrians_real_spec(min_rest_days_per_week: int = 0) -> ProgramSpec:
             WeeklyTarget(session_type_key="easy-run", min_per_week=2, max_per_week=2),
         ],
         spacing_constraints=[
-            SpacingConstraint(from_category="leg-strength", to_category="key-run", min_gap_hours=48, direction="before"),
+            # 24h, not the original 48h — see spec_bootstrap.py::build_deterministic_leg_spacing_constraint
+            # for why the threshold moved (a 2026-08-26 research pass found 48h unvalidated).
+            SpacingConstraint(from_category="leg-strength", to_category="key-run", min_gap_hours=24, direction="before"),
         ],
         day_pins=[
             DayPin(session_type_key="strength-a", day_of_week="monday", flexibility="preferred"),
@@ -77,7 +79,7 @@ def spacing_violations(spec: ProgramSpec, assignments: dict[date, str]) -> list[
     key_run_keys = {st.key for st in spec.session_types if st.category == "key-run"}
     leg_days = sorted(d for d, k in assignments.items() if k in leg_keys)
     key_days = sorted(d for d, k in assignments.items() if k in key_run_keys)
-    return [(leg, run) for leg in leg_days for run in key_days if run > leg and (run - leg).days * 24 < 48]
+    return [(leg, run) for leg in leg_days for run in key_days if run > leg and (run - leg).days * 24 < 24]
 
 
 class TestRealDisruptionScenario:

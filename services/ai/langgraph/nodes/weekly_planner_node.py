@@ -105,15 +105,16 @@ Create a detailed training plan covering all {num_days} days listed in Upcoming 
   first strength session of week N+1 before finalizing, not just within each week in isolation.
 - **Legs Before Hard Runs (hard rule)**: Any strength session whose template includes leg work
   (squat, RDL, BSS, hip thrust, split squat — check the Strength Session Templates section below
-  for which slots carry legs) must be scheduled at least 48 hours before any key run session
-  (interval/VO2max or tempo/threshold). Easy aerobic runs are exempt from this rule — it only
-  applies to hard/key run days. Check this across the week boundary the same way Recovery Spacing
-  does. This has been violated in past generations specifically for VO2max — do not treat VO2max as
-  a lighter exception just because it's shorter than tempo; it still requires the full 48h gap.
-  Wrong: a leg-carrying strength session on Friday, then VO2max intervals on Saturday — only ~24h
-  apart, well under 48h, even though they're on different calendar days.
-  Right: a leg-carrying strength session on Friday, then the next key run (VO2max or tempo) no
-  earlier than Sunday — a full rest or easy day sits between them.
+  for which slots carry legs) must be scheduled at least 24 hours before any key run session
+  (interval/VO2max or tempo/threshold) — i.e. never on the same calendar day as a key run. Easy
+  aerobic runs are exempt from this rule — it only applies to hard/key run days. Check this across
+  the week boundary the same way Recovery Spacing does. This has been violated in past generations
+  specifically for VO2max — do not treat VO2max as a lighter exception just because it's shorter
+  than tempo; it still requires the full 24h gap.
+  Wrong: a leg-carrying strength session and VO2max intervals both scheduled on Saturday — 0h gap.
+  Right: a leg-carrying strength session on Friday, then the next key run (VO2max or tempo) on
+  Saturday or later — any different calendar day satisfies the gap; no full rest day is required
+  between them.
 - **Strength Session Order (hard rule)**: Strength sessions must cycle through slots A, B, C in
   that exact order, repeating (A, B, C, A, B, C, ...), with no skipping, reordering, or repeating a
   slot out of turn. The Next Strength Slot value given in the Inputs section below is the slot the
@@ -804,7 +805,7 @@ def _fix_legs_before_hard_runs(
     not the LLM's guess.
 
     For each violation, tries moving the leg-carrying strength session up to 3 days either direction
-    onto a rest/easy day (closest shift first), provided the new date (a) still keeps 48h before
+    onto a rest/easy day (closest shift first), provided the new date (a) still keeps 24h before
     every key run and (b) doesn't land within 1 day of any OTHER strength session whose slot shares
     a muscle-group bucket with this one — not just other leg sessions, since e.g. moving a
     leg+triceps+biceps slot next to an upper-only slot still violates Recovery Spacing on the
@@ -829,6 +830,15 @@ def _fix_legs_before_hard_runs(
     keyed on "any shared bucket." That's a structural property of the current template, not a bug
     in this search: see the memory note for the tradeoffs (narrower bucket-check vs. moving strength
     off Wed/Fri vs. accepting the warning) — do not "fix" this again without re-reading it first.
+
+    UPDATE (2026-08-26): the leg-spacing threshold moved from 48h to 24h after a research pass
+    found no primary source validating 48h specifically (see spec_bootstrap.py's
+    build_deterministic_leg_spacing_constraint docstring). Given this module's day-granularity
+    approximation (gap = calendar-day-difference * 24), a 24h floor means only a leg session and a
+    key run on the *same calendar day* violate it — the day-of-week structural conflict described
+    above (every non-strength day sitting within 1 day of some strength session) no longer applies,
+    since a 1-day gap now satisfies the rule. This function still runs for the non-check-in
+    full-redraft path, but should rarely find anything to fix in practice now.
     """
     if not scheduled_days or not strength_sessions or not templates:
         return []
@@ -853,10 +863,12 @@ def _fix_legs_before_hard_runs(
     }
 
     def violates_any_key_run(check_date_str: str) -> str | None:
+        # 24h floor, day-granularity approximation (gap = day_diff * 24) — only the exact same
+        # calendar day violates it now (see the 2026-08-26 UPDATE note above).
         check_d = date.fromisoformat(check_date_str)
         for run_date in key_run_dates:
             gap_days = (date.fromisoformat(run_date) - check_d).days
-            if 0 < gap_days < 2:
+            if gap_days == 0:
                 return run_date
         return None
 
@@ -900,7 +912,7 @@ def _fix_legs_before_hard_runs(
             strength_by_date[candidate] = {**strength_by_date.pop(leg_date), "date": candidate}
             logger.info(
                 "Auto-corrected Legs Before Hard Runs: moved leg-carrying strength session from "
-                "%s to %s (was <48h before key run on %s)",
+                "%s to %s (was same-day as key run on %s)",
                 leg_date, candidate, conflicting_run,
             )
             moved = True
@@ -908,9 +920,9 @@ def _fix_legs_before_hard_runs(
 
         if not moved:
             warnings.append(
-                f"⚠️ Leg-carrying strength session on {leg_date} is less than 48h before the key "
-                f"run on {conflicting_run}, and no safe day within 3 days either direction was "
-                "available to auto-correct — please verify manually."
+                f"⚠️ Leg-carrying strength session on {leg_date} is scheduled the same day as the "
+                f"key run on {conflicting_run} (needs 24h), and no safe day within 3 days either "
+                "direction was available to auto-correct — please verify manually."
             )
 
     scheduled_days[:] = list(days_by_date.values())
