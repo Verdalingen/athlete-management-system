@@ -163,13 +163,13 @@ export default async function ProfilePage() {
       <section className="section">
         <h2 className="section-title">Intensity Zones</h2>
         <div className="card" style={{ padding: 0 }}>
-          <table>
+          <table className="zone-table">
             <thead>
               <tr>
-                <th style={{ width: 64 }}>Zone</th>
+                <th className="zt-col-zone">Zone</th>
                 <th>Name</th>
-                <th style={{ width: 110 }}>% HR max</th>
-                {effectiveMaxHR && <th style={{ width: 130 }}>BPM range</th>}
+                <th className="zt-col-pct">% HR max</th>
+                {effectiveMaxHR && <th className="zt-col-bpm">BPM range</th>}
               </tr>
             </thead>
             <tbody>

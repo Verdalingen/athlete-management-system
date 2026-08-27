@@ -340,7 +340,7 @@ export default async function DashboardPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div>
-              <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.5px", marginBottom: 4 }}>
+              <h1 className="dashboard-greeting" style={{ fontFamily: "var(--font-display)", fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.5px", marginBottom: 4 }}>
                 {greeting(new Date().getHours(), firstName)}
               </h1>
               <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)" }}>

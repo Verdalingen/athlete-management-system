@@ -37,10 +37,30 @@ function NavItems({ items, onNavigate }: { items: typeof NAV; onNavigate?: () =>
   );
 }
 
+function BottomTabBar() {
+  const pathname = usePathname();
+  function isActive(href: string) {
+    return href === "/" ? pathname === "/" : pathname.startsWith(href);
+  }
+  return (
+    <nav className="tab-bar" aria-label="Primary">
+      {NAV.map(({ href, label, icon }) => (
+        <Link
+          key={href}
+          href={href}
+          className={`tab-bar-item${isActive(href) ? " tab-bar-active" : ""}`}
+        >
+          <i className={`ti ${icon}`} aria-hidden="true" />
+          <span>{label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Restore collapse preference from localStorage
   useEffect(() => {
@@ -50,11 +70,6 @@ export function Sidebar() {
     } catch {}
   }, []);
 
-  // Close mobile drawer on navigation
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
   if (pathname.startsWith("/login")) return null;
 
   function toggleCollapsed() {
@@ -62,6 +77,8 @@ export function Sidebar() {
     setCollapsed(next);
     try { localStorage.setItem("sb-collapsed", JSON.stringify(next)); } catch {}
   }
+
+  const onSettings = BOTTOM_ITEM.href === "/" ? pathname === "/" : pathname.startsWith(BOTTOM_ITEM.href);
 
   return (
     <>
@@ -90,50 +107,21 @@ export function Sidebar() {
         </div>
       </aside>
 
-      {/* ── Mobile: top bar ── */}
+      {/* ── Mobile: slim top bar ── */}
       <header className="mobile-header">
-        <button
-          className="mobile-hamburger"
-          onClick={() => setMobileOpen(true)}
-          aria-label="Open menu"
-        >
-          <i className="ti ti-menu-2" aria-hidden="true" />
-        </button>
         <span className="sb-brand-name" style={{ fontSize: 14 }}>AI Coach</span>
-        <div style={{ width: 36 }} />
+        <Link
+          href={BOTTOM_ITEM.href}
+          className={`mobile-header-icon-btn${onSettings ? " mobile-header-icon-active" : ""}`}
+          aria-label={BOTTOM_ITEM.label}
+          title={BOTTOM_ITEM.label}
+        >
+          <i className={`ti ${BOTTOM_ITEM.icon}`} aria-hidden="true" />
+        </Link>
       </header>
 
-      {/* ── Mobile overlay ── */}
-      <div
-        className={`mobile-overlay${mobileOpen ? " mobile-overlay-open" : ""}`}
-        onClick={() => setMobileOpen(false)}
-        aria-hidden="true"
-      />
-
-      {/* ── Mobile drawer ── */}
-      <div className={`mobile-drawer${mobileOpen ? " mobile-drawer-open" : ""}`}>
-        <div className="sb-brand" style={{ justifyContent: "space-between" }}>
-          <div className="sb-brand-text">
-            <span className="sb-brand-name">AI Coach</span>
-            <span className="sb-brand-sub">Garmin Training</span>
-          </div>
-          <button
-            className="sb-collapse-btn"
-            onClick={() => setMobileOpen(false)}
-            aria-label="Close menu"
-          >
-            <i className="ti ti-x" aria-hidden="true" />
-          </button>
-        </div>
-
-        <nav className="sb-nav">
-          <NavItems items={NAV} onNavigate={() => setMobileOpen(false)} />
-        </nav>
-
-        <div className="sb-bottom">
-          <NavItems items={[BOTTOM_ITEM]} onNavigate={() => setMobileOpen(false)} />
-        </div>
-      </div>
+      {/* ── Mobile: fixed bottom tab bar ── */}
+      <BottomTabBar />
     </>
   );
 }

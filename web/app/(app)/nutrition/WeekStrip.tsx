@@ -83,7 +83,7 @@ export function WeekStrip({ selectedDate, onDateSelect }: Props) {
       background: "rgba(var(--overlay-rgb),.025)", border: "1px solid var(--border)",
       borderRadius: "var(--radius)", padding: "10px 12px 8px", marginBottom: 18,
     }}>
-      <div style={{ display: "flex", gap: 4, justifyContent: "space-between" }}>
+      <div className="weekstrip-row" style={{ display: "flex", gap: 4, justifyContent: "space-between" }}>
         {cols.map(col => {
           const hasCal = !col.isFuture && col.cal > 0;
           const hasProtein = !col.isFuture && col.protein > 0;
@@ -117,9 +117,12 @@ export function WeekStrip({ selectedDate, onDateSelect }: Props) {
                 {col.letter}
               </span>
 
-              {/* Dual ring — calories outer, protein inner, date number in the middle */}
-              <div style={{ position: "relative", width: 46, height: 46 }}>
-                <svg viewBox="0 0 60 60" width="46" height="46">
+              {/* Dual ring — calories outer, protein inner, date number in the middle.
+                  Sized via CSS (not the width/height attrs) so the mobile media query
+                  below can shrink it — 7 of these at 46px + gaps + padding is wider
+                  than a ~330px phone viewport, which overflowed the whole page. */}
+              <div className="weekstrip-ring" style={{ position: "relative" }}>
+                <svg className="weekstrip-ring-svg" viewBox="0 0 60 60">
                   <circle cx="30" cy="30" r={OUTER_R} fill="none" stroke="rgba(var(--overlay-rgb),.08)" strokeWidth="5" />
                   <circle
                     cx="30" cy="30" r={OUTER_R} fill="none" stroke={calColor} strokeWidth="5" strokeLinecap="round"

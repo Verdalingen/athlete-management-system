@@ -1332,10 +1332,10 @@ export function NutritionClient({
       />
 
       {/* ── 3-column layout ───────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 220px", gap: 14, alignItems: "start" }}>
+      <div className="nutrition-3col">
 
         {/* ── LEFT: Summary ─────────────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="nutrition-col-summary" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
           {/* Coach daily target banner */}
           {dailyTarget && (
@@ -1589,7 +1589,7 @@ export function NutritionClient({
         </div>
 
         {/* ── CENTER: Meal diary ─────────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="nutrition-col-diary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {loadingEntries && (
             <div style={{ textAlign: "center", padding: 40, color: "var(--dim)", fontSize: 13 }}>Loading…</div>
           )}
@@ -1808,7 +1808,7 @@ export function NutritionClient({
         </div>
 
         {/* ── RIGHT: Micronutrients ──────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="nutrition-col-micro" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
           {/* Score pills */}
           {totals.calories > 0 && (() => {

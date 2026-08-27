@@ -110,13 +110,13 @@ export function TodaySessionCard({
               className="exercise-scroll"
               style={{ maxHeight: EXERCISE_SCROLL_HEIGHT, overflowY: "auto" }}
             >
-            <table>
+            <table className="exercise-table">
               <thead>
                 <tr>
                   <th>Exercise</th>
-                  <th style={{ width: 80, textAlign: "center" }}>Sets × Reps</th>
-                  <th style={{ width: 60, textAlign: "center" }}>Rest</th>
-                  <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
+                  <th className="et-col-setsreps">Sets × Reps</th>
+                  <th className="et-col-rest">Rest</th>
+                  <th className="et-col-intensity">Intensity</th>
                 </tr>
               </thead>
               <tbody>
@@ -147,13 +147,13 @@ export function TodaySessionCard({
                           </div>
                         )}
                       </td>
-                      <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12 }}>
+                      <td className="et-col-setsreps" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
                         {ex.sets}×{formatReps(ex.reps_min, ex.reps_max)}
                       </td>
-                      <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
+                      <td className="et-col-rest" style={{ fontSize: 12, color: "var(--dim)" }}>
                         {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
                       </td>
-                      <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
+                      <td className="et-col-intensity" style={{ fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
                         {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
                       </td>
                     </tr>

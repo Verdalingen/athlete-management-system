@@ -67,7 +67,7 @@ export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; 
             ))}
           </div>
         </div>
-        <div className="goal-progress-chart-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gridAutoRows: "1fr", gap: 16 }}>
+        <div className="goal-progress-chart-grid">
           {visible.map(c => (
             <ExpandedChart key={c.key} series={c.series} events={events} showAnomalies={false} caption={c.caption} />
           ))}

@@ -136,13 +136,13 @@ export function SessionDetailModal({
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
                   Exercises · {strengthSession.exercises.length} movements
                 </div>
-                <table>
+                <table className="exercise-table">
                   <thead>
                     <tr>
                       <th>Exercise</th>
-                      <th style={{ width: 64, textAlign: "center" }}>Sets × Reps</th>
-                      <th style={{ width: 60, textAlign: "center" }}>Rest</th>
-                      <th style={{ width: 64, textAlign: "center" }}>Intensity</th>
+                      <th className="et-col-setsreps">Sets × Reps</th>
+                      <th className="et-col-rest">Rest</th>
+                      <th className="et-col-intensity">Intensity</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -173,13 +173,13 @@ export function SessionDetailModal({
                             </div>
                           )}
                         </td>
-                        <td style={{ textAlign: "center", fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)" }}>
+                        <td className="et-col-setsreps" style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)" }}>
                           {ex.sets}×{formatReps(ex.reps_min, ex.reps_max)}
                         </td>
-                        <td style={{ textAlign: "center", fontSize: 12, color: "var(--dim)" }}>
+                        <td className="et-col-rest" style={{ fontSize: 12, color: "var(--dim)" }}>
                           {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
                         </td>
-                        <td style={{ textAlign: "center", fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
+                        <td className="et-col-intensity" style={{ fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
                           {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
                         </td>
                       </tr>

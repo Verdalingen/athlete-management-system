@@ -194,39 +194,27 @@ body {
 
 .sb-bottom { padding: 10px; border-top: 1px solid var(--sb-border); flex-shrink: 0; overflow: hidden; }
 
-/* ── Mobile header + drawer ── */
+/* ── Mobile: slim top bar + fixed bottom tab bar ──
+   Both are `position: fixed`, deliberately kept OUT of normal document flow.
+   `.app-shell` is a flex ROW (sidebar + main-area side by side); an in-flow
+   element here (e.g. `position: sticky`) gets laid out as a flex item itself —
+   stretched to the row's full height, shrunk to content width — instead of
+   behaving like a horizontal bar. Fixed positioning sidesteps that entirely.
+   `.main-area` compensates with top/bottom padding sized to each bar. */
 .mobile-header { display: none; }
+.tab-bar { display: none; }
 
-.mobile-hamburger {
+.mobile-header-icon-btn {
   background: none; border: none; cursor: pointer;
-  color: var(--sb-muted); padding: 6px; border-radius: 8px;
+  color: var(--sb-muted); padding: 8px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
+  text-decoration: none;
   transition: color .12s, background .12s;
 }
-.mobile-hamburger:hover { color: var(--sb-text); background: var(--sb-hover-2); }
-.mobile-hamburger i { font-size: 22px; }
-
-.mobile-overlay {
-  display: none;
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,.55);
-  backdrop-filter: blur(2px);
-  z-index: 98; opacity: 0; pointer-events: none;
-  transition: opacity .25s ease;
-}
-.mobile-overlay.mobile-overlay-open { opacity: 1; pointer-events: all; }
-
-.mobile-drawer {
-  display: none;
-  position: fixed; top: 0; left: 0; bottom: 0;
-  width: 260px; background: var(--sb-bg);
-  border-right: 1px solid var(--sb-border);
-  flex-direction: column;
-  z-index: 99;
-  transform: translateX(-100%);
-  transition: transform .25s ease;
-}
-.mobile-drawer.mobile-drawer-open { transform: translateX(0); }
+.mobile-header-icon-btn i { font-size: 20px; }
+.mobile-header-icon-btn:hover,
+.mobile-header-icon-active { color: var(--sb-text); background: var(--sb-hover-2); }
+.mobile-header-icon-active i { color: var(--accent); }
 
 .main-area {
   flex: 1; min-width: 0;
@@ -235,24 +223,59 @@ body {
 }
 .app-shell:has(.sb-collapsed) .main-area { margin-left: 60px; }
 
-/* Mobile: swap sidebar for drawer */
+/* Mobile: sidebar → slim top bar + fixed bottom tab bar */
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .main-area { margin-left: 0; transition: none; }
+  .main-area {
+    margin-left: 0; transition: none;
+    padding-top: 52px;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+  }
   .mobile-header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 10px 16px;
-    position: sticky; top: 0; z-index: 10;
-    background: rgba(0,18,25,.92);
+    position: fixed; top: 0; left: 0; right: 0; width: 100%;
+    z-index: 100;
+    background: var(--sb-bg);
     border-bottom: 1px solid var(--sb-border);
-    backdrop-filter: blur(12px);
+    box-sizing: border-box;
   }
-  .mobile-overlay { display: block; }
-  .mobile-drawer  { display: flex; }
+  .tab-bar {
+    display: flex;
+    position: fixed; bottom: 0; left: 0; right: 0; width: 100%;
+    z-index: 100;
+    background: var(--sb-bg);
+    border-top: 1px solid var(--sb-border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+  .tab-bar-item {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 3px; padding: 7px 4px 8px;
+    color: var(--sb-muted); text-decoration: none;
+    font-size: 10px; font-weight: 600; letter-spacing: .2px;
+    transition: color .12s;
+  }
+  .tab-bar-item i { font-size: 21px; }
+  .tab-bar-item span {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+  }
+  .tab-bar-active { color: var(--sb-text); }
+  .tab-bar-active i { color: var(--accent); }
 }
 
 /* ── Page layout ── */
 .page { padding: 32px 32px 72px; }
+.dashboard-greeting { font-size: 28px; }
+@media (max-width: 768px) {
+  .page { padding: 16px 16px 32px; }
+  /* Cards keep their default padding on desktop's wider canvas, but 20px left+right
+     eats a disproportionate chunk of a 390px viewport once .page's own padding is
+     already accounted for — tighten it here rather than per-component. */
+  .card { padding: 16px; }
+  .dashboard-greeting { font-size: 22px; }
+}
 
 /* ── Section ── */
 .section { margin-top: 28px; }
@@ -361,26 +384,30 @@ body {
 
 /* ── Dashboard two-column rows — same ratio everywhere so the right column's
    left edge lines up consistently as you scroll down the page. */
-.dashboard-activity-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+/* Both grids share one explicit combined selector (not two separate
+   identical-body rules) — Turbopack's CSS bundler was observed silently
+   merging two byte-identical rules for different selectors and, in doing so,
+   dropping a `@media` block that came after the second one in source. Wrote
+   this defensively as a single rule so there's nothing left for the bundler
+   to "cleverly" merge. Confirmed live via getComputedStyle: with the two
+   rules separate, a 512px viewport still reported explicit-pixel columns
+   instead of 1fr, and the media query was entirely absent from the served
+   CSS despite being present in source. */
+.dashboard-activity-grid, .dashboard-hero-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
 @media (max-width: 1024px) { .dashboard-activity-grid, .dashboard-hero-grid { grid-template-columns: 1fr; } }
 /* .dashboard-activity-grid (chart + list) uses the default `stretch`: both
    siblings have comparable natural heights, so matching them avoids dead
-   space under the shorter one. */
+   space under the shorter one.
 
-/* ── Hero row — greeting/session/This Week (left) vs. calendar + Macros
-   (right), both columns wrapped in a plain flex-column div (not `.card`
-   directly), so the `.card + .card` margin rule below doesn't apply between
-   them — see each wrapper's own JSX for how internal spacing is handled.
-   `align-items: stretch` (the grid default) here is deliberate: the right
-   wrapper is itself `display: flex; flex-direction: column`, with
-   `MiniMonthCalendar` at its natural height and `WeeklyMacrosCard` given
-   `flex: 1` — so the grid stretches the wrapper to match the left column's
-   height, and the flex child spends that extra space on taller, more
-   differentiated calorie bars instead of it going to waste as dead padding
-   (Adrian's explicit ask — contrast with the plain "don't stretch" calls
-   made elsewhere on this page, where the taller column had nothing useful
-   to do with extra height). */
-.dashboard-hero-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+   .dashboard-hero-grid (greeting/session/This Week left vs. calendar + Macros
+   right) also relies on that same `stretch`: the right wrapper is itself
+   `display: flex; flex-direction: column`, with `MiniMonthCalendar` at its
+   natural height and `WeeklyMacrosCard` given `flex: 1` — so the grid
+   stretches the wrapper to match the left column's height, and the flex
+   child spends that extra space on taller, more differentiated calorie bars
+   instead of it going to waste as dead padding (Adrian's explicit ask —
+   contrast with the plain "don't stretch" calls made elsewhere on this page,
+   where the taller column had nothing useful to do with extra height). */
 /* `.card + .card` (above) adds a 16px top margin for vertically-stacked cards —
    it also fires here since the two columns are adjacent siblings in the DOM,
    even though they sit side by side, not stacked. Zero it out so the right
@@ -403,8 +430,17 @@ body {
    16px and, combined with grid-auto-rows: 1fr's stretch, rendering that much
    shorter than its unaffected siblings (confirmed live via getBoundingClientRect:
    Bench e1RM 279px vs. Predicted 5K 263px, a 16px gap matching this exact rule). */
+.goal-progress-chart-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  grid-auto-rows: 1fr; gap: 16px;
+}
 .goal-progress-chart-grid .card { height: 100%; }
 .goal-progress-chart-grid .card + .card { margin-top: 0; }
+@media (max-width: 768px) {
+  /* auto-fit + a 380px minimum forces a single column to overflow the card on a
+     narrow viewport instead of shrinking to fit — swap to a plain single column. */
+  .goal-progress-chart-grid { grid-template-columns: 1fr; }
+}
 
 /* ── KPI grid + cells ── */
 .kpi-grid {
@@ -467,6 +503,25 @@ tr:last-child td { border-bottom: none; }
 .exercise-scroll thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 tr:hover td { background: var(--overlay-2); }
 
+/* ── Exercise table columns (TodaySessionCard, SessionDetailModal, week/page) ──
+   Widths live here (not inline) so the mobile query below can shrink them —
+   inline styles would win over any external rule short of !important. */
+.exercise-table .et-col-setsreps { width: 80px; text-align: center; }
+.exercise-table .et-col-rest     { width: 60px; text-align: center; }
+.exercise-table .et-col-intensity { width: 64px; text-align: center; }
+@media (max-width: 768px) {
+  /* Card interior is ~320-330px here — four columns' fixed widths plus their
+     own cell padding leaves the Exercise column too narrow to be usable.
+     Drop the least-critical column (Rest) and tighten padding/widths on the
+     rest instead of shrinking everything proportionally into illegibility. */
+  .exercise-table th, .exercise-table td { padding: 8px 6px; }
+  .exercise-table th:first-child, .exercise-table td:first-child { padding-left: 2px; }
+  .exercise-table .et-col-rest { display: none; }
+  .exercise-table .et-col-setsreps { width: 64px; }
+  .exercise-table .et-col-intensity { width: 56px; }
+  .exercise-table th { font-size: 10px; }
+}
+
 /* ── Week grid ── */
 .week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 @media (max-width: 800px) { .week-grid { grid-template-columns: 1fr 1fr; } }
@@ -489,6 +544,47 @@ tr:hover td { background: var(--overlay-2); }
 .goal-current { font-size: 28px; font-weight: 800; line-height: 1; }
 .goal-target  { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .goal-arrow   { color: var(--dim); margin: 0 4px; }
+
+/* ── Intensity zone table (profile page) ── */
+.zone-table .zt-col-zone { width: 64px; }
+.zone-table .zt-col-pct  { width: 110px; }
+.zone-table .zt-col-bpm  { width: 130px; }
+@media (max-width: 768px) {
+  /* Same class of bug as .exercise-table: fixed column widths + their own
+     padding add up to more than the ~326px card interior, squeezing the
+     unstyled "Name" column to nothing. */
+  .zone-table th, .zone-table td { padding: 8px 6px; }
+  .zone-table .zt-col-zone { width: 40px; }
+  .zone-table .zt-col-pct  { width: 64px; }
+  .zone-table .zt-col-bpm  { width: 78px; }
+}
+
+/* ── Nutrition 3-column layout (summary / diary / micronutrients) ──
+   Fixed 260px + 220px side columns only work once the viewport has ~500px+
+   to spare beyond them — on a ~390px phone they alone exceed the whole
+   screen width, forcing the entire page into horizontal scroll. Collapse to
+   a single column on mobile and reorder (via `order`, DOM stays as-is) so
+   the meal diary — the page's primary action — comes first, ahead of the
+   summary targets and the micronutrient breakdown. */
+.nutrition-3col { display: grid; grid-template-columns: 260px 1fr 220px; gap: 14px; align-items: start; }
+@media (max-width: 768px) {
+  .nutrition-3col { grid-template-columns: 1fr; gap: 16px; }
+  .nutrition-col-diary   { order: 1; }
+  .nutrition-col-summary { order: 2; }
+  .nutrition-col-micro   { order: 3; }
+}
+
+/* ── Nutrition week strip rings ── */
+.weekstrip-ring { width: 46px; height: 46px; }
+.weekstrip-ring-svg { width: 46px; height: 46px; }
+@media (max-width: 480px) {
+  /* 7 of these at 46px + gaps + button padding is wider than a narrow phone's
+     viewport — the row has no wrap/scroll, so it silently overflowed the
+     whole page horizontally. viewBox scaling means shrinking width/height
+     here is all that's needed, no other coordinates to touch. */
+  .weekstrip-row { gap: 2px; }
+  .weekstrip-ring, .weekstrip-ring-svg { width: 36px; height: 36px; }
+}
 
 /* ── Stat row ── */
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
@@ -569,6 +665,22 @@ tr:hover td { background: var(--overlay-2); }
 }
 .cal-week-summary-item { display: flex; align-items: center; gap: 5px; }
 .cal-week-summary-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+@media (max-width: 768px) {
+  /* The 8th "beside the week" summary column needs a hard 130px floor to hold
+     its text, which forces the 7 day cells into a cramped remainder on a
+     ~320px viewport. Drop it as a column and let it fall onto its own
+     full-width row below each week instead (grid auto-placement wraps it
+     there automatically once only 7 columns are defined). */
+  .cal-grid { grid-template-columns: repeat(7, 1fr); }
+  .cal-day { min-height: 44px; padding: 4px 4px 5px; }
+  .cal-week-summary {
+    grid-column: 1 / -1;
+    flex-direction: row; flex-wrap: wrap; gap: 10px;
+    padding: 6px 0 10px; margin-left: 0;
+    border-left: none; border-top: 1px solid var(--border);
+  }
+}
 
 /* ── Buttons ── */
 .btn-primary, .btn-secondary, .btn-danger, .btn-soft {
