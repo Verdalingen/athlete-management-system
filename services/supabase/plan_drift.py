@@ -14,6 +14,7 @@ costs nothing and can't be mis-authored.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import date, timedelta
 from typing import Any
 
@@ -60,24 +61,32 @@ def activity_kind(activity_type: str | None) -> str:
 
 def detect_pure_shift(
     planned: list[dict],
-    completed_by_date: dict[str, set[str]],
+    completed_by_date: dict[str, Counter[str]],
     max_shift: int = 7,
 ) -> int | None:
     """Return N if every planned session was completed exactly N days late, else None.
 
     ``planned`` is [{date, session_type}] for non-rest days only, ``completed_by_date`` maps an
-    ISO date to the set of session kinds completed that day. Returns None for offset 0 (nothing
-    drifted), for any partial match (some on time, some late — that's a judgment call, not a
-    shift), and when anything was missed outright.
+    ISO date to a Counter of how many of each session kind were completed that day (a real
+    count, not just presence — two same-day runs are two, not one, since a date can hold more
+    than one planned session, see migration 044). Returns None for offset 0 (nothing drifted),
+    for any partial match (some on time, some late — that's a judgment call, not a shift), and
+    when anything was missed outright.
     """
     if not planned:
         return None
 
     def matches_at(offset: int) -> bool:
+        # Consume-and-check against a scratch copy: N planned-of-kind on a date requires N
+        # completed-of-kind at the shifted target, not just "at least one" — two same-day
+        # same-type sessions must both be accounted for, not collapsed into one match.
+        remaining = {d: Counter(c) for d, c in completed_by_date.items()}
         for p in planned:
             target = (date.fromisoformat(p["date"]) + timedelta(days=offset)).isoformat()
-            if p["session_type"] not in completed_by_date.get(target, set()):
+            bucket = remaining.get(target)
+            if not bucket or bucket[p["session_type"]] <= 0:
                 return False
+            bucket[p["session_type"]] -= 1
         return True
 
     if matches_at(0):
@@ -122,12 +131,12 @@ def analyze_plan_drift(
         sb.table("completed_activities").select("date, activity_type, duration_secs, activity_training_load")
         .eq("user_id", uid).gte("date", start).lte("date", end).execute()
     )
-    completed_by_date: dict[str, set[str]] = {}
+    completed_by_date: dict[str, Counter[str]] = {}
     activities_by_date: dict[str, list[dict]] = {}
     for r in activity_rows:
         if (r.get("duration_secs") or 0) < _MIN_REAL_SESSION_SECS and r.get("duration_secs") is not None:
             continue
-        completed_by_date.setdefault(r["date"], set()).add(activity_kind(r.get("activity_type")))
+        completed_by_date.setdefault(r["date"], Counter())[activity_kind(r.get("activity_type"))] += 1
         activities_by_date.setdefault(r["date"], []).append(r)
 
     shift = detect_pure_shift(planned, completed_by_date)
@@ -147,19 +156,28 @@ def analyze_plan_drift(
     done_counts: dict[str, int] = {}
     for d, kinds in completed_by_date.items():
         if first <= d <= last:
-            for kind in kinds - {"other"}:
-                done_counts[kind] = done_counts.get(kind, 0) + 1
+            for kind, n in kinds.items():
+                if kind == "other":
+                    continue
+                done_counts[kind] = done_counts.get(kind, 0) + n
 
     per_type = sorted(set(planned_counts) | set(done_counts))
     shortfall = {k: planned_counts.get(k, 0) - done_counts.get(k, 0) for k in per_type}
     # Same volume, different placement — the pattern held, the calendar didn't.
     reordered = bool(planned) and all(v <= 0 for v in shortfall.values()) and not shift
 
-    # Retained for detail, but explicitly NOT the headline — see the note above.
-    off_plan_days = [
-        p for p in planned
-        if p["session_type"] not in completed_by_date.get(p["date"], set())
-    ]
+    # Retained for detail, but explicitly NOT the headline — see the note above. Occurrence-aware
+    # (consume-and-check against a scratch copy), same reasoning as detect_pure_shift's
+    # matches_at: two same-day same-type planned sessions must each be matched against a real
+    # completion, not both waved through by one completion's mere presence.
+    _remaining_at_0 = {d: Counter(c) for d, c in completed_by_date.items()}
+    off_plan_days = []
+    for p in planned:
+        bucket = _remaining_at_0.get(p["date"])
+        if bucket and bucket[p["session_type"]] > 0:
+            bucket[p["session_type"]] -= 1
+        else:
+            off_plan_days.append(p)
 
     # SUBSTITUTIONS — the planned stimulus wasn't delivered, but real training happened that
     # day (a hike instead of intervals, say). This must be surfaced separately from a miss:

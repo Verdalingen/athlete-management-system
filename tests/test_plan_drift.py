@@ -7,6 +7,8 @@ because there is no judgment left to make there, so a plain "I did everything a 
 costs nothing and cannot be mis-authored. That makes its boundaries (what is NOT a pure shift)
 the important thing to pin down.
 """
+from collections import Counter
+
 from services.supabase.plan_drift import activity_kind, detect_pure_shift
 
 
@@ -14,13 +16,20 @@ def planned(*items: tuple[str, str]) -> list[dict]:
     return [{"date": d, "session_type": t} for d, t in items]
 
 
-def completed(**by_date: str | list) -> dict[str, set[str]]:
-    """Build a completed-sessions map, e.g. `d2026_01_05="run"` -> {"2026-01-05": {"run"}}."""
+def completed(**by_date: str | list) -> dict[str, Counter[str]]:
+    """completed(d2026_01_05="run") -> {"2026-01-05": Counter({"run": 1})}"""
     out = {}
     for key, kinds in by_date.items():
         iso = key[1:].replace("_", "-")
-        out[iso] = {kinds} if isinstance(kinds, str) else set(kinds)
+        out[iso] = Counter({kinds: 1}) if isinstance(kinds, str) else Counter(kinds)
     return out
+
+
+def completed_counts(**by_date: dict[str, int]) -> dict[str, Counter[str]]:
+    """completed_counts(d2026_01_05={"run": 2}) -> {"2026-01-05": Counter({"run": 2})} — for
+    tests that need real occurrence counts, not just presence.
+    """
+    return {key[1:].replace("_", "-"): Counter(counts) for key, counts in by_date.items()}
 
 
 class TestActivityKind:
@@ -128,3 +137,28 @@ class TestNotAPureShift:
         p = planned(("2026-01-05", "run"), ("2026-01-07", "strength"))
         done = completed(d2026_01_06="run", d2026_01_09="strength")
         assert detect_pure_shift(p, done) is None
+
+
+class TestOccurrenceAware:
+    """Since migration 044, a date can hold more than one planned session of the same type
+    (e.g. two runs). completed_by_date is a Counter, not a set — presence isn't enough, the
+    exact count must be matched, or a genuinely missed second same-day session would be
+    invisible.
+    """
+
+    def test_two_same_day_same_type_sessions_both_need_a_completion_each(self):
+        p = planned(("2026-01-05", "run"), ("2026-01-05", "run"))
+        done = completed_counts(d2026_01_06={"run": 2})
+        assert detect_pure_shift(p, done) == 1
+
+    def test_only_one_of_two_same_day_completions_is_not_a_shift(self):
+        # Two runs planned, only one actually completed that (shifted) day — a real miss, must
+        # not be waved through just because "run" is present at all.
+        p = planned(("2026-01-05", "run"), ("2026-01-05", "run"))
+        done = completed_counts(d2026_01_06={"run": 1})
+        assert detect_pure_shift(p, done) is None
+
+    def test_extra_completions_beyond_what_was_planned_do_not_break_detection(self):
+        p = planned(("2026-01-05", "run"))
+        done = completed_counts(d2026_01_06={"run": 3})
+        assert detect_pure_shift(p, done) == 1

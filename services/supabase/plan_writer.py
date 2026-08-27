@@ -277,7 +277,6 @@ def get_scheduled_day(date_str: str) -> dict[str, Any] | None:
         .select("date, session_type, focus, description, is_key, is_rest, running_segments")
         .eq("user_id", uid)
         .eq("date", date_str)
-        .limit(1)
         .execute()
     )
     return found[0] if found else None
@@ -295,6 +294,22 @@ def _day_type_for(day: dict[str, Any] | None) -> str:
     if day.get("is_key"):
         return "hard"
     return "easy"
+
+
+def _merged_day_type(rows: list[dict[str, Any]]) -> str:
+    """Merge multiple scheduled_days rows for one date into a single day_type for historical
+    calorie-bucketing purposes — the hardest session present dominates energy needs (a key
+    session anywhere in the day means "hard", regardless of what else is scheduled that day).
+    Degrades to _day_type_for's single-row logic when there's exactly one row, the common case
+    for every date whose sessions are all time_slot='day'."""
+    if not rows:
+        return "default"
+    types = {_day_type_for(r) for r in rows}
+    if "hard" in types:
+        return "hard"
+    if "easy" in types:
+        return "easy"
+    return "rest"
 
 
 _RUNNING_KCAL_PER_KG_PER_KM = 1.0  # standard running-economy estimate — ~pace-independent
@@ -402,7 +417,10 @@ def _estimate_active_calories(
         sb.table("scheduled_days").select("date, is_key, is_rest")
         .eq("user_id", uid).gte("date", since).lt("date", today_str).execute()
     )
-    matching_dates = [d["date"] for d in days if _day_type_for(d) == day_type]
+    rows_by_date: dict[str, list[dict[str, Any]]] = {}
+    for d in days:
+        rows_by_date.setdefault(d["date"], []).append(d)
+    matching_dates = [d for d, group in rows_by_date.items() if _merged_day_type(group) == day_type]
     if not matching_dates:
         return None
 
@@ -565,11 +583,13 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
     uid = _user_id()
     today_str = str(date.today())
 
-    today = get_scheduled_day(today_str)
-    day_type = _day_type_for(today)
+    today_rows = get_scheduled_days(today_str)
+    day_type = _merged_day_type(today_rows)
     workout_context = (
-        " · ".join(filter(None, [today.get("focus"), today.get("description")])) or None
-        if today and day_type in ("hard", "easy") else None
+        " · ".join(
+            part for r in today_rows for part in (r.get("focus"), r.get("description")) if part
+        ) or None
+        if today_rows and day_type in ("hard", "easy") else None
     )
 
     weight_kg = _get_latest_weight_kg()
@@ -625,6 +645,17 @@ def get_planned_exercises_by_date(from_date: str, to_date: str) -> dict[str, lis
     """Return {date: [exercise dicts sorted by display_order]} for every strength session in the
     given range. Used to match completed Garmin exercise sets back to what was actually planned —
     see build_completed_exercise_set_records() in services/garmin/history_sync.py.
+
+    KNOWN GAP (multi-session-per-day, see the plan this shipped under): `by_date[row["date"]] =
+    exercises` overwrites on collision, so a second same-date strength_sessions row's exercises
+    are silently dropped from matching. Left as-is deliberately rather than concatenated — the
+    caller's positional matcher walks one completed activity against one date's whole exercise
+    list, so concatenating two sessions' exercises would let one activity's completed sets bleed
+    into the other session's exercise ids. Correct only under today's guarantee that Phase A
+    produces no multi-row dates yet. Needs a real fix (pairing each completed activity to the
+    specific planned session it belongs to, e.g. via start_time vs. time_slot) once Phase B/C
+    ship real multi-session days — not a simple key-widening, do not "fix" this by
+    concatenating without addressing the positional-matching cross-contamination first.
     """
     sb = get_supabase()
     uid = _user_id()
@@ -864,10 +895,10 @@ def _user_id() -> str:
     return uid
 
 
-def get_future_garmin_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
-    """Return {date: {"workout_id": id}} for every currently-stored strength session (from
-    whatever plan is live right now, regardless of which run created it) with a Garmin workout
-    scheduled on/after from_date.
+def get_future_garmin_workout_ids(from_date: str) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return {(date, time_slot): {"workout_id": id}} for every currently-stored strength
+    session (from whatever plan is live right now, regardless of which run created it) with a
+    Garmin workout scheduled on/after from_date.
 
     Call this BEFORE write_plan() — write_plan() cascade-deletes the old plan's strength_sessions
     rows, which is the only place these IDs are durably recorded. The CLI previously tracked
@@ -876,37 +907,51 @@ def get_future_garmin_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
     continues if the Supabase write fails), so they can silently diverge — leaving orphaned
     workouts on the watch that never get cleaned up on a later run. Supabase is queried fresh
     here instead, since it's the durable record every write ultimately lands in.
+
+    Keyed by (date, time_slot) rather than bare date — two strength_sessions rows can share a
+    date (different time_slot); a bare-date dict comprehension would silently drop one of their
+    workout ids. Explicit .order("date") added — its absence was a separate, real latent bug
+    (an unordered query means "which row wins a key collision" was never actually deterministic,
+    even before time_slot existed).
     """
     sb = get_supabase()
     user_id = _user_id()
     result = rows(
         sb.table("strength_sessions")
-        .select("date, garmin_workout_id")
+        .select("date, time_slot, garmin_workout_id")
         .eq("user_id", user_id)
         .gte("date", from_date)
         .not_.is_("garmin_workout_id", "null")
+        .order("date")
         .execute()
     )
-    return {r["date"]: {"workout_id": r["garmin_workout_id"]} for r in result}
+    return {
+        (r["date"], r.get("time_slot") or "day"): {"workout_id": r["garmin_workout_id"]}
+        for r in result
+    }
 
 
-def get_future_garmin_running_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
-    """Return {date: {"workout_id": id}} for every currently-stored 'run' scheduled_days row with
-    a Garmin workout scheduled on/after from_date. Mirrors get_future_garmin_workout_ids() above —
-    call this BEFORE write_plan() for the same reason (write_plan() replaces scheduled_days rows).
-    """
+def get_future_garmin_running_workout_ids(from_date: str) -> dict[tuple[str, str], dict[str, Any]]:
+    """Return {(date, time_slot): {"workout_id": id}} for every currently-stored 'run'
+    scheduled_days row with a Garmin workout scheduled on/after from_date. Mirrors
+    get_future_garmin_workout_ids() above — call this BEFORE write_plan() for the same reason
+    (write_plan() replaces scheduled_days rows)."""
     sb = get_supabase()
     user_id = _user_id()
     result = rows(
         sb.table("scheduled_days")
-        .select("date, garmin_workout_id")
+        .select("date, time_slot, garmin_workout_id")
         .eq("user_id", user_id)
         .eq("session_type", "run")
         .gte("date", from_date)
         .not_.is_("garmin_workout_id", "null")
+        .order("date")
         .execute()
     )
-    return {r["date"]: {"workout_id": r["garmin_workout_id"]} for r in result}
+    return {
+        (r["date"], r.get("time_slot") or "day"): {"workout_id": r["garmin_workout_id"]}
+        for r in result
+    }
 
 
 def _estimate_session_duration_secs(exercises: list[dict[str, Any]]) -> int:
@@ -993,13 +1038,15 @@ def plan_shift_layout(
 ) -> tuple[list[dict], list[dict], list[str]]:
     """Pure date arithmetic behind shift_plan — no I/O, so it can be tested directly.
 
-    ``rows`` is the ordered list of scheduled_days on/after ``from_date`` (one row per calendar
-    day, rest days included). Returns (kept, dropped, warnings); each kept row carries a
-    ``_new_date``.
+    ``rows`` is the ordered list of scheduled_days on/after ``from_date`` (rest days included;
+    since migration 044 a date can hold more than one row — different time_slot). Returns
+    (kept, dropped, warnings); each kept row carries a ``_new_date``. Rows sharing a date are
+    always re-laid onto the SAME new date together (the cursor advances once per distinct date,
+    not once per row) — same-day siblings never get split apart by a shift.
 
-    Because rows are one-per-day and contiguous, re-laying the kept rows consecutively from
-    ``from_date + days`` is all that's needed: freeing ``pending`` rows from the segment before
-    an event makes that event land back on its real date automatically.
+    Re-laying the kept rows' distinct dates consecutively from ``from_date + days`` is all that's
+    needed: freeing ``pending`` rows from the segment before an event makes that event land back
+    on its real date automatically.
 
     ``pending`` is how many days the plan is still running late, NOT ``days``. It starts at
     ``days`` and falls to zero as rows are dropped. Compressing by ``days`` before *every*
@@ -1048,9 +1095,13 @@ def plan_shift_layout(
         kept.extend(boundary_rows)
 
     cursor = start + timedelta(days=days)
-    for r in kept:
-        r["_new_date"] = cursor.isoformat()
-        cursor += timedelta(days=1)
+    date_to_new_date: dict[str, str] = {}
+    for row in kept:
+        old_date = row["date"]
+        if old_date not in date_to_new_date:
+            date_to_new_date[old_date] = cursor.isoformat()
+            cursor += timedelta(days=1)
+        row["_new_date"] = date_to_new_date[old_date]
     return kept, dropped, warnings
 
 
@@ -1101,6 +1152,18 @@ def shift_plan(
     if not scheduled_rows:
         return {"shifted": 0, "dropped": [], "warnings": ["No scheduled days on or after that date."]}
 
+    # Sibling strength_sessions rows for the same range, keyed by (date, time_slot) — the
+    # app-level correspondence write_plan() establishes between the two tables. Fetched up front
+    # so the drop/move steps below can act on each row's own id instead of filtering by date,
+    # which would otherwise touch every strength_sessions row sharing a date (real bug once a
+    # date can hold more than one row — see migration 044).
+    strength_rows = rows(
+        sb.table("strength_sessions").select("id, date, time_slot")
+        .eq("user_id", uid).eq("plan_id", plan_id)
+        .gte("date", from_date).execute()
+    )
+    strength_by_key = {(r["date"], r.get("time_slot") or "day"): r for r in strength_rows}
+
     profile = row(
         sb.table("athlete_profile").select("events")
         .eq("user_id", uid).maybe_single().execute()
@@ -1113,19 +1176,26 @@ def shift_plan(
     })
 
     kept, dropped, warnings = plan_shift_layout(scheduled_rows, race_dates, from_date, days)
-    updates = [(r["id"], r["_new_date"]) for r in kept if r["_new_date"] != r["date"]]
+    updates = [
+        (r["id"], r["_new_date"], r["date"], r.get("time_slot") or "day")
+        for r in kept if r["_new_date"] != r["date"]
+    ]
 
     for d in dropped:
-        sb.table("strength_sessions").delete().eq("user_id", uid).eq("date", d["date"]).execute()
+        strength_row = strength_by_key.get((d["date"], d.get("time_slot") or "day"))
+        if strength_row:
+            sb.table("strength_sessions").delete().eq("id", strength_row["id"]).execute()
         sb.table("scheduled_days").delete().eq("id", d["id"]).execute()
 
-    # Move latest-first so an in-flight update never collides with a date still occupied by a
-    # row that hasn't moved yet (scheduled_days/strength_sessions are keyed per user+date).
-    for row_id, new_date in sorted(updates, key=lambda u: u[1], reverse=True):
-        old_date = next(r["date"] for r in kept if r["id"] == row_id)
+    # Move latest-first — belt-and-suspenders against an in-flight update colliding with a date
+    # still occupied by a row that hasn't moved yet. No longer load-bearing for correctness the
+    # way it used to be: both tables are updated by each row's own id now, not by a date filter
+    # (see migration 044: (user_id, date, time_slot) is unique on both tables).
+    for row_id, new_date, old_date, time_slot in sorted(updates, key=lambda u: u[1], reverse=True):
         sb.table("scheduled_days").update({"date": new_date}).eq("id", row_id).execute()
-        sb.table("strength_sessions").update({"date": new_date}) \
-            .eq("user_id", uid).eq("date", old_date).execute()
+        strength_row = strength_by_key.get((old_date, time_slot))
+        if strength_row:
+            sb.table("strength_sessions").update({"date": new_date}).eq("id", strength_row["id"]).execute()
 
     logger.info(
         "📆 Shifted plan +%dd from %s — %d day(s) moved, %d dropped",
@@ -1325,9 +1395,9 @@ def write_plan(
     markdown: str,
     scheduled_days: list[dict[str, Any]],
     strength_sessions: list[dict[str, Any]],
-    garmin_workout_ids: dict[str, dict[str, Any]],
+    garmin_workout_ids: dict[tuple[str, str], dict[str, Any]],
     running_sessions: list[dict[str, Any]] | None = None,
-    running_workout_ids: dict[str, dict[str, Any]] | None = None,
+    running_workout_ids: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> str:
     """Persist a full replan to Supabase. Returns the new plan UUID."""
     sb = get_supabase()
@@ -1361,8 +1431,11 @@ def write_plan(
     ).gte("end_date", start_date).execute()
 
     # ── Insert scheduled_days ────────────────────────────────────────────────
-    segments_by_date = {
-        s["date"]: s["segments"] for s in (running_sessions or []) if s.get("segments")
+    # Keyed by (date, time_slot) — a date can hold more than one row (see migration 044);
+    # every entry defaults time_slot to 'day' so single-session dates behave exactly as before.
+    segments_by_key = {
+        (s["date"], s.get("time_slot", "day")): s["segments"]
+        for s in (running_sessions or []) if s.get("segments")
     }
     running_workout_ids = running_workout_ids or {}
     if scheduled_days:
@@ -1371,13 +1444,17 @@ def write_plan(
                 "plan_id": plan_id,
                 "user_id": user_id,
                 "date": d["date"],
+                "time_slot": d.get("time_slot", "day"),
+                "combo_group_id": d.get("combo_group_id"),
                 "session_type": d.get("session_type", "rest"),
                 "focus": d.get("focus", ""),
                 "description": d.get("description", ""),
                 "is_key": d.get("is_key_session", False),
                 "is_rest": d.get("is_rest", False),
-                "running_segments": segments_by_date.get(d["date"]),
-                "garmin_workout_id": running_workout_ids.get(d["date"], {}).get("workout_id"),
+                "running_segments": segments_by_key.get((d["date"], d.get("time_slot", "day"))),
+                "garmin_workout_id": running_workout_ids.get(
+                    (d["date"], d.get("time_slot", "day")), {}
+                ).get("workout_id"),
             }
             for d in scheduled_days
         ]).execute()
@@ -1388,12 +1465,15 @@ def write_plan(
     exercise_count = 0
     for s in strength_sessions:
         session_date = s["date"]
-        garmin_id = garmin_workout_ids.get(session_date, {}).get("workout_id")
+        time_slot = s.get("time_slot", "day")
+        garmin_id = garmin_workout_ids.get((session_date, time_slot), {}).get("workout_id")
 
         session_row = rows(sb.table("strength_sessions").insert({
             "plan_id": plan_id,
             "user_id": user_id,
             "date": session_date,
+            "time_slot": time_slot,
+            "combo_group_id": s.get("combo_group_id"),
             "name": s["name"],
             "slot": s.get("slot"),
             "garmin_workout_id": garmin_id,
