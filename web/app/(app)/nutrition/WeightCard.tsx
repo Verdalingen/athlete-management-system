@@ -6,6 +6,12 @@ type WeightEntry = { id: string; date: string; weight_kg: number; source: "manua
 
 type Props = { date: string };
 
+const RANGES = [
+  { days: 14, label: "14d", trendLabel: "2 wk" },
+  { days: 30, label: "30d", trendLabel: "30d" },
+  { days: 90, label: "90d", trendLabel: "90d" },
+] as const;
+
 function Sparkline({ entries }: { entries: WeightEntry[] }) {
   if (entries.length < 2) return null;
 
@@ -33,6 +39,7 @@ function Sparkline({ entries }: { entries: WeightEntry[] }) {
 }
 
 export function WeightCard({ date }: Props) {
+  const [rangeDays, setRangeDays] = useState<typeof RANGES[number]["days"]>(14);
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,12 +49,12 @@ export function WeightCard({ date }: Props) {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/weight?days=14")
+    fetch(`/api/weight?days=${rangeDays}`)
       .then(r => r.json())
       .then(({ entries: e }) => setEntries(e ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [date]);
+  }, [date, rangeDays]);
 
   useEffect(() => {
     if (editing) setTimeout(() => inputRef.current?.focus(), 30);
@@ -60,8 +67,9 @@ export function WeightCard({ date }: Props) {
     ? entries[entries.length - 1].weight_kg - entries[0].weight_kg
     : null;
 
+  const rangeTrendLabel = RANGES.find(r => r.days === rangeDays)!.trendLabel;
   const trendLabel = trend !== null && Math.abs(trend) > 0.05
-    ? `${trend > 0 ? "+" : ""}${trend.toFixed(1)} kg / 2 wk`
+    ? `${trend > 0 ? "+" : ""}${trend.toFixed(1)} kg / ${rangeTrendLabel}`
     : null;
 
   async function save() {
@@ -183,6 +191,25 @@ export function WeightCard({ date }: Props) {
               )}
             </div>
           )}
+
+          {/* Range toggle */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+            {RANGES.map(r => (
+              <button
+                key={r.days}
+                onClick={() => setRangeDays(r.days)}
+                style={{
+                  fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 6,
+                  border: `1px solid ${rangeDays === r.days ? "var(--accent)" : "var(--border)"}`,
+                  background: rangeDays === r.days ? "rgba(var(--accent-rgb),.12)" : "none",
+                  color: rangeDays === r.days ? "var(--accent)" : "var(--dim)",
+                  cursor: "pointer",
+                }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
 
           {/* Sparkline */}
           {entries.length >= 2 && (
