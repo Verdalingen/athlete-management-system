@@ -37,12 +37,17 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
         // with multiple cameras can silently select the front-facing one — the scanner then
         // never finds a barcode no matter how good the lighting is, because it's pointed the
         // wrong way. Requesting the rear camera and a higher resolution up front fixes both.
+        // 1080p (not 720p) because resolving fine barcode bars needs more pixels than typical
+        // video calls do; `focusMode: "continuous"` (inside `advanced`, so unsupported browsers
+        // just ignore it per spec rather than failing) keeps the lens hunting for sharp focus
+        // instead of settling once and staying there.
         const controls = await reader.decodeFromConstraints(
           {
             video: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
             },
           },
           videoRef.current!,
