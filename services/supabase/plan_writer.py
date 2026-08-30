@@ -415,14 +415,21 @@ def _estimate_active_calories(
 
 
 def _get_bmr_estimate(today_str: str) -> float | None:
-    """Today's Garmin-estimated BMR if already synced, else the most recent available value —
-    BMR is fairly stable day to day (mostly a function of body composition), so a slightly stale
-    value is a reasonable stand-in for a day that hasn't synced yet."""
+    """Most recent *complete* day's Garmin-estimated BMR — always strictly before today.
+
+    Garmin's bmr_calories for the current, still-running day is a cumulative intraday
+    reading, not a finalized daily total: confirmed live it read 971 kcal at ~10:45am
+    against a stable ~2429 on every complete prior day, because the morning sync-kpis
+    cron (see cli/garmin_ai_coach_cli.py) ran hours before Garmin finished attributing
+    the day's rest calories. Since BMR barely changes day to day, a stale-but-complete
+    reading from yesterday is strictly more accurate than today's still-partial one —
+    so today's own row is never used here even once it's non-null.
+    """
     sb = get_supabase()
     uid = _user_id()
     result = (
         sb.table("daily_metrics").select("date, bmr_calories")
-        .eq("user_id", uid).lte("date", today_str)
+        .eq("user_id", uid).lt("date", today_str)
         .not_.is_("bmr_calories", "null")
         .order("date", desc=True).limit(1).execute()
     )

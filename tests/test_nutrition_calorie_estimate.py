@@ -11,6 +11,7 @@ import pytest
 
 from services.supabase.plan_writer import (
     _estimate_session_calories,
+    _get_bmr_estimate,
     _pace_to_mps,
     _running_distance_km,
 )
@@ -95,3 +96,52 @@ def test_estimate_session_calories_none_for_untracked_session_types():
     # returning None (fall back to the historical day-type average) beats fabricating a number.
     today = {"date": "2026-08-30", "session_type": "cross", "is_rest": False}
     assert _estimate_session_calories(today, weight_kg=80) is None
+
+
+class _FakeDailyMetricsQuery:
+    """Minimal stand-in for the postgrest fluent query builder.
+
+    Just enough to exercise the `.lt` vs `.lte` boundary. Fixed live incident: today's
+    row (971 kcal, still accumulating) outranked yesterday's complete one (2429 kcal)
+    under `.lte`, because it sorts later by date.
+    """
+
+    ROWS = [
+        {"date": "2026-08-29", "bmr_calories": 2429},
+        {"date": "2026-08-30", "bmr_calories": 971},  # still-accumulating partial-day reading
+    ]
+
+    def __init__(self):
+        self._cutoff = None
+        self._op = None
+
+    def table(self, name): return self
+    def select(self, *a, **k): return self
+    def eq(self, *a, **k): return self
+
+    def lt(self, col, value):
+        self._cutoff, self._op = value, "lt"
+        return self
+
+    def lte(self, col, value):
+        self._cutoff, self._op = value, "lte"
+        return self
+
+    @property
+    def not_(self): return self
+
+    def is_(self, *a, **k): return self
+    def order(self, *a, **k): return self
+    def limit(self, *a, **k): return self
+
+    def execute(self):
+        rows = [r for r in self.ROWS if r["bmr_calories"] is not None]
+        rows = [r for r in rows if (r["date"] < self._cutoff if self._op == "lt" else r["date"] <= self._cutoff)]
+        rows.sort(key=lambda r: r["date"], reverse=True)
+        return type("Result", (), {"data": rows[:1]})()
+
+
+def test_get_bmr_estimate_ignores_todays_still_accumulating_reading(monkeypatch):
+    monkeypatch.setattr("services.supabase.plan_writer.get_supabase", lambda: _FakeDailyMetricsQuery())
+    monkeypatch.setattr("services.supabase.plan_writer._user_id", lambda: "u1")
+    assert _get_bmr_estimate("2026-08-30") == 2429.0
