@@ -1425,54 +1425,6 @@ export function NutritionClient({
             </div>
           </div>
 
-          {/* Macros */}
-          <div className="card" style={{ padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div className="card-title" style={{ margin: 0 }}>Macros</div>
-              {currentTarget && (
-                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 11 }} onClick={() => setTargetsOpen(true)}>
-                  Edit
-                </button>
-              )}
-            </div>
-
-            {/* Macro pills */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 14 }}>
-              {[
-                { label: "P", val: totals.protein_g, color: "var(--accent)" },
-                { label: "C", val: totals.carbs_g,   color: "var(--blue)" },
-                { label: "F", val: totals.fat_g,     color: "var(--amber)" },
-              ].map(m => (
-                <div key={m.label} style={{ textAlign: "center", background: "rgba(var(--overlay-rgb),.04)", borderRadius: 8, padding: "8px 4px" }}>
-                  <div style={{ fontSize: 10, color: "var(--dim)", marginBottom: 2 }}>{m.label}</div>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: m.color }}>{m.val}</div>
-                  <div style={{ fontSize: 9, color: "var(--dim)" }}>g</div>
-                </div>
-              ))}
-            </div>
-
-            <MacroBar
-              label="Protein" value={totals.protein_g}
-              max={currentTarget?.protein_g ?? Math.max(1, Math.round(totals.protein_g * 1.2))}
-              color="var(--accent)"
-            />
-            <MacroBar
-              label="Carbs" value={totals.carbs_g}
-              max={currentTarget?.carbs_g ?? Math.max(1, Math.round(totals.carbs_g * 1.2))}
-              color="var(--blue)"
-            />
-            <MacroBar
-              label="Fat" value={totals.fat_g}
-              max={currentTarget?.fat_g ?? Math.max(1, Math.round(totals.fat_g * 1.2))}
-              color="var(--amber)"
-            />
-            <MacroBar
-              label="Fiber" value={totals.fiber_g}
-              max={currentTarget?.fiber_g ?? 30}
-              color="var(--green)"
-            />
-          </div>
-
           {/* Nutrient timing — shown on training days */}
           {dayType !== "rest" && (() => {
             const preMeals  = entries.filter(e => e.meal_type === "pre_workout");
@@ -1839,6 +1791,54 @@ export function NutritionClient({
               </div>
             );
           })()}
+
+          {/* Macros */}
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div className="card-title" style={{ margin: 0 }}>Macros</div>
+              {currentTarget && (
+                <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 11 }} onClick={() => setTargetsOpen(true)}>
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {/* Macro pills */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 14 }}>
+              {[
+                { label: "P", val: totals.protein_g, color: "var(--accent)" },
+                { label: "C", val: totals.carbs_g,   color: "var(--blue)" },
+                { label: "F", val: totals.fat_g,     color: "var(--amber)" },
+              ].map(m => (
+                <div key={m.label} style={{ textAlign: "center", background: "rgba(var(--overlay-rgb),.04)", borderRadius: 8, padding: "8px 4px" }}>
+                  <div style={{ fontSize: 10, color: "var(--dim)", marginBottom: 2 }}>{m.label}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: m.color }}>{m.val}</div>
+                  <div style={{ fontSize: 9, color: "var(--dim)" }}>g</div>
+                </div>
+              ))}
+            </div>
+
+            <MacroBar
+              label="Protein" value={totals.protein_g}
+              max={currentTarget?.protein_g ?? Math.max(1, Math.round(totals.protein_g * 1.2))}
+              color="var(--accent)"
+            />
+            <MacroBar
+              label="Carbs" value={totals.carbs_g}
+              max={currentTarget?.carbs_g ?? Math.max(1, Math.round(totals.carbs_g * 1.2))}
+              color="var(--blue)"
+            />
+            <MacroBar
+              label="Fat" value={totals.fat_g}
+              max={currentTarget?.fat_g ?? Math.max(1, Math.round(totals.fat_g * 1.2))}
+              color="var(--amber)"
+            />
+            <MacroBar
+              label="Fiber" value={totals.fiber_g}
+              max={currentTarget?.fiber_g ?? 30}
+              color="var(--green)"
+            />
+          </div>
 
           {/* Micronutrients */}
           <div className="card" style={{ padding: 14 }}>
