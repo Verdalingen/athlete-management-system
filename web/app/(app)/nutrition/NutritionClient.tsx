@@ -150,8 +150,8 @@ const MEALS = [
   { key: "snacks",       label: "Snacks",       emoji: "🍎" },
 ];
 
-const WATER_ML_PER_GLASS = 250;
-const WATER_GLASSES_TARGET = 10; // 2.5L default
+const WATER_LOG_MAX_ML = 1000; // one "bottle" — the fill gauge's full-scale range
+const WATER_LOG_STEP_ML = 25;
 
 const DAY_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   hard:    { label: "⚡ Hard Session Day",  color: "var(--red)",    bg: "rgba(var(--red-rgb),.12)" },
@@ -445,6 +445,13 @@ export function NutritionClient({
   const [quickMeal, setQuickMeal] = useState("");
   const [quickForm, setQuickForm] = useState({ name: "", calories: 0, protein: 0, carbs: 0, fat: 0, servingQty: "", servingLabel: "" });
 
+  // Water logging (drag-to-fill bottle + slider)
+  const [waterLogOpen, setWaterLogOpen] = useState(false);
+  const [waterSliderMl, setWaterSliderMl] = useState(250);
+  const [waterDragging, setWaterDragging] = useState(false);
+  const [addingWater, setAddingWater] = useState(false);
+  const waterBottleRef = useRef<HTMLDivElement>(null);
+
   // Photo AI
   const [photoOpen, setPhotoOpen] = useState(false);
   const [photoMeal, setPhotoMeal] = useState("");
@@ -536,8 +543,6 @@ export function NutritionClient({
   const waterEntries = useMemo(() => entries.filter(e => e.meal_type === "water"), [entries]);
   const waterMl = useMemo(() => waterEntries.reduce((s, e) => s + e.quantity_g, 0), [waterEntries]);
   const waterTarget = currentTarget?.water_ml ?? 2500;
-  const waterGlasses = Math.round(waterMl / WATER_ML_PER_GLASS);
-  const waterGlassTarget = Math.ceil(waterTarget / WATER_ML_PER_GLASS);
 
   const calTarget = currentTarget?.calories ?? 0;
   const isOverCalories = calTarget > 0 && totals.calories > calTarget;
@@ -1071,22 +1076,29 @@ export function NutritionClient({
 
   // ── Water ─────────────────────────────────────────────────────────────────
 
-  const handleAddWater = async () => {
-    const res = await fetch(`/api/nutrition/diary?date=${date}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        meal_type:  "water",
-        food_name:  "Water",
-        quantity_g: WATER_ML_PER_GLASS,
-        calories:   0,
-        protein_g:  0,
-        carbs_g:    0,
-        fat_g:      0,
-      }),
-    });
-    const { data } = await res.json();
-    if (data) setEntries(prev => [...prev, data]);
+  const handleLogWater = async (amountMl: number) => {
+    if (amountMl <= 0) return;
+    setAddingWater(true);
+    try {
+      const res = await fetch(`/api/nutrition/diary?date=${date}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meal_type:  "water",
+          food_name:  "Water",
+          quantity_g: amountMl,
+          calories:   0,
+          protein_g:  0,
+          carbs_g:    0,
+          fat_g:      0,
+        }),
+      });
+      const { data } = await res.json();
+      if (data) setEntries(prev => [...prev, data]);
+      setWaterLogOpen(false);
+    } finally {
+      setAddingWater(false);
+    }
   };
 
   const handleRemoveWater = async () => {
@@ -1094,6 +1106,27 @@ export function NutritionClient({
     if (!last) return;
     setEntries(prev => prev.filter(e => e.id !== last.id));
     await fetch(`/api/nutrition/diary/${last.id}`, { method: "DELETE" });
+  };
+
+  // Reads the mL value implied by a pointer's vertical position within the bottle gauge.
+  const waterMlFromPointer = useCallback((clientY: number) => {
+    const el = waterBottleRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const fill = 1 - Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    const raw = fill * WATER_LOG_MAX_ML;
+    return Math.min(WATER_LOG_MAX_ML, Math.round(raw / WATER_LOG_STEP_ML) * WATER_LOG_STEP_ML);
+  }, []);
+
+  const handleBottlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setWaterDragging(true);
+    setWaterSliderMl(waterMlFromPointer(e.clientY));
+  };
+
+  const handleBottlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!waterDragging) return;
+    setWaterSliderMl(waterMlFromPointer(e.clientY));
   };
 
   // ── Save targets ──────────────────────────────────────────────────────────
@@ -1490,28 +1523,32 @@ export function NutritionClient({
 
           {/* Water */}
           <div className="card" style={{ padding: 16 }}>
-            <div className="card-title">Hydration</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-              {Array.from({ length: waterGlassTarget }).map((_, i) => (
-                <div
-                  key={i}
-                  onClick={i < waterGlasses ? handleRemoveWater : handleAddWater}
-                  title={i < waterGlasses ? "Click to remove" : "Click to add"}
-                  style={{
-                    width: 20, height: 20, borderRadius: "50% 50% 50% 0",
-                    transform: "rotate(-45deg)",
-                    cursor: "pointer",
-                    background: i < waterGlasses ? "var(--accent)" : "rgba(var(--overlay-rgb),.07)",
-                    border: `1px solid ${i < waterGlasses ? "var(--accent)" : "rgba(var(--overlay-rgb),.12)"}`,
-                    transition: "background .15s",
-                  }}
-                />
-              ))}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div className="card-title" style={{ margin: 0 }}>Hydration</div>
+              <button
+                className="btn-soft"
+                style={{ fontSize: 11, padding: "4px 10px" }}
+                onClick={() => { setWaterSliderMl(250); setWaterLogOpen(true); }}
+              >
+                + Drink
+              </button>
             </div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>
-              <span style={{ color: "var(--accent)", fontWeight: 700 }}>{(waterMl / 1000).toFixed(1)}L</span>
-              <span style={{ color: "var(--dim)" }}> / {(waterTarget / 1000).toFixed(1)}L</span>
-              <span style={{ color: "var(--dim)", marginLeft: 6 }}>· {waterGlasses} glasses</span>
+            <div className="progress-bar" style={{ marginBottom: 8 }}>
+              <div className="progress-fill" style={{ width: `${pct(waterMl, waterTarget)}%`, background: "var(--accent)" }} />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>
+                <span style={{ color: "var(--accent)", fontWeight: 700 }}>{(waterMl / 1000).toFixed(2)}L</span>
+                <span style={{ color: "var(--dim)" }}> / {(waterTarget / 1000).toFixed(2)}L</span>
+              </span>
+              {waterEntries.length > 0 && (
+                <button
+                  onClick={handleRemoveWater}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 10, padding: 0, textDecoration: "underline" }}
+                >
+                  Undo last
+                </button>
+              )}
             </div>
           </div>
 
@@ -2293,6 +2330,80 @@ export function NutritionClient({
               <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setQuickOpen(false)}>Cancel</button>
               <button className="btn-primary" style={{ flex: 1 }} disabled={!quickForm.name || addingFood} onClick={handleQuickAdd}>
                 {addingFood ? "Adding…" : "Add"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Water log modal ────────────────────────────────────────────── */}
+      {waterLogOpen && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.70)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={e => { if (e.target === e.currentTarget) setWaterLogOpen(false); }}
+        >
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", width: "100%", maxWidth: 340, padding: 24 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Log water</div>
+
+            <div style={{ display: "flex", gap: 20, alignItems: "center", justifyContent: "center" }}>
+              {/* Drag-to-fill bottle gauge */}
+              <div
+                ref={waterBottleRef}
+                onPointerDown={handleBottlePointerDown}
+                onPointerMove={handleBottlePointerMove}
+                onPointerUp={() => setWaterDragging(false)}
+                style={{
+                  position: "relative", width: 84, height: 220, borderRadius: 16,
+                  border: "2px solid var(--border)", overflow: "hidden",
+                  background: "rgba(var(--overlay-rgb),.04)", cursor: "ns-resize", touchAction: "none",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute", bottom: 0, left: 0, right: 0,
+                    height: `${pct(waterSliderMl, WATER_LOG_MAX_ML)}%`,
+                    background: "linear-gradient(180deg, rgba(var(--accent-rgb),.85), rgba(var(--accent-rgb),.55))",
+                    transition: waterDragging ? "none" : "height .15s ease",
+                  }}
+                />
+                {/* Quarter-litre gridlines */}
+                {[0.25, 0.5, 0.75].map(f => (
+                  <div key={f} style={{ position: "absolute", left: 0, right: 0, bottom: `${f * 100}%`, height: 1, background: "rgba(var(--overlay-rgb),.12)" }} />
+                ))}
+              </div>
+
+              {/* Live readout + slider */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 26, fontWeight: 800, textAlign: "center", marginBottom: 10, color: "var(--text)" }}>
+                  {waterSliderMl}
+                  <span style={{ fontSize: 12, fontWeight: 500, color: "var(--dim)", marginLeft: 3 }}>ml</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={WATER_LOG_MAX_ML}
+                  step={WATER_LOG_STEP_ML}
+                  value={waterSliderMl}
+                  onChange={e => setWaterSliderMl(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--dim)", marginTop: 2 }}>
+                  <span>0ml</span>
+                  <span>{(WATER_LOG_MAX_ML / 1000).toFixed(1)}L</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setWaterLogOpen(false)}>Cancel</button>
+              <button
+                className="btn-primary"
+                style={{ flex: 1 }}
+                disabled={waterSliderMl <= 0 || addingWater}
+                onClick={() => handleLogWater(waterSliderMl)}
+              >
+                {addingWater ? "Logging…" : `Log ${waterSliderMl}ml`}
               </button>
             </div>
           </div>
