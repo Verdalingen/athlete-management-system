@@ -32,8 +32,19 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
 
         const reader = new BrowserMultiFormatReader();
 
-        const controls = await reader.decodeFromVideoDevice(
-          undefined,
+        // Explicit facingMode + resolution: `decodeFromVideoDevice(undefined, ...)` lets the
+        // browser pick any camera with its own default (often low) resolution, which on phones
+        // with multiple cameras can silently select the front-facing one — the scanner then
+        // never finds a barcode no matter how good the lighting is, because it's pointed the
+        // wrong way. Requesting the rear camera and a higher resolution up front fixes both.
+        const controls = await reader.decodeFromConstraints(
+          {
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
           videoRef.current!,
           (result, err) => {
             if (cancelled || scannedRef.current) return;
