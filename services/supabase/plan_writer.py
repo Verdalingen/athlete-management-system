@@ -273,7 +273,7 @@ def get_scheduled_day(date_str: str) -> dict[str, Any] | None:
     uid = _user_id()
     result = (
         sb.table("scheduled_days")
-        .select("date, session_type, focus, description, is_key, is_rest")
+        .select("date, session_type, focus, description, is_key, is_rest, running_segments")
         .eq("user_id", uid)
         .eq("date", date_str)
         .limit(1)
@@ -296,12 +296,90 @@ def _day_type_for(day: dict[str, Any] | None) -> str:
     return "easy"
 
 
-def _estimate_active_calories(day_type: str, today_str: str) -> float | None:
-    """Estimate today's active-calorie burn: use today's actual Garmin value if it's already
-    accumulating something meaningful, otherwise average the athlete's own actual active_calories
-    from the last ~12 weeks of days with the same day_type — grounded in real historical burn for
-    this specific athlete and this specific kind of day, not a generic guess. Returns None if
-    neither is available (too new an athlete, or day_type == "default")."""
+_RUNNING_KCAL_PER_KG_PER_KM = 1.0  # standard running-economy estimate — ~pace-independent
+_STRENGTH_MET = 6.0                # ACSM compendium: resistance training, multiple exercises, vigorous effort
+_MET_TO_KCAL_PER_KG_PER_MIN = 3.5 / 200  # MET -> kcal/kg/min conversion
+
+
+def _pace_to_mps(pace: str) -> float:
+    """'M:SS' per km -> meters/second."""
+    mins_str, secs_str = pace.split(":")
+    return 1000.0 / (int(mins_str) * 60 + int(secs_str))
+
+
+def _running_distance_km(segments: list[dict[str, Any]]) -> float:
+    """Total planned distance across a running session's segments.
+
+    Segments set distance_meters directly (interval reps, steady-state by distance), or
+    duration_secs + a pace_low/pace_high band (steady-state by time) — for those, distance is
+    estimated from the midpoint pace.
+    """
+    total_m = 0.0
+    for seg in segments:
+        distance = seg.get("distance_meters")
+        if distance:
+            total_m += float(distance) * (seg.get("repeat_count") or 1)
+            continue
+        duration = seg.get("duration_secs")
+        pace_low, pace_high = seg.get("pace_low"), seg.get("pace_high")
+        if duration and pace_low and pace_high:
+            mps = (_pace_to_mps(pace_low) + _pace_to_mps(pace_high)) / 2
+            total_m += mps * float(duration) * (seg.get("repeat_count") or 1)
+    return total_m / 1000.0
+
+
+def _get_strength_duration_secs(date_str: str) -> int | None:
+    sb = get_supabase()
+    uid = _user_id()
+    result = (
+        sb.table("strength_sessions").select("estimated_duration_secs")
+        .eq("user_id", uid).eq("date", date_str).limit(1).execute()
+    )
+    rows = result.data or []
+    return rows[0]["estimated_duration_secs"] if rows else None
+
+
+def _estimate_session_calories(today: dict[str, Any] | None, weight_kg: float) -> float | None:
+    """Estimate today's active-calorie burn from the actual session on the plan today.
+
+    Not a same-bucket historical average — so two "hard" days with very different sessions (a
+    heavy squat day vs. a 15km tempo run) get different estimates. Strength uses a MET-based formula
+    scaled by planned duration; running uses distance (planned directly, or derived from
+    duration + target pace) at a fixed kcal/kg/km rate. Returns None when there isn't enough
+    session data to estimate from (rest days, or a cross/race placeholder with no duration or
+    distance recorded yet) — callers fall back to the historical day-type average in that case.
+    """
+    if today is None or today.get("is_rest"):
+        return None
+
+    session_type = today.get("session_type")
+    if session_type == "strength":
+        duration_secs = _get_strength_duration_secs(today["date"])
+        if not duration_secs:
+            return None
+        return _STRENGTH_MET * _MET_TO_KCAL_PER_KG_PER_MIN * weight_kg * (duration_secs / 60)
+
+    if session_type == "run":
+        km = _running_distance_km(today.get("running_segments") or [])
+        if km <= 0:
+            return None
+        return _RUNNING_KCAL_PER_KG_PER_KM * weight_kg * km
+
+    return None
+
+
+def _estimate_active_calories(
+    day_type: str, today_str: str, today: dict[str, Any] | None, weight_kg: float | None,
+) -> float | None:
+    """Estimate today's active-calorie burn, preferring the most grounded source available.
+
+    (1) today's actual Garmin value, once it's accumulating something meaningful: (2) a
+    session-specific estimate from the plan's actual duration/distance for today, via
+    _estimate_session_calories(); (3) the athlete's own historical active_calories average from
+    the last ~12 weeks of days with the same day_type, for days without enough session detail to
+    estimate from (rest days, or a placeholder session with no duration yet). Returns None if
+    nothing is available (too new an athlete, or day_type == "default").
+    """
     if day_type == "default":
         return None
     sb = get_supabase()
@@ -313,6 +391,11 @@ def _estimate_active_calories(day_type: str, today_str: str) -> float | None:
     ).data
     if today_metrics and (today_metrics.get("active_calories") or 0) > 50:
         return float(today_metrics["active_calories"])
+
+    if weight_kg:
+        session_est = _estimate_session_calories(today, weight_kg)
+        if session_est is not None:
+            return session_est
 
     since = (date.today() - timedelta(days=84)).isoformat()
     days = (
@@ -360,13 +443,15 @@ def _get_latest_weight_kg() -> float | None:
 
 def sync_todays_nutrition_target() -> dict[str, Any] | None:
     """Set today's nutrition_daily_targets row from actual estimated energy expenditure, not a
-    flat lookup by day category — total calories = BMR + estimated active-calorie burn (today's
-    real Garmin value once it's accumulating, else this athlete's own historical average for this
-    day_type) + a deficit/surplus adjustment from the athlete's stated weight goal direction.
-    Macros: protein at a fixed g/kg (needs don't vary much by day type — the "never drop the
-    protein floor" principle), fat at 25% of calories, carbs filling the remainder — which means
-    carbs naturally scale up on high-burn days and down on low-burn days, without a hardcoded
-    per-day-type carb figure.
+    flat lookup by day category — total calories = BMR (passive burn) + estimated active-calorie
+    burn from today's actual planned session (today's real Garmin value once it's accumulating,
+    else a duration/distance-based estimate for the specific session on the plan today, else this
+    athlete's own historical average for this day_type — see _estimate_active_calories()) + a
+    deficit/surplus adjustment from the athlete's stated weight goal direction. Macros: protein at
+    a fixed g/kg (needs don't vary much by day type — the "never drop the protein floor"
+    principle), fat at 25% of calories, carbs filling the remainder — which means carbs naturally
+    scale up on high-burn days and down on low-burn days, without a hardcoded per-day-type carb
+    figure.
 
     Falls back to the flat nutrition_targets template (see the pre-2026-07-16 version of this
     function) whenever body weight, BMR, or an active-calorie estimate isn't available yet — e.g.
@@ -387,7 +472,7 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
 
     weight_kg = _get_latest_weight_kg()
     bmr = _get_bmr_estimate(today_str)
-    active_est = _estimate_active_calories(day_type, today_str)
+    active_est = _estimate_active_calories(day_type, today_str, today, weight_kg)
 
     if weight_kg and bmr is not None and active_est is not None:
         tdee = bmr + active_est

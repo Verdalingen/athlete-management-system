@@ -159,43 +159,13 @@ Respond ONLY with this JSON structure:
 
     if (saveErr) throw saveErr;
 
-    // Also write today's daily target using the day-type that matches today's scheduled session
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const { data: todaySchedule } = await sb
-      .from("scheduled_days")
-      .select("is_rest,is_key,focus,description")
-      .eq("user_id", uid)
-      .eq("date", todayStr)
-      .limit(1)
-      .maybeSingle();
-
-    const todayDayType = todaySchedule
-      ? (todaySchedule.is_rest ? "rest" : todaySchedule.is_key ? "hard" : "easy")
-      : "default";
-
-    const todayTemplate = validTargets.find(t => t.day_type === todayDayType)
-      ?? validTargets.find(t => t.day_type === "default");
-
-    if (todayTemplate) {
-      const workoutContext = todaySchedule && !todaySchedule.is_rest
-        ? [todaySchedule.focus, todaySchedule.description].filter(Boolean).join(" · ")
-        : null;
-      const { error: dailyErr } = await sb.from("nutrition_daily_targets").upsert({
-        user_id: uid,
-        date: todayStr,
-        calories: Math.round(todayTemplate.calories),
-        protein_g: Math.round(todayTemplate.protein_g),
-        carbs_g: Math.round(todayTemplate.carbs_g),
-        fat_g: Math.round(todayTemplate.fat_g),
-        fiber_g: Math.round(todayTemplate.fiber_g),
-        water_ml: Math.round(todayTemplate.water_ml),
-        workout_context: workoutContext,
-        notes: todayTemplate.notes ?? null,
-        source: "manual",
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id,date" });
-      if (dailyErr) console.error("nutrition_daily_targets upsert failed:", dailyErr);
-    }
+    // Deliberately does NOT also write today's nutrition_daily_targets row: that row is owned by
+    // sync_todays_nutrition_target() (services/supabase/plan_writer.py), which runs on every
+    // --sync-kpis and computes it deterministically from real Garmin data (BMR + a session-
+    // specific or historical active-calorie estimate) rather than this LLM guess. Writing it here
+    // too used to let a "Generate" click on this page silently clobber that data-driven value with
+    // a vaguer one — these day-type templates now serve only as the flat fallback that function
+    // reaches for when an athlete has no Garmin history yet.
 
     return NextResponse.json({ targets: saved });
   } catch (err) {
