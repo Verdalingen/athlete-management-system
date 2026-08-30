@@ -367,21 +367,6 @@ function MicroRow({ label, value, rda, unit }: { label: string; value: number; r
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-type DailyTarget = {
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  fiber_g: number;
-  water_ml: number;
-  workout_context?: string | null;
-  notes?: string | null;
-  source: string;
-  date: string;
-};
-
-type CoachNudge = { message: string; tomorrow_session?: string | null; created_at?: string };
-
 type MealRecommendation = {
   id?: string;
   date?: string;
@@ -406,16 +391,12 @@ export function NutritionClient({
   initialEntries,
   target,
   dayType: initialDayType,
-  dailyTarget: initialDailyTarget,
-  nudge: initialNudge,
   mealRecommendations: initialMealRecommendations,
 }: {
   initialDate: string;
   initialEntries: DiaryEntry[];
   target: NutritionTarget | null;
   dayType: string;
-  dailyTarget: DailyTarget | null;
-  nudge: CoachNudge | null;
   mealRecommendations: MealRecommendation[];
 }) {
   const formatQty = useFormatQty();
@@ -500,15 +481,11 @@ export function NutritionClient({
 
   // Per-day target state (client-driven so navigation is instant)
   const [dayType, setDayType] = useState(initialDayType);
-  const [dailyTarget, setDailyTarget] = useState<DailyTarget | null>(initialDailyTarget);
 
   // Coach meal recommendations
   const [mealRecommendations, setMealRecommendations] = useState<MealRecommendation[]>(initialMealRecommendations);
   const [recsGenerating, setRecsGenerating] = useState(false);
 
-  // Coach nudge
-  const [nudge, setNudge] = useState<CoachNudge | null>(initialNudge);
-  const [nudgeLoading, setNudgeLoading] = useState(false);
   const [currentTarget, setCurrentTarget] = useState<NutritionTarget | null>(target);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -519,7 +496,6 @@ export function NutritionClient({
   const navigateDate = useCallback(async (newDate: string) => {
     setLoadingEntries(true);
     setDate(newDate);
-    setDailyTarget(null);  // clear immediately — no stale flash
     setMealRecommendations([]);
     try {
       const [diaryRes, dtRes, recsRes] = await Promise.all([
@@ -528,7 +504,6 @@ export function NutritionClient({
         fetch(`/api/nutrition/meal-recommendations?date=${newDate}`).then(r => r.json()),
       ]);
       setEntries(diaryRes.data ?? []);
-      setDailyTarget(dtRes.dailyTarget ?? null);
       setDayType(dtRes.dayType ?? "default");
       setCurrentTarget(dtRes.target ?? null);
       setMealRecommendations(recsRes.data ?? []);
@@ -1196,29 +1171,6 @@ export function NutritionClient({
     }
   };
 
-  // ── Coach nudge ───────────────────────────────────────────────────────────
-
-  const handleRequestNudge = async () => {
-    setNudgeLoading(true);
-    try {
-      const res = await fetch("/api/nutrition/nudge", { method: "POST" });
-      const { nudge: n } = await res.json();
-      if (n) setNudge(n);
-    } finally {
-      setNudgeLoading(false);
-    }
-  };
-
-  // Auto-generate nudge after 8pm on today's page if one doesn't exist yet
-  useEffect(() => {
-    const isToday = date === new Date().toISOString().slice(0, 10);
-    const isEvening = new Date().getHours() >= 20;
-    if (isToday && isEvening && !nudge && !nudgeLoading) {
-      handleRequestNudge();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
-
   // ── Keyboard shortcut (Cmd+K / Ctrl+K) ────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1386,53 +1338,6 @@ export function NutritionClient({
 
         {/* ── LEFT: Summary ─────────────────────────────────────────── */}
         <div className="nutrition-col-summary" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-          {/* Coach daily target banner */}
-          {dailyTarget && (
-            <div style={{ background: "rgba(124,92,255,.08)", border: "1px solid rgba(124,92,255,.25)", borderRadius: "var(--radius)", padding: "10px 12px" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
-                <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 12 }} />
-                Coach target · {dailyTarget.date}
-              </div>
-              {dailyTarget.workout_context && (
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text)", marginBottom: 3 }}>{dailyTarget.workout_context}</div>
-              )}
-              {dailyTarget.notes && (
-                <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>{dailyTarget.notes}</div>
-              )}
-            </div>
-          )}
-
-          {/* Coach nudge — today only */}
-          {date === new Date().toISOString().slice(0, 10) && (
-            <div className="card" style={{ padding: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: nudge ? 10 : 0 }}>
-                <div className="card-title" style={{ margin: 0, flex: 1 }}>Coach</div>
-                <button
-                  onClick={handleRequestNudge}
-                  disabled={nudgeLoading}
-                  style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", fontSize: 10, padding: "3px 8px", fontWeight: 600, opacity: nudgeLoading ? 0.6 : 1 }}
-                >
-                  {nudgeLoading ? "…" : nudge ? "Refresh" : "Ask coach"}
-                </button>
-              </div>
-              {nudge ? (
-                <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-                  {nudge.message}
-                  {nudge.tomorrow_session && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: "var(--accent)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-                      <i className="ti ti-calendar-event" aria-hidden="true" style={{ fontSize: 12 }} />
-                      Tomorrow: {nudge.tomorrow_session}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
-                  Get an evening check-in on your macros, timing, and tomorrow&apos;s session.
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Calorie ring */}
           <div className="card" style={{ padding: 16 }}>

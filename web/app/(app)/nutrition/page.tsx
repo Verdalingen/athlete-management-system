@@ -10,12 +10,11 @@ export default async function NutritionPage() {
   const sb = createServerClient();
   const uid = await getUserId();
 
-  const [diaryRes, targetsRes, dayRes, dailyTargetRes, nudgeRes, mealRecsRes] = await Promise.all([
+  const [diaryRes, targetsRes, dayRes, dailyTargetRes, mealRecsRes] = await Promise.all([
     sb.from("nutrition_diary").select("*").eq("user_id", uid).eq("date", date).order("created_at"),
     sb.from("nutrition_targets").select("*").eq("user_id", uid),
     sb.from("scheduled_days").select("session_type,is_rest,is_key,focus,description").eq("user_id", uid).eq("date", date).limit(1),
     sb.from("nutrition_daily_targets").select("*").eq("user_id", uid).eq("date", date).limit(1),
-    sb.from("nutrition_nudges").select("message,tomorrow_session,created_at").eq("user_id", uid).eq("date", date).maybeSingle(),
     sb.from("nutrition_meal_recommendations").select("*").eq("user_id", uid).eq("date", date),
   ]);
 
@@ -23,7 +22,6 @@ export default async function NutritionPage() {
   const targets = targetsRes.data ?? [];
   const scheduledDay = dayRes.data?.[0] ?? null;
   const dailyTarget = dailyTargetRes.data?.[0] ?? null;
-  const nudge = nudgeRes.data ?? null;
   const mealRecommendations = mealRecsRes.data ?? [];
 
   // Determine today's day type from the scheduled session
@@ -49,8 +47,6 @@ export default async function NutritionPage() {
       initialEntries={entries}
       target={target}
       dayType={dayType}
-      dailyTarget={dailyTarget}
-      nudge={nudge}
       mealRecommendations={mealRecommendations}
     />
   );
