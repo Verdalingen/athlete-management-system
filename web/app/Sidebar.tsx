@@ -6,7 +6,6 @@ import Link from "next/link";
 
 const NAV = [
   { href: "/",           label: "Today",     icon: "ti-home" },
-  { href: "/week",       label: "Week",      icon: "ti-calendar" },
   { href: "/plan",       label: "Plan",      icon: "ti-route" },
   { href: "/nutrition",  label: "Nutrition", icon: "ti-salad" },
   { href: "/report",     label: "Progress",  icon: "ti-trending-up" },
