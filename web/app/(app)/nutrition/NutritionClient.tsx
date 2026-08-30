@@ -548,7 +548,24 @@ export function NutritionClient({
   const isOverCalories = calTarget > 0 && totals.calories > calTarget;
   const remaining = calTarget > 0 ? Math.max(0, calTarget - totals.calories) : 0;
   const isToday = date === todayISO();
+  const isPastDay = date < todayISO();
   const dayMeta = DAY_TYPE_LABELS[dayType] ?? DAY_TYPE_LABELS.default;
+
+  // Pre/post-workout protein timing — feeds the "day concluded" summary on past days.
+  const workoutNutrition = useMemo(() => {
+    const PRO_MIN = 20;
+    const preMeals  = entries.filter(e => e.meal_type === "pre_workout");
+    const postMeals = entries.filter(e => e.meal_type === "post_workout");
+    const preP  = round1(preMeals.reduce((s, e)  => s + (e.protein_g ?? 0), 0));
+    const preC  = round1(preMeals.reduce((s, e)  => s + (e.carbs_g  ?? 0), 0));
+    const postP = round1(postMeals.reduce((s, e) => s + (e.protein_g ?? 0), 0));
+    const preCal  = Math.round(preMeals.reduce((s, e)  => s + (e.calories ?? 0), 0));
+    const postCal = Math.round(postMeals.reduce((s, e) => s + (e.calories ?? 0), 0));
+    type Status = "ok" | "low" | "empty";
+    const preStatus:  Status = preMeals.length  === 0 ? "empty" : preP  >= PRO_MIN ? "ok" : "low";
+    const postStatus: Status = postMeals.length === 0 ? "empty" : postP >= PRO_MIN ? "ok" : "low";
+    return { preStatus, postStatus, preP, preC, postP, preCal, postCal, PRO_MIN };
+  }, [entries]);
 
   // ── Food search ───────────────────────────────────────────────────────────
 
@@ -1458,69 +1475,6 @@ export function NutritionClient({
             </div>
           </div>
 
-          {/* Nutrient timing — shown on training days */}
-          {dayType !== "rest" && (() => {
-            const preMeals  = entries.filter(e => e.meal_type === "pre_workout");
-            const postMeals = entries.filter(e => e.meal_type === "post_workout");
-            const preP  = round1(preMeals.reduce((s, e)  => s + (e.protein_g ?? 0), 0));
-            const preC  = round1(preMeals.reduce((s, e)  => s + (e.carbs_g  ?? 0), 0));
-            const postP = round1(postMeals.reduce((s, e) => s + (e.protein_g ?? 0), 0));
-            const preCal  = Math.round(preMeals.reduce((s, e)  => s + (e.calories ?? 0), 0));
-            const postCal = Math.round(postMeals.reduce((s, e) => s + (e.calories ?? 0), 0));
-            const PRO_MIN = 20;
-            const preOk  = preP  >= PRO_MIN;
-            const postOk = postP >= PRO_MIN;
-            const preLogged  = preMeals.length  > 0;
-            const postLogged = postMeals.length > 0;
-
-            type Status = "ok" | "low" | "empty";
-            const preStatus:  Status = !preLogged  ? "empty" : preOk  ? "ok" : "low";
-            const postStatus: Status = !postLogged ? "empty" : postOk ? "ok" : "low";
-            const colors: Record<Status, string> = { ok: "var(--green)", low: "var(--amber)", empty: "var(--dim)" };
-            const icons:  Record<Status, string> = { ok: "ti-circle-check", low: "ti-alert-triangle", empty: "ti-circle-dashed" };
-
-            return (
-              <div className="card" style={{ padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                  <div className="card-title" style={{ margin: 0 }}>Nutrient timing</div>
-                  <span style={{ fontSize: 10, color: "var(--dim)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>
-                    {dayType === "hard" ? "Hard day" : "Training day"}
-                  </span>
-                </div>
-                {(["pre", "post"] as const).map(w => {
-                  const isPost    = w === "post";
-                  const status    = isPost ? postStatus : preStatus;
-                  const proteinG  = isPost ? postP : preP;
-                  const carbsG    = isPost ? null : preC;
-                  const cal       = isPost ? postCal : preCal;
-                  const label     = isPost ? "Post-workout" : "Pre-workout";
-                  const tip       = isPost ? "≥20g protein within 45 min" : "≥20g protein + carbs 1–2h before";
-                  return (
-                    <div key={w} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: isPost ? 0 : 12 }}>
-                      <i className={`ti ${icons[status]}`} aria-hidden="true" style={{ fontSize: 16, color: colors[status], marginTop: 1, flexShrink: 0 }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
-                          {status === "ok" && <span style={{ fontSize: 10, color: "var(--green)", fontWeight: 700 }}>✓</span>}
-                        </div>
-                        {status === "empty" ? (
-                          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{tip}</div>
-                        ) : (
-                          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
-                            <span style={{ color: "var(--accent)", fontWeight: 600 }}>P{proteinG}g</span>
-                            {carbsG !== null && <span style={{ color: "var(--blue)", fontWeight: 600, marginLeft: 5 }}>C{carbsG}g</span>}
-                            <span style={{ color: "var(--dim)", marginLeft: 5 }}>{cal} kcal</span>
-                            {status === "low" && <span style={{ color: "var(--amber)", marginLeft: 5 }}>· aim for ≥{PRO_MIN}g</span>}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
           {/* Water */}
           <div className="card" style={{ padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -1824,6 +1778,37 @@ export function NutritionClient({
                     </div>
                   ))}
                 </div>
+
+                {/* Pre/post-workout timing — only meaningful once the day is over */}
+                {isPastDay && dayType !== "rest" && (() => {
+                  const { preStatus, postStatus, preP, preC, postP, preCal, postCal } = workoutNutrition;
+                  const colors: Record<string, string> = { ok: "var(--green)", low: "var(--amber)", empty: "var(--dim)" };
+                  const icons:  Record<string, string> = { ok: "ti-circle-check", low: "ti-alert-triangle", empty: "ti-circle-dashed" };
+                  return (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
+                        Workout nutrition
+                      </div>
+                      {(["pre", "post"] as const).map(w => {
+                        const isPost   = w === "post";
+                        const status   = isPost ? postStatus : preStatus;
+                        const proteinG = isPost ? postP : preP;
+                        const cal      = isPost ? postCal : preCal;
+                        const label    = isPost ? "Post-workout" : "Pre-workout";
+                        return (
+                          <div key={w} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: isPost ? 0 : 5 }}>
+                            <i className={`ti ${icons[status]}`} aria-hidden="true" style={{ fontSize: 13, color: colors[status], flexShrink: 0 }} />
+                            <span style={{ fontSize: 11, fontWeight: 600, flex: 1 }}>{label}</span>
+                            <span style={{ fontSize: 10, color: status === "empty" ? "var(--dim)" : "var(--muted)" }}>
+                              {status === "empty" ? "not logged" : `P${proteinG}g${!isPost ? ` C${preC}g` : ""} · ${cal} kcal`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
                 <DayEnergyBalance date={date} caloriesEaten={totals.calories} />
               </div>
             );
