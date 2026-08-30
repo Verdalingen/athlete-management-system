@@ -158,6 +158,24 @@ body {
 .sb-collapsed .sb-item { justify-content: center; gap: 0; padding: 9px; }
 .sb-collapsed .sb-label { opacity: 0; width: 0; overflow: hidden; pointer-events: none; }
 
+/* Sidebar collapse preference lives in localStorage, which isn't readable
+   during SSR — Sidebar.tsx only learns it in a post-mount effect. Without
+   this, every load of a previously-collapsed sidebar paints expanded first,
+   then snaps to 60px (animated) once React hydrates: the brand text and nav
+   labels flash in, then everything shifts left. `sb-collapsed-init` is set
+   by a blocking script in layout.tsx (same trick as the dark-mode
+   `data-theme` attribute) so the *first* paint already matches, with no
+   transition. Sidebar.tsx removes the class post-hydration once its own
+   `sb-collapsed` class is committed, so later toggles animate normally. */
+html.sb-collapsed-init .sidebar,
+html.sb-collapsed-init .main-area { transition: none; }
+html.sb-collapsed-init .sidebar { width: 60px; }
+html.sb-collapsed-init .sidebar .sb-brand-text { display: none; }
+html.sb-collapsed-init .sidebar .sb-brand { justify-content: center; }
+html.sb-collapsed-init .sidebar .sb-item { justify-content: center; gap: 0; padding: 9px; }
+html.sb-collapsed-init .sidebar .sb-label { opacity: 0; width: 0; overflow: hidden; pointer-events: none; }
+html.sb-collapsed-init .main-area { margin-left: 60px; }
+
 .sb-brand {
   padding: 16px 14px; min-height: 60px;
   border-bottom: 1px solid var(--sb-border);

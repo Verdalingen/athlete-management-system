@@ -62,12 +62,19 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
-  // Restore collapse preference from localStorage
+  // Restore collapse preference from localStorage. The blocking script in
+  // layout.tsx already snapshotted the same preference onto
+  // <html class="sb-collapsed-init"> so the first paint renders correctly
+  // (see the CSS comment in globals.css) — drop that snapshot class here,
+  // once this component's own `collapsed` state is about to take over, so
+  // later toggles get their normal transition instead of colliding with the
+  // pre-hydration "no transition" override.
   useEffect(() => {
     try {
       const saved = localStorage.getItem("sb-collapsed");
       if (saved !== null) setCollapsed(JSON.parse(saved));
     } catch {}
+    document.documentElement.classList.remove("sb-collapsed-init");
   }, []);
 
   if (pathname.startsWith("/login")) return null;
