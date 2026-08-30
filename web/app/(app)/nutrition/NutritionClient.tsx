@@ -1570,9 +1570,11 @@ export function NutritionClient({
                           >›</button>
                         ) : <div style={{ width: 14 }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: isMeal ? "var(--amber)" : "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 4 }}>
-                            {isMeal && <i className="ti ti-tools-kitchen-2" style={{ fontSize: 11, flexShrink: 0 }} aria-hidden="true" />}
-                            {entry.food_name}
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+                            {isMeal && <i className="ti ti-tools-kitchen-2" style={{ fontSize: 11, flexShrink: 0, marginTop: 2 }} aria-hidden="true" />}
+                            <div style={{ fontSize: 12, fontWeight: 600, color: isMeal ? "var(--amber)" : "var(--text)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word" }}>
+                              {entry.food_name}
+                            </div>
                           </div>
                           <div style={{ fontSize: 10, color: "var(--dim)" }}>
                             {isMeal ? `${entry.meal_items!.length} ingredients · ${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}` : `${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}${entry.brand ? ` · ${entry.brand}` : ""}`}
@@ -1602,8 +1604,8 @@ export function NutritionClient({
                       {isMeal && isExpanded && (
                         <div style={{ background: "rgba(var(--amber-rgb),.04)", borderTop: "1px solid rgba(var(--amber-rgb),.1)", padding: "6px 14px 8px 32px" }}>
                           {entry.meal_items!.map((item, idx) => (
-                            <div key={idx} style={{ display: "flex", alignItems: "center", padding: "4px 0", borderBottom: idx < entry.meal_items!.length - 1 ? "1px solid rgba(var(--overlay-rgb),.04)" : "none", gap: 8 }}>
-                              <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)" }}>
+                            <div key={idx} style={{ display: "flex", alignItems: "flex-start", padding: "4px 0", borderBottom: idx < entry.meal_items!.length - 1 ? "1px solid rgba(var(--overlay-rgb),.04)" : "none", gap: 8 }}>
+                              <div style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 500, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", wordBreak: "break-word", color: "var(--muted)" }}>
                                 {item.food_name}
                               </div>
                               <div style={{ fontSize: 10, color: "var(--dim)", flexShrink: 0 }}>{formatQty(item.quantity_g, item.serving_qty, item.serving_label)}</div>
