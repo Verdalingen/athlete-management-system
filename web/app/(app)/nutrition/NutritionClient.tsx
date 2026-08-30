@@ -1449,7 +1449,7 @@ export function NutritionClient({
             return (
               <div key={meal.key} className="card" style={{ padding: 0, overflow: "hidden" }}>
                 {/* Meal header */}
-                <div style={{ display: "flex", alignItems: "center", padding: "10px 14px", borderBottom: mealEntries.length > 0 ? "1px solid var(--border)" : "none" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", rowGap: 6, padding: "10px 14px", borderBottom: mealEntries.length > 0 ? "1px solid var(--border)" : "none" }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>{meal.emoji} {meal.label}</span>
                   {mealEntries.length > 0 && (
                     <div style={{ display: "flex", gap: 5, marginLeft: 10 }}>
@@ -1462,7 +1462,7 @@ export function NutritionClient({
                       ))}
                     </div>
                   )}
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {mealCal > 0 && <span style={{ fontSize: 11, color: "var(--dim)" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>{mealCal}</span> kcal</span>}
                     <button
                       onClick={() => { setPhotoMeal(meal.key); setPhotoOpen(true); }}
