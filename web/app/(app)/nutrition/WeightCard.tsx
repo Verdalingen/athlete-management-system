@@ -12,29 +12,94 @@ const RANGES = [
   { days: 90, label: "90d", trendLabel: "90d" },
 ] as const;
 
-function Sparkline({ entries }: { entries: WeightEntry[] }) {
+function fmtDate(iso: string): string {
+  return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+/** Weight trend mini-chart — hoverable so you can read out any previous
+ * weigh-in, not just the two endpoint dates. x is time-proportional (not
+ * index-based), since a 90-day window with gaps in logging shouldn't bunch
+ * entries together as if they were evenly spaced. */
+function WeightChart({ entries }: { entries: WeightEntry[] }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (entries.length < 2) return null;
 
+  const W = 280, H = 90;
+  const PAD = { top: 10, right: 8, bottom: 4, left: 32 };
+  const plotW = W - PAD.left - PAD.right;
+  const plotH = H - PAD.top - PAD.bottom;
+
   const vals = entries.map(e => e.weight_kg);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const range = max - min || 1;
-  const W = 200, H = 36, PAD = 3;
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const padV = (maxV - minV || 1) * 0.15;
+  const loV = minV - padV, hiV = maxV + padV;
+  const spanV = (hiV - loV) || 1;
 
-  const pts = entries.map((e, i) => {
-    const x = PAD + (i / (entries.length - 1)) * (W - PAD * 2);
-    const y = H - PAD - ((e.weight_kg - min) / range) * (H - PAD * 2);
-    return [x, y] as [number, number];
-  });
+  const t0 = new Date(entries[0].date).getTime();
+  const tEnd = new Date(entries[entries.length - 1].date).getTime();
+  const tRange = tEnd - t0 || 1;
 
-  const d = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const [lx, ly] = pts[pts.length - 1];
+  const xFor = (date: string) => PAD.left + ((new Date(date).getTime() - t0) / tRange) * plotW;
+  const yFor = (v: number) => PAD.top + plotH - ((v - loV) / spanV) * plotH;
+
+  const pts = entries.map(e => ({ x: xFor(e.date), y: yFor(e.weight_kg) }));
+  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+
+  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    let closest = 0, dist = Infinity;
+    entries.forEach((en, i) => {
+      const dd = Math.abs(xFor(en.date) - svgX);
+      if (dd < dist) { dist = dd; closest = i; }
+    });
+    setHoverIdx(closest);
+  }
+
+  const hov = hoverIdx != null ? entries[hoverIdx] : null;
+  const hovX = hov ? xFor(hov.date) : null;
+  const hovY = hov ? yFor(hov.weight_kg) : null;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: "block", overflow: "visible" }}>
-      <path d={d} stroke="var(--accent)" strokeWidth="1.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r="3" fill="var(--accent)" />
-    </svg>
+    <div style={{ position: "relative" }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`} width="100%" height={H}
+        style={{ display: "block", cursor: "crosshair" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <text x={PAD.left - 5} y={PAD.top + 3} textAnchor="end" fontSize="8" fill="var(--dim)">{hiV.toFixed(1)}</text>
+        <text x={PAD.left - 5} y={PAD.top + plotH} textAnchor="end" fontSize="8" fill="var(--dim)">{loV.toFixed(1)}</text>
+
+        <path d={d} stroke="var(--accent)" strokeWidth="1.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={i === pts.length - 1 ? 2.5 : 1.5} fill="var(--accent)" opacity={i === pts.length - 1 ? 1 : 0.55} />
+        ))}
+
+        {hovX != null && (
+          <line x1={hovX} y1={PAD.top} x2={hovX} y2={PAD.top + plotH} stroke="var(--muted)" strokeWidth={1} strokeDasharray="2,2" opacity={0.4} />
+        )}
+        {hov && hovX != null && hovY != null && (
+          <circle cx={hovX} cy={hovY} r={3.5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={1.5} />
+        )}
+      </svg>
+
+      {hov && hovX != null && hovY != null && (() => {
+        const leftPct = (hovX / W) * 100;
+        const edgeOffset = leftPct < 20 ? "0%" : leftPct > 80 ? "-100%" : "-50%";
+        return (
+          <div style={{
+            position: "absolute", left: `${leftPct}%`, top: `${(hovY / H) * 100}%`,
+            transform: `translate(${edgeOffset}, calc(-100% - 8px))`,
+            background: "var(--ink)", color: "#fff", fontSize: 10, fontWeight: 700,
+            padding: "3px 7px", borderRadius: 5, whiteSpace: "nowrap", pointerEvents: "none",
+          }}>
+            {fmtDate(hov.date)} · {hov.weight_kg.toFixed(1)}kg
+          </div>
+        );
+      })()}
+    </div>
   );
 }
 
@@ -211,13 +276,13 @@ export function WeightCard({ date }: Props) {
             ))}
           </div>
 
-          {/* Sparkline */}
+          {/* Trend chart */}
           {entries.length >= 2 && (
-            <div style={{ marginTop: 4, opacity: 0.85 }}>
-              <Sparkline entries={entries} />
+            <div style={{ marginTop: 4 }}>
+              <WeightChart entries={entries} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--dim)", marginTop: 2 }}>
-                <span>{entries[0].date.slice(5)}</span>
-                <span>{entries[entries.length - 1].date.slice(5)}</span>
+                <span>{fmtDate(entries[0].date)}</span>
+                <span>{fmtDate(entries[entries.length - 1].date)}</span>
               </div>
             </div>
           )}
