@@ -17,10 +17,12 @@ function fmtDate(iso: string): string {
 }
 
 /** Weight trend mini-chart — hoverable so you can read out any previous
- * weigh-in, not just the two endpoint dates. x is time-proportional (not
- * index-based), since a 90-day window with gaps in logging shouldn't bunch
- * entries together as if they were evenly spaced. */
-function WeightChart({ entries }: { entries: WeightEntry[] }) {
+ * weigh-in, not just the two endpoint dates. x is time-proportional against
+ * the full requested `rangeDays` window (today back to today-(rangeDays-1)),
+ * not just the span between the first and last logged entry — otherwise a
+ * "90d" view with only two sparse weigh-ins would stretch that 2-day gap
+ * edge-to-edge and look identical to a 2-day view. */
+function WeightChart({ entries, rangeDays }: { entries: WeightEntry[]; rangeDays: number }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (entries.length < 2) return null;
 
@@ -36,9 +38,11 @@ function WeightChart({ entries }: { entries: WeightEntry[] }) {
   const loV = minV - padV, hiV = maxV + padV;
   const spanV = (hiV - loV) || 1;
 
-  const t0 = new Date(entries[0].date).getTime();
-  const tEnd = new Date(entries[entries.length - 1].date).getTime();
-  const tRange = tEnd - t0 || 1;
+  // Ms arithmetic throughout (never Date#setDate) so subtracting whole days
+  // from a UTC-midnight instant can't drift across a local timezone offset.
+  const todayMs = new Date(new Date().toISOString().slice(0, 10)).getTime();
+  const t0 = todayMs - (rangeDays - 1) * 86_400_000;
+  const tRange = todayMs - t0 || 1;
 
   const xFor = (date: string) => PAD.left + ((new Date(date).getTime() - t0) / tRange) * plotW;
   const yFor = (v: number) => PAD.top + plotH - ((v - loV) / spanV) * plotH;
@@ -136,6 +140,12 @@ export function WeightCard({ date }: Props) {
   const trendLabel = trend !== null && Math.abs(trend) > 0.05
     ? `${trend > 0 ? "+" : ""}${trend.toFixed(1)} kg / ${rangeTrendLabel}`
     : null;
+
+  // The actual requested window's endpoints (today back rangeDays-1 days) — used
+  // to label the chart, since the true data extent can be much narrower when
+  // logging is sparse and would otherwise make the range toggle look like a no-op.
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const rangeStartDate = new Date(new Date(todayDate).getTime() - (rangeDays - 1) * 86_400_000).toISOString().slice(0, 10);
 
   async function save() {
     const kg = parseFloat(inputVal);
@@ -279,10 +289,10 @@ export function WeightCard({ date }: Props) {
           {/* Trend chart */}
           {entries.length >= 2 && (
             <div style={{ marginTop: 4 }}>
-              <WeightChart entries={entries} />
+              <WeightChart entries={entries} rangeDays={rangeDays} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--dim)", marginTop: 2 }}>
-                <span>{fmtDate(entries[0].date)}</span>
-                <span>{fmtDate(entries[entries.length - 1].date)}</span>
+                <span>{fmtDate(rangeStartDate)}</span>
+                <span>{fmtDate(todayDate)}</span>
               </div>
             </div>
           )}
