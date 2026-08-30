@@ -5,7 +5,7 @@ import { BarcodeScanner } from "./BarcodeScanner";
 import { PhotoFoodCapture } from "./PhotoFoodCapture";
 import { WeekStrip } from "./WeekStrip";
 import { WeightCard } from "./WeightCard";
-import { EnergyBalanceCard } from "./EnergyBalanceCard";
+import { DayEnergyBalance } from "./DayEnergyBalance";
 import { CustomFoodModal, type CustomFood } from "./CustomFoodModal";
 import { MealBuilderModal, type MealTemplate, type MealDraft } from "./MealBuilderModal";
 import { MealManagerModal } from "./MealManagerModal";
@@ -1566,9 +1566,6 @@ export function NutritionClient({
           {/* Body weight */}
           <WeightCard date={date} />
 
-          {/* Energy balance: Garmin expenditure vs logged intake */}
-          <EnergyBalanceCard date={date} caloriesEaten={totals.calories} />
-
           {/* Totals summary */}
           {totals.calories > 0 && (
             <div className="card" style={{ padding: 16 }}>
@@ -1821,7 +1818,7 @@ export function NutritionClient({
             const microScore = Math.round((microCount / 22) * 100);
             return (
               <div className="card" style={{ padding: 14 }}>
-                <div className="card-title">Today&apos;s Score</div>
+                <div className="card-title">Day Summary</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
                   {[
                     { label: "Protein", score: protScore, color: "var(--accent)" },
@@ -1838,6 +1835,7 @@ export function NutritionClient({
                     </div>
                   ))}
                 </div>
+                <DayEnergyBalance date={date} caloriesEaten={totals.calories} />
               </div>
             );
           })()}
