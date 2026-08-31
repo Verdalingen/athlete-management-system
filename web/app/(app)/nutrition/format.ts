@@ -1,4 +1,8 @@
+// Abbreviations don't take an "s" in normal usage ("2 tbsp", never "2 tbsps").
+const NO_PLURAL = new Set(["tbsp", "tsp", "oz", "ml", "g", "kg", "lb", "pt", "qt", "gal"]);
+
 function pluralize(label: string): string {
+  if (NO_PLURAL.has(label.toLowerCase())) return label;
   return /[sx]$/.test(label) ? `${label}es` : `${label}s`;
 }
 
@@ -31,4 +35,28 @@ export function formatQty(
     return `${qtyStr} ${label} (${formatWeight(quantityG, unitSystem)})`;
   }
   return formatWeight(quantityG, unitSystem);
+}
+
+// Matches "350°F", "350 °F", "350F", "180°C", "350 degrees F", "180 degrees Celsius".
+// The bare single-letter form is deliberately case-sensitive (F/C only, not f/c) —
+// lowercase "c" after a number is too likely to be something else in free text.
+const TEMP_RE = /(\d+(?:\.\d+)?)\s*°?\s*(?:degrees?\s+)?(Fahrenheit|fahrenheit|Celsius|celsius|F|C)\b/g;
+
+/**
+ * Converts temperature mentions in free-text recipe instructions to the given
+ * unit system. Instructions are unstructured prose (no separate stored value
+ * per mention), so this runs as a render-time text transform rather than a
+ * one-time conversion baked in at import — it stays correct if the user's
+ * unit preference changes later, the same way formatQty/formatWeight do for
+ * ingredient quantities.
+ */
+export function convertTemperaturesInText(text: string, unitSystem: "metric" | "imperial"): string {
+  const targetUnit = unitSystem === "metric" ? "C" : "F";
+  return text.replace(TEMP_RE, (match, valueStr: string, unitWord: string) => {
+    const value = parseFloat(valueStr);
+    const sourceUnit = unitWord[0].toUpperCase() === "F" ? "F" : "C";
+    if (sourceUnit === targetUnit) return match;
+    const converted = sourceUnit === "F" ? (value - 32) * 5 / 9 : value * 9 / 5 + 32;
+    return `${Math.round(converted)}°${targetUnit}`;
+  });
 }

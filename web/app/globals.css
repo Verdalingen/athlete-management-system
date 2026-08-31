@@ -598,13 +598,14 @@ tr:hover td { background: var(--overlay-2); }
 }
 
 /* ── Nutrition top-bar overflow menu (mobile) ──
-   Copy day / units / Meals / Meal Plan / Regenerate today used to render
-   inline next to the day badge and +Log Food — on a narrow phone that's 5
-   extra buttons wrapping into several rows before the diary even starts.
-   Collapse them behind a kebab button into the same absolute-positioned
-   dropdown-panel look the "Copy day" flyout itself already uses. The
-   day-type badge, target, and +Log Food (the primary action) stay inline —
-   they aren't the clutter. */
+   Copy day / Meals / Meal Plan / Regenerate today used to render inline next
+   to the day badge and +Log Food — on a narrow phone that's several extra
+   buttons wrapping into rows before the diary even starts. Collapse them
+   behind a kebab button into the same absolute-positioned dropdown-panel
+   look the "Copy day" flyout itself already uses. The day-type badge,
+   target, and +Log Food (the primary action) stay inline — they aren't the
+   clutter. (The g/oz-lb unit toggle used to live in this row too; it now
+   lives on the Profile/Settings page instead.) */
 /* button.ntr-more-btn (element + class), not .ntr-more-btn alone: the shared
    ".btn-primary, .btn-secondary, ..." rule further down sets its own
    `display: inline-flex` at equal (single-class) specificity and comes later
@@ -624,9 +625,7 @@ button.ntr-more-btn { display: none; }
     border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.4);
     padding: 8px; min-width: 200px;
   }
-  .ntr-secondary-open .ntr-secondary-btn,
-  .ntr-secondary-open .ntr-secondary-unit { width: 100%; }
-  .ntr-secondary-open .ntr-secondary-unit button { flex: 1; }
+  .ntr-secondary-open .ntr-secondary-btn { width: 100%; }
 }
 
 /* ── Nutrition week strip rings ── */

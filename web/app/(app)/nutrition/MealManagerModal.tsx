@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { MEAL_CATEGORIES, type MealCategory, type MealTemplate, type MealDraft } from "./MealBuilderModal";
-import { useFormatQty } from "./UnitSystemContext";
+import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
+import { convertTemperaturesInText } from "./format";
 
 type Props = {
   meals: MealTemplate[];
@@ -20,6 +21,7 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 
 export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, onImportUrl, onLog, loggingMealId, activeMealLabel }: Props) {
   const formatQty = useFormatQty();
+  const [unitSystem] = useUnitSystem();
   const [activeCategory, setActiveCategory] = useState<MealCategory | "All">("All");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -345,7 +347,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                           )}
                           {meal.description && (
                             <div style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "pre-line", marginBottom: 10, lineHeight: 1.5 }}>
-                              {meal.description}
+                              {convertTemperaturesInText(meal.description, unitSystem)}
                             </div>
                           )}
 
@@ -382,7 +384,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                               <div style={{ fontSize: 11, color: "var(--dim)", flexShrink: 0 }}>
                                 {formatQty(item.quantity_g * scale, item.serving_qty ? item.serving_qty * scale : item.serving_qty, item.serving_label)}
                               </div>
-                              <div style={{ fontSize: 11, flexShrink: 0, display: "flex", gap: 8 }}>
+                              <div style={{ fontSize: 11, flexShrink: 0, display: "flex", gap: 8, marginLeft: 4, paddingLeft: 10, borderLeft: "1px solid var(--border)" }}>
                                 <span>{Math.round(item.calories * scale)} kcal</span>
                                 <span style={{ color: "var(--accent)" }}>{r1(item.protein_g * scale)}g</span>
                                 <span style={{ color: "var(--cyan)" }}>{r1(item.carbs_g * scale)}g</span>

@@ -138,14 +138,15 @@ ${rawIngredients.map(i => `- ${i}`).join("\n")}
 ${rawSteps.length ? rawSteps.map((s, i) => `${i + 1}. ${s}`).join("\n") : "(not provided)"}
 
 ## Task
-For each ingredient, estimate: food_name (cleaned up, e.g. "2 tbsp olive oil" -> "Olive oil"), quantity_g (best-effort gram estimate from the stated amount), serving_qty + serving_label when there's a natural discrete unit (e.g. "2 eggs" -> serving_qty 2, serving_label "egg"; omit both otherwise), calories, protein_g, carbs_g, fat_g, fiber_g for that quantity.
+For each ingredient, estimate: food_name (cleaned up, e.g. "2 tbsp olive oil" -> "Olive oil"), quantity_g (best-effort gram estimate from the stated amount — always fill this in, it's the sole basis for macro scaling), and serving_qty + serving_label whenever the source states a natural unit at all — discrete (e.g. "2 eggs" -> serving_qty 2, serving_label "egg") or volumetric (e.g. "1 cup flour" -> serving_qty 1, serving_label "cup"; "2 tbsp olive oil" -> serving_qty 2, serving_label "tbsp"; "1 tsp salt" -> serving_qty 1, serving_label "tsp"). Keep the unit exactly as the source phrased it (cup/tbsp/tsp, not converted to grams for display) — only omit serving_qty/serving_label when the source itself gives a plain weight or volume with no named unit (e.g. "200g", "500ml"). Also estimate calories, protein_g, carbs_g, fat_g, fiber_g for that quantity.
 
-Also rewrite the method as clear, concise numbered steps in your own words (do not copy sentences verbatim from the raw method) — 3-8 steps is typical.
+Also rewrite the method as clear, concise numbered steps in your own words (do not copy sentences verbatim from the raw method) — 3-8 steps is typical. Keep any stated oven temperatures and their original unit (°F or °C) exactly as given — do not convert them.
 
 Respond ONLY with this JSON structure:
 {
   "ingredients": [
-    { "food_name": "Chicken breast", "quantity_g": 200, "calories": 330, "protein_g": 62, "carbs_g": 0, "fat_g": 7, "fiber_g": 0 }
+    { "food_name": "Chicken breast", "quantity_g": 200, "calories": 330, "protein_g": 62, "carbs_g": 0, "fat_g": 7, "fiber_g": 0 },
+    { "food_name": "Flour", "quantity_g": 120, "serving_qty": 1, "serving_label": "cup", "calories": 440, "protein_g": 12, "carbs_g": 92, "fat_g": 1, "fiber_g": 3 }
   ],
   "instructions": "1. Step one.\\n2. Step two."
 }`;
