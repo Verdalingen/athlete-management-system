@@ -446,6 +446,9 @@ export function NutritionClient({
   const [copyOpen, setCopyOpen] = useState(false);
   const [copying, setCopying] = useState(false);
 
+  // Mobile top-bar overflow menu (Copy day / units / Meals / Meal Plan / Regenerate)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
   // Custom foods
   const [customFoods, setCustomFoods] = useState<CustomFood[]>([]);
   const customFoodsLoaded = useRef(false);
@@ -1186,6 +1189,7 @@ export function NutritionClient({
         setMealBuilderOpen(false);
         setMealManagerOpen(false);
         setMealPlanOpen(false);
+        setMoreMenuOpen(false);
       }
     };
     window.addEventListener("keydown", handler);
@@ -1226,101 +1230,121 @@ export function NutritionClient({
               Target <span style={{ color: "var(--accent)", fontWeight: 700 }}>{currentTarget.calories.toLocaleString("en-US")} kcal</span>
             </span>
           )}
-          {/* Copy from previous day */}
+          {/* Secondary actions: inline row on desktop, collapsed behind a
+              kebab menu on mobile (same dropdown-panel styling as the Copy
+              day flyout below) — see .ntr-secondary-actions in globals.css. */}
           <div style={{ position: "relative" }}>
             <button
-              className="btn-secondary"
-              style={{ fontSize: 12, padding: "6px 12px", display: "flex", alignItems: "center", gap: 5 }}
-              onClick={() => setCopyOpen(o => !o)}
-              disabled={copying}
-              title="Copy meals from a previous day"
+              className="btn-secondary ntr-more-btn"
+              onClick={() => setMoreMenuOpen(o => !o)}
+              title="More actions"
+              aria-label="More actions"
+              aria-expanded={moreMenuOpen}
             >
-              <i className="ti ti-copy" style={{ fontSize: 13 }} aria-hidden="true" />
-              {copying ? "Copying…" : "Copy day"}
+              <i className="ti ti-dots-vertical" aria-hidden="true" />
             </button>
-            {copyOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
-                background: "var(--surface)", border: "1px solid var(--border)",
-                borderRadius: "var(--radius)", minWidth: 200, boxShadow: "0 8px 32px rgba(0,0,0,.4)",
-                overflow: "hidden",
-              }}>
-                <div style={{ padding: "8px 14px 6px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em" }}>
-                  Copy food entries from
-                </div>
-                {Array.from({ length: 7 }, (_, i) => {
-                  const d = new Date();
-                  d.setDate(d.getDate() - (i + 1));
-                  const ds = d.toISOString().split("T")[0];
-                  const label = i === 0 ? "Yesterday" : i === 1 ? "2 days ago" : d.toLocaleDateString("en", { weekday: "short", month: "short", day: "numeric" });
-                  return (
-                    <button
-                      key={ds}
-                      onClick={() => copyFromDate(ds)}
-                      className="ntr-search-row"
-                      style={{ width: "100%", display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", background: "none", border: "none", color: "var(--text)", fontSize: 13, textAlign: "left", gap: 8, borderTop: "1px solid rgba(var(--overlay-rgb),.04)" }}
-                    >
-                      <i className="ti ti-calendar" style={{ fontSize: 13, color: "var(--dim)", flexShrink: 0 }} aria-hidden="true" />
-                      {label}
-                    </button>
-                  );
-                })}
-                <div style={{ padding: "6px 14px 8px", fontSize: 10, color: "var(--dim)" }}>
-                  Water entries are not copied
-                </div>
+
+            <div className={`ntr-secondary-actions${moreMenuOpen ? " ntr-secondary-open" : ""}`}>
+              {/* Copy from previous day */}
+              <div style={{ position: "relative" }}>
+                <button
+                  className="btn-secondary ntr-secondary-btn"
+                  style={{ fontSize: 12, padding: "6px 12px", display: "flex", alignItems: "center", gap: 5 }}
+                  onClick={() => setCopyOpen(o => !o)}
+                  disabled={copying}
+                  title="Copy meals from a previous day"
+                >
+                  <i className="ti ti-copy" style={{ fontSize: 13 }} aria-hidden="true" />
+                  {copying ? "Copying…" : "Copy day"}
+                </button>
+                {copyOpen && (
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 100,
+                    background: "var(--surface)", border: "1px solid var(--border)",
+                    borderRadius: "var(--radius)", minWidth: 200, boxShadow: "0 8px 32px rgba(0,0,0,.4)",
+                    overflow: "hidden",
+                  }}>
+                    <div style={{ padding: "8px 14px 6px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em" }}>
+                      Copy food entries from
+                    </div>
+                    {Array.from({ length: 7 }, (_, i) => {
+                      const d = new Date();
+                      d.setDate(d.getDate() - (i + 1));
+                      const ds = d.toISOString().split("T")[0];
+                      const label = i === 0 ? "Yesterday" : i === 1 ? "2 days ago" : d.toLocaleDateString("en", { weekday: "short", month: "short", day: "numeric" });
+                      return (
+                        <button
+                          key={ds}
+                          onClick={() => { copyFromDate(ds); setMoreMenuOpen(false); }}
+                          className="ntr-search-row"
+                          style={{ width: "100%", display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", background: "none", border: "none", color: "var(--text)", fontSize: 13, textAlign: "left", gap: 8, borderTop: "1px solid rgba(var(--overlay-rgb),.04)" }}
+                        >
+                          <i className="ti ti-calendar" style={{ fontSize: 13, color: "var(--dim)", flexShrink: 0 }} aria-hidden="true" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <div style={{ padding: "6px 14px 8px", fontSize: 10, color: "var(--dim)" }}>
+                      Water entries are not copied
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
+
+              <div className="ntr-secondary-unit" style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }} title="Units for ingredient/food quantities">
+                {(["metric", "imperial"] as const).map(u => (
+                  <button
+                    key={u}
+                    onClick={() => setUnitSystem(u)}
+                    style={{
+                      fontSize: 11, fontWeight: 700, padding: "6px 10px", border: "none", cursor: "pointer",
+                      background: unitSystem === u ? "rgba(124,92,255,.15)" : "none",
+                      color: unitSystem === u ? "var(--accent)" : "var(--dim)",
+                    }}
+                  >
+                    {u === "metric" ? "g" : "oz/lb"}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  if (!mealsLoaded.current) {
+                    mealsLoaded.current = true;
+                    fetch("/api/nutrition/meals")
+                      .then(r => r.json())
+                      .then(({ meals }) => setMealTemplates(meals ?? []))
+                      .catch(() => {});
+                  }
+                  setMealManagerOpen(true);
+                  setMoreMenuOpen(false);
+                }}
+                className="ntr-secondary-btn"
+                style={{ fontSize: 12, padding: "6px 14px", background: "rgba(var(--amber-rgb),.1)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
+              >
+                <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 13 }} />
+                Meals
+              </button>
+              <button
+                onClick={() => { setMealPlanOpen(true); setMoreMenuOpen(false); }}
+                className="btn-secondary ntr-secondary-btn"
+                style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5 }}
+              >
+                <i className="ti ti-calendar-week" aria-hidden="true" style={{ fontSize: 13 }} />
+                Meal Plan
+              </button>
+              <button
+                onClick={() => { generateMealRecommendations(1); setMoreMenuOpen(false); }}
+                disabled={recsGenerating}
+                title="Fallback — the coach normally plans the coming week automatically"
+                className="btn-secondary ntr-secondary-btn"
+                style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5, opacity: recsGenerating ? 0.7 : 1 }}
+              >
+                <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 13 }} />
+                {recsGenerating ? "Suggesting…" : "Regenerate today"}
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }} title="Units for ingredient/food quantities">
-            {(["metric", "imperial"] as const).map(u => (
-              <button
-                key={u}
-                onClick={() => setUnitSystem(u)}
-                style={{
-                  fontSize: 11, fontWeight: 700, padding: "6px 10px", border: "none", cursor: "pointer",
-                  background: unitSystem === u ? "rgba(124,92,255,.15)" : "none",
-                  color: unitSystem === u ? "var(--accent)" : "var(--dim)",
-                }}
-              >
-                {u === "metric" ? "g" : "oz/lb"}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => {
-              if (!mealsLoaded.current) {
-                mealsLoaded.current = true;
-                fetch("/api/nutrition/meals")
-                  .then(r => r.json())
-                  .then(({ meals }) => setMealTemplates(meals ?? []))
-                  .catch(() => {});
-              }
-              setMealManagerOpen(true);
-            }}
-            style={{ fontSize: 12, padding: "6px 14px", background: "rgba(var(--amber-rgb),.1)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
-          >
-            <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 13 }} />
-            Meals
-          </button>
-          <button
-            onClick={() => setMealPlanOpen(true)}
-            className="btn-secondary"
-            style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5 }}
-          >
-            <i className="ti ti-calendar-week" aria-hidden="true" style={{ fontSize: 13 }} />
-            Meal Plan
-          </button>
-          <button
-            onClick={() => generateMealRecommendations(1)}
-            disabled={recsGenerating}
-            title="Fallback — the coach normally plans the coming week automatically"
-            className="btn-secondary"
-            style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5, opacity: recsGenerating ? 0.7 : 1 }}
-          >
-            <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 13 }} />
-            {recsGenerating ? "Suggesting…" : "Regenerate today"}
-          </button>
           <button className="btn-primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => openSearch("snacks")}>
             + Log Food
           </button>

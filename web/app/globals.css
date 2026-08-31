@@ -597,6 +597,34 @@ tr:hover td { background: var(--overlay-2); }
   .nutrition-col-micro   { order: 3; }
 }
 
+/* ── Nutrition top-bar overflow menu (mobile) ──
+   Copy day / units / Meals / Meal Plan / Regenerate today used to render
+   inline next to the day badge and +Log Food — on a narrow phone that's 5
+   extra buttons wrapping into several rows before the diary even starts.
+   Collapse them behind a kebab button into the same absolute-positioned
+   dropdown-panel look the "Copy day" flyout itself already uses. The
+   day-type badge, target, and +Log Food (the primary action) stay inline —
+   they aren't the clutter. */
+.ntr-more-btn { display: none; }
+.ntr-secondary-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 768px) {
+  .ntr-more-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; padding: 0; font-size: 16px;
+  }
+  .ntr-secondary-actions { display: none; }
+  .ntr-secondary-actions.ntr-secondary-open {
+    display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 110;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    padding: 8px; min-width: 200px;
+  }
+  .ntr-secondary-open .ntr-secondary-btn,
+  .ntr-secondary-open .ntr-secondary-unit { width: 100%; }
+  .ntr-secondary-open .ntr-secondary-unit button { flex: 1; }
+}
+
 /* ── Nutrition week strip rings ── */
 .weekstrip-ring { width: 46px; height: 46px; }
 .weekstrip-ring-svg { width: 46px; height: 46px; }
