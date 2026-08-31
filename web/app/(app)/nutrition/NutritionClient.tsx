@@ -1821,7 +1821,7 @@ export function NutritionClient({
                 <input
                   ref={searchInputRef}
                   className="input"
-                  placeholder="Search foods (USDA database)…"
+                  placeholder="Search foods (USDA + Open Food Facts)…"
                   value={searchQuery}
                   onChange={e => handleSearch(e.target.value)}
                   style={{ fontSize: 14 }}
@@ -2058,14 +2058,14 @@ export function NutritionClient({
                             </>
                           )}
                           <div style={{ padding: "10px 20px", fontSize: 11, color: "var(--dim)", textAlign: "center" }}>
-                            Or type to search USDA database (1M+ foods)
+                            Or type to search USDA + Open Food Facts (1M+ foods, incl. Nordic brands)
                           </div>
                         </>
                       ) : (
                         <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
                           <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
-                          Type to search the USDA food database
-                          <div style={{ fontSize: 11, marginTop: 6 }}>Over 1 million foods from USDA FoodData Central</div>
+                          Type to search USDA + Open Food Facts
+                          <div style={{ fontSize: 11, marginTop: 6 }}>Over 1 million foods from USDA FoodData Central, plus Open Food Facts&rsquo; global branded-product database (strong Nordic coverage)</div>
                         </div>
                       )}
                     </div>
@@ -2107,7 +2107,7 @@ export function NutritionClient({
                         ))}
                         {searchResults.length > 0 && (
                           <div style={{ padding: "6px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", borderTop: "1px solid var(--border)" }}>
-                            USDA database
+                            Search results
                           </div>
                         )}
                       </>
@@ -2132,9 +2132,9 @@ export function NutritionClient({
                       </div>
                     );
                   })()}
-                  {searchResults.map(food => (
+                  {searchResults.map((food, idx) => (
                     <div
-                      key={food.fdcId}
+                      key={food.fdcId ? `usda-${food.fdcId}` : `off-${idx}`}
                       onClick={() => selectSearchResult(food)}
                       className="ntr-search-row"
                       style={{ display: "flex", alignItems: "center", padding: "10px 20px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)" }}
