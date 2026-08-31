@@ -12,7 +12,7 @@ import { MealManagerModal } from "./MealManagerModal";
 import { WeeklyMealPlanModal } from "./WeeklyMealPlanModal";
 import { QuantityInput } from "./QuantityInput";
 import type { Portion } from "./useQuantityInput";
-import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
+import { useFormatQty } from "./UnitSystemContext";
 import { todayISO } from "@/lib/dates";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -400,7 +400,6 @@ export function NutritionClient({
   mealRecommendations: MealRecommendation[];
 }) {
   const formatQty = useFormatQty();
-  const [unitSystem, setUnitSystem] = useUnitSystem();
   const [date, setDate] = useState(initialDate);
   const [entries, setEntries] = useState<DiaryEntry[]>(initialEntries);
   const [loadingEntries, setLoadingEntries] = useState(false);
@@ -1291,21 +1290,6 @@ export function NutritionClient({
                 )}
               </div>
 
-              <div className="ntr-secondary-unit" style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }} title="Units for ingredient/food quantities">
-                {(["metric", "imperial"] as const).map(u => (
-                  <button
-                    key={u}
-                    onClick={() => setUnitSystem(u)}
-                    style={{
-                      fontSize: 11, fontWeight: 700, padding: "6px 10px", border: "none", cursor: "pointer",
-                      background: unitSystem === u ? "rgba(124,92,255,.15)" : "none",
-                      color: unitSystem === u ? "var(--accent)" : "var(--dim)",
-                    }}
-                  >
-                    {u === "metric" ? "g" : "oz/lb"}
-                  </button>
-                ))}
-              </div>
               <button
                 onClick={() => {
                   if (!mealsLoaded.current) {

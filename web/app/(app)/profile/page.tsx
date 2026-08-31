@@ -6,6 +6,7 @@ import type { Plan } from "@/lib/types";
 import { signOut } from "@/app/login/actions";
 import { MaxHRInput } from "./MaxHRInput";
 import { ThemeToggle } from "./ThemeToggle";
+import { UnitsToggle } from "./UnitsToggle";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
 import Link from "next/link";
 
@@ -210,6 +211,20 @@ export default async function ProfilePage() {
             <div style={{ fontSize: 13, color: "var(--muted)" }}>Applies immediately and remembers your choice on this device.</div>
           </div>
           <ThemeToggle />
+        </div>
+      </section>
+
+      {/* ── Units ── */}
+      <section className="section">
+        <h2 className="section-title">Units</h2>
+        <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>Measurement system</div>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>
+              Applies to food quantities and, in recipe instructions, oven temperatures — imported cup/tbsp/tsp measurements are kept as written either way.
+            </div>
+          </div>
+          <UnitsToggle />
         </div>
       </section>
 
