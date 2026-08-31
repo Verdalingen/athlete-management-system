@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { searchOpenFoodFacts } from "../_lib/openfoodfacts";
 
 const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
 const API_KEY = process.env.USDA_FDC_API_KEY ?? "DEMO_KEY";
@@ -120,27 +121,38 @@ function formatFood(raw: Record<string, any>) {
   };
 }
 
-export async function GET(req: NextRequest) {
-  const q = req.nextUrl.searchParams.get("q")?.trim();
-  if (!q || q.length < 2) {
-    return NextResponse.json({ foods: [] });
-  }
-
+// USDA FoodData Central is US-centric (branded coverage skews to US retail, generic
+// foods use US conventions) so it's weak on Nordic/European branded products — merge
+// in Open Food Facts, which has much better Scandinavian coverage (Kiwi/Rema/Coop own
+// brands, Freia, Mills, Tine, Orkla brands, etc.), run in parallel. Best-effort: a USDA
+// outage still returns OFF results and vice versa, matching each search's own error handling.
+async function searchUsda(q: string) {
   const url = new URL(`${USDA_BASE}/foods/search`);
   url.searchParams.set("query", q);
   url.searchParams.set("api_key", API_KEY);
   url.searchParams.set("pageSize", "25");
   url.searchParams.set("dataType", "Branded,SR Legacy,Foundation");
 
-  const res = await fetch(url.toString(), {
-    next: { revalidate: 3600 },
-  });
+  try {
+    const res = await fetch(url.toString(), { next: { revalidate: 3600 } });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json.foods ?? []).map(formatFood);
+  } catch {
+    return [];
+  }
+}
 
-  if (!res.ok) {
-    return NextResponse.json({ foods: [], error: "USDA API error" }, { status: 502 });
+export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams.get("q")?.trim();
+  if (!q || q.length < 2) {
+    return NextResponse.json({ foods: [] });
   }
 
-  const json = await res.json();
-  const foods = (json.foods ?? []).map(formatFood);
-  return NextResponse.json({ foods });
+  const [usdaFoods, offFoods] = await Promise.all([
+    searchUsda(q),
+    searchOpenFoodFacts(q),
+  ]);
+
+  return NextResponse.json({ foods: [...usdaFoods, ...offFoods] });
 }

@@ -281,7 +281,7 @@ export function MealBuilderModal({ onSave, onClose, initial }: Props) {
           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Add ingredient</div>
           <input
             className="input"
-            placeholder="Search USDA database…"
+            placeholder="Search foods…"
             value={query}
             onChange={e => handleSearch(e.target.value)}
             style={{ fontSize: 13 }}
@@ -289,9 +289,9 @@ export function MealBuilderModal({ onSave, onClose, initial }: Props) {
           {(results.length > 0 || searching) && (
             <div style={{ border: "1px solid var(--border)", borderRadius: 8, marginTop: 4, maxHeight: 200, overflowY: "auto", background: "var(--surface)" }}>
               {searching && <div style={{ padding: "10px 14px", fontSize: 12, color: "var(--dim)" }}>Searching…</div>}
-              {results.map(food => (
+              {results.map((food, idx) => (
                 <div
-                  key={food.fdcId}
+                  key={food.fdcId ? `usda-${food.fdcId}` : `off-${idx}`}
                   onClick={() => addIngredient(food)}
                   style={{ display: "flex", alignItems: "center", padding: "9px 14px", cursor: "pointer", borderBottom: "1px solid rgba(var(--overlay-rgb),.04)", gap: 10 }}
                   className="ntr-search-row"
