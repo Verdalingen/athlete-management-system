@@ -20,7 +20,7 @@ version = "2.2.0"
 description = "CLI tool for Garmin data analysis with AI-powered insights"
 requires-python = ">=3.13"
 authors = [
-    {name = "Developer"}
+    {name = "Adrian Walderhaug-Johnsen"}
 ]
 # Dependencies now managed by Pixi in pixi.toml
 
@@ -117,6 +117,10 @@ ignore = [
     "D106",
     "D107",
     "D415",
+    # Docstrings here favor a flowing multi-sentence summary over the strict Google
+    # convention (one-line summary, blank line, then detail) — reformatting ~50
+    # existing docstrings to fit the convention isn't worth the churn.
+    "D205",
     # function call in argument defaults
     "B008",
     # line-too-long (handled by formatter and line-length)
@@ -125,17 +129,19 @@ ignore = [
     "E402",
     # import-outside-toplevel (needed for optional dependencies)
     "PLC0415",
-    # too-many-… (sometimes necessary for complex orchestration code)
+    # too-many-… / too-complex (sometimes necessary for complex orchestration code;
+    # C901 measures the same branchy-control-flow property as PLR0912)
     "PLR0911",
     "PLR0912",
     "PLR0913",
     "PLR0915",
+    "C901",
     # magic values
     "PLR2004",
     # ClassVar mutable default false-positives
     "RUF012",
     # type-checking imports
-    "TCH001",
+    "TC001",
 ]
 
 [tool.ruff.lint.isort]

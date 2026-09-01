@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import os
@@ -5,7 +6,6 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from services.ai.ai_settings import AgentRole
-from services.ai.langgraph.schemas import AgentOutput
 from services.ai.langgraph.schemas.agent_outputs import WeeklyPlanOutput
 from services.ai.langgraph.state.training_analysis_state import TrainingAnalysisState
 from services.ai.langgraph.utils.message_helper import normalize_langchain_messages
@@ -320,7 +320,7 @@ Rules:
 - description: for session_type="run", leave this as a short placeholder (e.g. the focus text) —
   it is ignored and overwritten from the running_sessions segments for that date, see the
   Structured Running Sessions rule above. For "strength", use compact notation matching the
-  slot's content (e.g. "Bench 5×5 @ 97.5kg + row 4×8"). Empty string for rest days.
+  slot's content (e.g. "Bench 5x5 @ 97.5kg + row 4x8"). Empty string for rest days.
 - is_key_session: true for hard interval sessions, long runs >75min, and heavy strength days.
   Most easy aerobic runs should be is_key_session=false AND is_rest=false — this is a real,
   expected middle category, not an edge case. Marking every non-rest day as key indicates you are
@@ -423,7 +423,8 @@ _MUSCLE_GROUP_BUCKETS = {
 def _slot_muscle_groups(templates: list[dict[str, Any]]) -> dict[str, set[str]]:
     """Muscle-group buckets ('upper'/'lower'/'core') present in each strength session template
     slot (a slot can have more than one, e.g. a slot combining legs + back + biceps is both
-    'lower' and 'upper'). Templates are fixed, so this is exact, not a best-effort guess."""
+    'lower' and 'upper'). Templates are fixed, so this is exact, not a best-effort guess.
+    """
     by_slot: dict[str, set[str]] = {}
     for row in templates:
         bucket = _MUSCLE_GROUP_BUCKETS.get((row.get("garmin_category") or "").upper())
@@ -440,18 +441,19 @@ def _check_strength_recovery_spacing(
     """Post-generation visibility check: flag adjacent-day strength sessions whose assigned slots
     share a muscle-group bucket (e.g. two slots that both include legs, scheduled back-to-back).
     Same philosophy as the recurring-request check — surface it in coach_feedback, don't
-    retry-loop."""
+    retry-loop.
+    """
     if not scheduled_days or not strength_sessions or not templates:
         return []
 
     slot_groups = _slot_muscle_groups(templates)
     slot_by_date = {s.get("date"): s.get("slot") for s in strength_sessions if s.get("date")}
-    strength_dates = sorted(
-        d.get("date") for d in scheduled_days if d.get("session_type") == "strength" and d.get("date")
+    strength_dates: list[str] = sorted(
+        d["date"] for d in scheduled_days if d.get("session_type") == "strength" and d.get("date")
     )
 
     warnings: list[str] = []
-    for prev_date, next_date in zip(strength_dates, strength_dates[1:]):
+    for prev_date, next_date in itertools.pairwise(strength_dates):
         try:
             gap_days = (date.fromisoformat(next_date) - date.fromisoformat(prev_date)).days
         except ValueError:
@@ -530,7 +532,7 @@ def _fix_weekly_volume(
 
     def is_strength(iso: str) -> bool:
         day = by_date.get(iso)
-        return bool(day) and day.get("session_type") == "strength" and not day.get("is_rest")
+        return bool(day and day.get("session_type") == "strength" and not day.get("is_rest"))
 
     for week_start, dates in sorted(weeks.items()):
         if len(dates) < 7:
@@ -593,7 +595,7 @@ def _fix_weekly_volume(
                     day = by_date[iso]
                     return bool(day.get("is_rest") or day.get("session_type") in (None, "rest"))
 
-                def spacing_ok(iso: str) -> bool:
+                def spacing_ok(iso: str, session_type: str = session_type) -> bool:
                     if session_type != "strength":
                         return True
                     d = date.fromisoformat(iso)
@@ -623,10 +625,10 @@ def _fix_weekly_volume(
                         day = by_date[iso]
                         if is_free(iso) or day.get("is_key_session") or day.get("session_type") == session_type:
                             continue
-                        target = next((o for o in dates if is_free(o) and o != iso), None)
-                        if target is None or not spacing_ok(iso):
+                        dest = next((o for o in dates if is_free(o) and o != iso), None)
+                        if dest is None or not spacing_ok(iso):
                             continue
-                        by_date[target].update({
+                        by_date[dest].update({
                             "session_type": day.get("session_type"), "focus": day.get("focus"),
                             "description": day.get("description"), "is_rest": False,
                             "is_key_session": False,
@@ -634,10 +636,10 @@ def _fix_weekly_volume(
                         for coll in (running_sessions, strength_sessions):
                             for entry in coll:
                                 if entry.get("date") == iso:
-                                    entry["date"] = target
+                                    entry["date"] = dest
                         logger.info(
                             "Auto-corrected weekly volume: displaced %s from %s to %s to reclaim a "
-                            "preferred %s day", day.get("focus"), iso, target, session_type,
+                            "preferred %s day", day.get("focus"), iso, dest, session_type,
                         )
                         slot_iso = iso
                         break
@@ -733,7 +735,7 @@ def _fix_legs_before_hard_runs(
     strength_by_date = {s["date"]: s for s in strength_sessions if s.get("date")}
 
     def is_leg_slot(slot: str | None) -> bool:
-        return bool(slot) and "lower" in slot_groups.get(slot, set())
+        return bool(slot and "lower" in slot_groups.get(slot, set()))
 
     sorted_strength_dates = sorted(strength_by_date.keys())
     true_slot_by_date: dict[str, str] = {}

@@ -7,6 +7,8 @@ kcal/kg/km (planned directly, or derived from duration + target pace). This exis
 two "hard" days with very different sessions (a heavy squat day vs. a 15km tempo run) don't collapse
 into the same historical-bucket-average estimate.
 """
+from typing import Any
+
 import pytest
 
 from services.supabase.plan_writer import (
@@ -106,7 +108,7 @@ class _FakeDailyMetricsQuery:
     under `.lte`, because it sorts later by date.
     """
 
-    ROWS = [
+    ROWS: list[dict[str, Any]] = [
         {"date": "2026-08-29", "bmr_calories": 2429},
         {"date": "2026-08-30", "bmr_calories": 971},  # still-accumulating partial-day reading
     ]

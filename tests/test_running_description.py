@@ -167,7 +167,8 @@ class TestDurationEstimation:
 class TestRecoveryNormalisation:
     """The schema says only the work interval should be distance-based, but the LLM has been
     observed emitting a distance-based jog recovery with no pace at all. Rather than keep
-    tightening prompt wording, the rule is enforced in code."""
+    tightening prompt wording, the rule is enforced in code.
+    """
 
     def test_a_distance_based_recovery_becomes_time_based(self):
         segments = [seg("recovery", distance_meters=200)]

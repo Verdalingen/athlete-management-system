@@ -58,7 +58,7 @@ For each of the 6 weeks (Week 6 → Race Week):
 |---|---|---|---|---|
 
 ### 3. Race Week Protocol
-- Mon–Sat daily schedule (very specific)
+- Mon-Sat daily schedule (very specific)
 - Sleep and travel logistics
 - Pre-race day routine
 

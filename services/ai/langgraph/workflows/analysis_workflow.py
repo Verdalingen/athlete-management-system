@@ -8,10 +8,10 @@ from services.ai.langgraph.config.langsmith_config import LangSmithConfig
 from services.ai.langgraph.nodes.activity_expert_node import activity_expert_node
 from services.ai.langgraph.nodes.activity_summarizer_node import activity_summarizer_node
 from services.ai.langgraph.nodes.formatter_node import formatter_node
-from services.ai.langgraph.nodes.metrics_expert_node import metrics_expert_node
-from services.ai.langgraph.nodes.metrics_summarizer_node import metrics_summarizer_node
 from services.ai.langgraph.nodes.lifestyle_expert_node import lifestyle_expert_node
 from services.ai.langgraph.nodes.lifestyle_summarizer_node import lifestyle_summarizer_node
+from services.ai.langgraph.nodes.metrics_expert_node import metrics_expert_node
+from services.ai.langgraph.nodes.metrics_summarizer_node import metrics_summarizer_node
 from services.ai.langgraph.nodes.nutrition_expert_node import nutrition_expert_node
 from services.ai.langgraph.nodes.nutrition_summarizer_node import nutrition_summarizer_node
 from services.ai.langgraph.nodes.orchestrator_node import master_orchestrator_node

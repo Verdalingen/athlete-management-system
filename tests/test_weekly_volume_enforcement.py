@@ -33,7 +33,8 @@ def make_day(iso: str, session_type: str = "rest", **kw) -> dict:
 
 def make_week(types: list[str], start: str = MONDAY, **per_day) -> list[dict]:
     """Seven days from `start`, one session_type each. `per_day` keys like d0/d6 pass extra
-    fields through to that day (e.g. d2={"is_key_session": True})."""
+    fields through to that day (e.g. d2={"is_key_session": True}).
+    """
     days = []
     for i, st in enumerate(types):
         iso = (date.fromisoformat(start) + timedelta(days=i)).isoformat()

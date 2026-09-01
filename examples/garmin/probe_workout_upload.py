@@ -7,11 +7,16 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from services.garmin.client import GarminConnectClient
 from services.garmin.strength_uploader import (
-    PlannedExercise, PlannedSet, PlannedStrengthSession, build_strength_workout_json, upload_strength_session
+    PlannedExercise,
+    PlannedSet,
+    PlannedStrengthSession,
+    build_strength_workout_json,
+    upload_strength_session,
 )
 
 
@@ -27,7 +32,7 @@ def main() -> None:
 
     # Matches Tue Jun 23 from the current weekly plan
     session = PlannedStrengthSession(
-        name="[TEST] Strength A – Bench Focus",
+        name="[TEST] Strength A - Bench Focus",
         date="2026-06-23",
         exercises=[
             PlannedExercise(

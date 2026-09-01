@@ -7,6 +7,14 @@ from services.garmin.models import GarminData
 
 
 @pytest.mark.asyncio
+@patch("cli.garmin_ai_coach_cli._sync_completed_exercise_sets")
+@patch("cli.garmin_ai_coach_cli.upsert_completed_activities")
+@patch("cli.garmin_ai_coach_cli.upsert_daily_metrics_batch")
+@patch("cli.garmin_ai_coach_cli._write_to_supabase")
+@patch("cli.garmin_ai_coach_cli.get_sync_gap_days", side_effect=lambda days: days)
+@patch("services.supabase.athlete_profile.get_recurring_session_requests", return_value=[])
+@patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
+@patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
 @patch("services.garmin.TriathlonCoachDataExtractor")
 @patch("services.outside.client.OutsideApiGraphQlClient")
@@ -14,9 +22,26 @@ async def test_cli_e2e_smoke_with_mocks(
     mock_outside_client,
     mock_extractor_class,
     mock_workflow,
+    mock_get_analysis_context,
+    mock_build_planning_context,
+    mock_get_recurring_session_requests,
+    mock_write_to_supabase,
+    mock_get_sync_gap_days,
+    mock_upsert_daily_metrics_batch,
+    mock_upsert_completed_activities,
+    mock_sync_completed_exercise_sets,
     tmp_path,
+    monkeypatch,
 ):
-    """Test CLI end-to-end with all external dependencies mocked."""
+    """Test CLI end-to-end with all external dependencies mocked.
+
+    Coaching context is read live from Supabase (services.supabase.athlete_profile), not from
+    the config file's context.analysis/planning fields — those are accepted for backward
+    compatibility but ignored (see ConfigParser.get_contexts()). The post-generation Supabase
+    writes (_write_to_supabase and friends) are mocked too, since this test only asserts on
+    the local HTML/JSON outputs.
+    """
+    monkeypatch.setenv("SUPABASE_USER_ID", "test-user-id")
     # Configure workflow mock
     mock_workflow.return_value = {
         "analysis_html": "<html><body>Analysis OK</body></html>",
@@ -84,6 +109,14 @@ credentials:
 
 
 @pytest.mark.asyncio
+@patch("cli.garmin_ai_coach_cli._sync_completed_exercise_sets")
+@patch("cli.garmin_ai_coach_cli.upsert_completed_activities")
+@patch("cli.garmin_ai_coach_cli.upsert_daily_metrics_batch")
+@patch("cli.garmin_ai_coach_cli._write_to_supabase")
+@patch("cli.garmin_ai_coach_cli.get_sync_gap_days", side_effect=lambda days: days)
+@patch("services.supabase.athlete_profile.get_recurring_session_requests", return_value=[])
+@patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
+@patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
 @patch("services.garmin.TriathlonCoachDataExtractor")
 @patch("services.outside.client.OutsideApiGraphQlClient")
@@ -95,9 +128,19 @@ async def test_cli_e2e_with_hitl_enabled(
     mock_outside_client,
     mock_extractor_class,
     mock_workflow,
+    mock_get_analysis_context,
+    mock_build_planning_context,
+    mock_get_recurring_session_requests,
+    mock_write_to_supabase,
+    mock_get_sync_gap_days,
+    mock_upsert_daily_metrics_batch,
+    mock_upsert_completed_activities,
+    mock_sync_completed_exercise_sets,
     tmp_path,
+    monkeypatch,
 ):
     """Test CLI with HITL enabled to ensure user interactions work."""
+    monkeypatch.setenv("SUPABASE_USER_ID", "test-user-id")
     # Configure workflow mock
     mock_workflow.return_value = {
         "analysis_html": "<html><body>Analysis with HITL</body></html>",

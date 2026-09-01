@@ -39,7 +39,7 @@ const CONFIDENCE_LABEL: Record<string, string> = {
 
 type Phase = "capture" | "preview" | "analyzing" | "results";
 
-export function PhotoFoodCapture({ meal, mealLabel, onLog, onClose }: Props) {
+export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("capture");
   const [imageUrl, setImageUrl] = useState<string | null>(null);

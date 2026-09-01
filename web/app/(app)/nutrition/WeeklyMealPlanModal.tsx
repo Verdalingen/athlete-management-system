@@ -200,7 +200,7 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
                       checked={isChecked}
                       onChange={() => setCheckedItems(prev => {
                         const next = new Set(prev);
-                        next.has(item.name) ? next.delete(item.name) : next.add(item.name);
+                        if (next.has(item.name)) next.delete(item.name); else next.add(item.name);
                         return next;
                       })}
                     />
@@ -221,7 +221,7 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
               return (
                 <div key={d} style={{ marginBottom: 18 }}>
                   <button
-                    onClick={() => setCollapsedDays(prev => { const next = new Set(prev); next.has(d) ? next.delete(d) : next.add(d); return next; })}
+                    onClick={() => setCollapsedDays(prev => { const next = new Set(prev); if (next.has(d)) next.delete(d); else next.add(d); return next; })}
                     style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", background: "none", border: "none", cursor: "pointer", padding: "4px 0", marginBottom: isDayCollapsed ? 0 : 8 }}
                   >
                     <i
@@ -249,7 +249,7 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
                         <div key={key} style={{ background: "rgba(124,92,255,.05)", border: "1px solid rgba(124,92,255,.12)", borderRadius: "var(--radius)", padding: "8px 12px", marginBottom: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <button
-                              onClick={() => setExpanded(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; })}
+                              onClick={() => setExpanded(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
                               title={isExpanded ? "Collapse ingredients" : "Expand ingredients"}
                               style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 16, padding: "8px 10px 8px 4px", margin: "-8px 0 -8px -4px", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1, flexShrink: 0 }}
                             >›</button>

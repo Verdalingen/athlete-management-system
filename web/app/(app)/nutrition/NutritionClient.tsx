@@ -562,6 +562,45 @@ export function NutritionClient({
     }, 400);
   }, []);
 
+  // Selects a food for the quantity-entry step and fetches its USDA portion
+  // options (foodPortions) in the background — grams stay usable immediately,
+  // the piece-unit picker just populates a moment later once fetched.
+  // Fallback for branded/packaged foods with no USDA foodPortions array but a
+  // household-serving label (e.g. "1 slice"): synthesize a single portion so
+  // the picker still offers a natural unit instead of grams-only.
+  function impliedPortion(food: USDAFood): Portion[] {
+    if (!food.servingLabel || !food.servingSize) return [];
+    const noun = food.servingLabel.replace(/^[\d.]+\s*/, "").split("(")[0].trim();
+    return [{ label: noun || "serving", gramWeight: food.servingSize }];
+  }
+
+  const selectSearchResult = useCallback(async (food: USDAFood) => {
+    setSelectedFood(food);
+    setAddQty(food.servingSize ? Math.round(food.servingSize) : 100);
+    setAddServingQty(null);
+    setAddServingLabel(null);
+    if (food.isCustom || !food.fdcId) {
+      // No USDA fdcId to look up (custom food or barcode/OFF item) — the food
+      // object already carries any portions the caller synthesized (custom
+      // foods) or none; fall back to an implied single serving if possible.
+      if (!food.portions?.length) {
+        setSelectedFood(prev => (prev ? { ...prev, portions: impliedPortion(food) } : prev));
+      }
+      return;
+    }
+    setPortionsLoading(true);
+    try {
+      const res = await fetch(`/api/nutrition/food-details?ids=${food.fdcId}`);
+      const { foods } = await res.json() as { foods?: Array<{ fdcId: number; portions?: Portion[] }> };
+      const portions = foods?.[0]?.portions?.length ? foods[0].portions : impliedPortion(food);
+      setSelectedFood(prev => (prev && prev.fdcId === food.fdcId ? { ...prev, portions } : prev));
+    } catch {
+      // degrade to grams-only — non-fatal
+    } finally {
+      setPortionsLoading(false);
+    }
+  }, []);
+
   const handleBarcodeScan = useCallback(async (barcode: string) => {
     setScannerOpen(false);
     setBarcodeLoading(true);
@@ -583,7 +622,7 @@ export function NutritionClient({
     } finally {
       setBarcodeLoading(false);
     }
-  }, []);
+  }, [selectSearchResult]);
 
   const handlePhotoLog = useCallback(async (
     aiItems: Array<{ food_name: string; quantity_g: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g?: number; usda_fdc_id?: number; }>
@@ -770,7 +809,7 @@ export function NutritionClient({
 
     // Fetch full nutritional data (including micros) for USDA ingredients
     const fdcIds = items.map(it => it.usda_fdc_id).filter((id): id is number => Boolean(id));
-    let fdcMap: Record<number, Record<string, number>> = {};
+    const fdcMap: Record<number, Record<string, number>> = {};
     if (fdcIds.length) {
       try {
         const r = await fetch(`/api/nutrition/food-details?ids=${fdcIds.join(",")}`);
@@ -935,45 +974,6 @@ export function NutritionClient({
   };
 
   // ── Add food ──────────────────────────────────────────────────────────────
-
-  // Selects a food for the quantity-entry step and fetches its USDA portion
-  // options (foodPortions) in the background — grams stay usable immediately,
-  // the piece-unit picker just populates a moment later once fetched.
-  // Fallback for branded/packaged foods with no USDA foodPortions array but a
-  // household-serving label (e.g. "1 slice"): synthesize a single portion so
-  // the picker still offers a natural unit instead of grams-only.
-  function impliedPortion(food: USDAFood): Portion[] {
-    if (!food.servingLabel || !food.servingSize) return [];
-    const noun = food.servingLabel.replace(/^[\d.]+\s*/, "").split("(")[0].trim();
-    return [{ label: noun || "serving", gramWeight: food.servingSize }];
-  }
-
-  const selectSearchResult = useCallback(async (food: USDAFood) => {
-    setSelectedFood(food);
-    setAddQty(food.servingSize ? Math.round(food.servingSize) : 100);
-    setAddServingQty(null);
-    setAddServingLabel(null);
-    if (food.isCustom || !food.fdcId) {
-      // No USDA fdcId to look up (custom food or barcode/OFF item) — the food
-      // object already carries any portions the caller synthesized (custom
-      // foods) or none; fall back to an implied single serving if possible.
-      if (!food.portions?.length) {
-        setSelectedFood(prev => (prev ? { ...prev, portions: impliedPortion(food) } : prev));
-      }
-      return;
-    }
-    setPortionsLoading(true);
-    try {
-      const res = await fetch(`/api/nutrition/food-details?ids=${food.fdcId}`);
-      const { foods } = await res.json() as { foods?: Array<{ fdcId: number; portions?: Portion[] }> };
-      const portions = foods?.[0]?.portions?.length ? foods[0].portions : impliedPortion(food);
-      setSelectedFood(prev => (prev && prev.fdcId === food.fdcId ? { ...prev, portions } : prev));
-    } catch {
-      // degrade to grams-only — non-fatal
-    } finally {
-      setPortionsLoading(false);
-    }
-  }, []);
 
   const handleAddFood = async (food: USDAFood, meal: string, qty: number, servingQty?: number | null, servingLabel?: string | null) => {
     setAddingFood(true);
@@ -1425,7 +1425,7 @@ export function NutritionClient({
           {/* Totals summary */}
           {totals.calories > 0 && (
             <div className="card" style={{ padding: 16 }}>
-              <div className="card-title">Today's totals</div>
+              <div className="card-title">Today&apos;s totals</div>
               {[
                 ["Sugar", totals.sugar_g, "g"],
                 ["Sodium", totals.sodium_mg, "mg"],
@@ -1510,7 +1510,7 @@ export function NutritionClient({
                         <button
                           onClick={() => setExpandedRecs(prev => {
                             const next = new Set(prev);
-                            next.has(meal.key) ? next.delete(meal.key) : next.add(meal.key);
+                            if (next.has(meal.key)) next.delete(meal.key); else next.add(meal.key);
                             return next;
                           })}
                           style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, transform: isRecExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1 }}
@@ -1570,7 +1570,7 @@ export function NutritionClient({
                           <button
                             onClick={() => setExpandedEntries(prev => {
                               const next = new Set(prev);
-                              next.has(entry.id) ? next.delete(entry.id) : next.add(entry.id);
+                              if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
                               return next;
                             })}
                             style={{ background: "none", border: "none", color: "var(--amber)", cursor: "pointer", fontSize: 13, padding: "0 4px 0 0", flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1 }}

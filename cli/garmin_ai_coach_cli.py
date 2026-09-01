@@ -9,7 +9,7 @@ import os
 import re
 import sys
 from dataclasses import asdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,14 +25,50 @@ from services.ai.utils.plan_storage import FilePlanStorage
 from services.garmin import ExtractionConfig, TriathlonCoachDataExtractor
 from services.garmin.client import GarminConnectClient
 from services.garmin.credentials import resolve_garmin_credentials
-from services.garmin.strength_uploader import PlannedExercise, PlannedSet, PlannedStrengthSession, delete_strength_workout, upload_strength_session
-from services.garmin.running_uploader import PlannedRunningSegment, PlannedRunningSession, delete_running_workout, estimate_running_duration_secs, normalize_recovery_segments, render_running_description, upload_running_session
-from services.outside.client import OutsideApiGraphQlClient
-from services.garmin.history_sync import build_daily_metrics_records, build_completed_activity_records, build_completed_exercise_set_records
+from services.garmin.history_sync import (
+    build_completed_activity_records,
+    build_completed_exercise_set_records,
+    build_daily_metrics_records,
+)
+from services.garmin.running_uploader import (
+    PlannedRunningSegment,
+    PlannedRunningSession,
+    delete_running_workout,
+    estimate_running_duration_secs,
+    normalize_recovery_segments,
+    render_running_description,
+    upload_running_session,
+)
+from services.garmin.strength_uploader import (
+    PlannedExercise,
+    PlannedSet,
+    PlannedStrengthSession,
+    delete_strength_workout,
+    upload_strength_session,
+)
 from services.garmin.training_paces import extract_predicted_5k_secs
-from services.supabase.client import get_supabase
+from services.outside.client import OutsideApiGraphQlClient
+from services.supabase.client import get_supabase, rows
 from services.supabase.plan_drift import analyze_plan_drift
-from services.supabase.plan_writer import shift_plan, write_plan, write_report, upsert_kpis, upsert_daily_metrics_batch, upsert_completed_activities, get_future_garmin_workout_ids, get_future_garmin_running_workout_ids, get_planned_exercises_by_date, upsert_completed_exercise_sets, expand_strength_session_slots, sync_todays_nutrition_target, get_sync_gap_days, write_weekly_review, render_coach_feedback_html, compute_weekly_kpi_delta, monday_of
+from services.supabase.plan_writer import (
+    compute_weekly_kpi_delta,
+    expand_strength_session_slots,
+    get_future_garmin_running_workout_ids,
+    get_future_garmin_workout_ids,
+    get_planned_exercises_by_date,
+    get_sync_gap_days,
+    monday_of,
+    render_coach_feedback_html,
+    shift_plan,
+    sync_todays_nutrition_target,
+    upsert_completed_activities,
+    upsert_completed_exercise_sets,
+    upsert_daily_metrics_batch,
+    upsert_kpis,
+    write_plan,
+    write_report,
+    write_weekly_review,
+)
 
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -447,7 +483,8 @@ async def run_replan_from_config(
     outer_scheduled_days: list[dict] | None = None,
 ) -> str | None:
     """Tier-2 check-in: assess the last week, give feedback, and optionally update the 6-week schedule.
-    Returns coach_feedback text (or None) so the caller can save it to the job row."""
+    Returns coach_feedback text (or None) so the caller can save it to the job row.
+    """
     config_parser = ConfigParser(config_path)
     athlete_name, email = config_parser.get_athlete_info()
     _, planning_context = config_parser.get_contexts()
@@ -674,7 +711,7 @@ def _compute_kpis(garmin_data: dict[str, Any]) -> dict[str, Any]:
     from statistics import mean as _mean
 
     def _dg(*keys: str, src: dict | None = None) -> Any:
-        node = src if src is not None else garmin_data
+        node: Any = src if src is not None else garmin_data
         for k in keys:
             if not isinstance(node, dict):
                 return None
@@ -887,7 +924,8 @@ def _compute_predicted_5k_secs(garmin_data: dict[str, Any]) -> int | None:
 def _compute_predicted_race_secs(garmin_data: dict[str, Any], key: str) -> int | None:
     """Extract a race-time prediction (seconds) from Garmin's race_predictions payload —
     confirmed live flat with int-seconds keys time5K/time10K/timeHalfMarathon/timeMarathon
-    (see _compute_kpis' race_predictions block for the same mapping)."""
+    (see _compute_kpis' race_predictions block for the same mapping).
+    """
     preds = garmin_data.get("race_predictions") or {}
     v = preds.get(key)
     if v is None:
@@ -1045,8 +1083,8 @@ def _sync_strength_sessions(
         ).items():
             to_delete.setdefault(session_date, set()).update(ids)
 
-        for session_date, ids in to_delete.items():
-            for workout_id in ids:
+        for session_date, id_set in to_delete.items():
+            for workout_id in id_set:
                 try:
                     delete_strength_workout(client, workout_id)
                 except Exception:
@@ -1134,8 +1172,8 @@ def _sync_running_sessions(
         ).items():
             to_delete.setdefault(session_date, set()).update(ids)
 
-        for session_date, ids in to_delete.items():
-            for workout_id in ids:
+        for session_date, id_set in to_delete.items():
+            for workout_id in id_set:
                 try:
                     delete_running_workout(client, workout_id)
                 except Exception:
@@ -1189,7 +1227,7 @@ def _sync_running_sessions(
 
 async def process_queue(config_path: Path) -> None:
     """Process pending replan jobs queued via the web UI."""
-    from services.supabase.client import get_supabase
+    from services.supabase.client import get_supabase, rows
 
     sb = get_supabase()
     uid = os.environ.get("SUPABASE_USER_ID", "")
@@ -1197,8 +1235,9 @@ async def process_queue(config_path: Path) -> None:
         logger.error("❌ SUPABASE_USER_ID not set — cannot process queue")
         sys.exit(1)
 
-    result = sb.table("replan_jobs").select("*").eq("user_id", uid).eq("status", "pending").order("created_at").execute()
-    jobs = result.data or []
+    jobs = rows(
+        sb.table("replan_jobs").select("*").eq("user_id", uid).eq("status", "pending").order("created_at").execute()
+    )
 
     if not jobs:
         logger.info("✅ No pending replan jobs.")
@@ -1218,7 +1257,7 @@ async def process_queue(config_path: Path) -> None:
             "status": "running",
             # UTC-aware — a naive local timestamp gets misread as already-UTC by Postgres,
             # skewing "how long ago" displays by the local UTC offset (verified live).
-            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now(UTC).isoformat(),
         }).eq("id", job_id).execute()
 
         try:
@@ -1232,12 +1271,14 @@ async def process_queue(config_path: Path) -> None:
                 # around availability constraints).
                 # Fetch scheduled days beyond the 6-week window to preserve them
                 cutoff = (datetime.now() + timedelta(days=42)).strftime("%Y-%m-%d")
-                plan_res = sb.table("plans").select("id").eq("user_id", uid).order("created_at", desc=True).limit(1).execute()
+                plan_res = rows(
+                    sb.table("plans").select("id").eq("user_id", uid).order("created_at", desc=True).limit(1).execute()
+                )
                 outer_days: list[dict] = []
-                if plan_res.data:
-                    outer_res = sb.table("scheduled_days").select(
+                if plan_res:
+                    outer_res = rows(sb.table("scheduled_days").select(
                         "date, session_type, focus, description, is_key, is_rest"
-                    ).eq("plan_id", plan_res.data[0]["id"]).gte("date", cutoff).execute()
+                    ).eq("plan_id", plan_res[0]["id"]).gte("date", cutoff).execute())
                     outer_days = [
                         {
                             "date": d["date"],
@@ -1247,7 +1288,7 @@ async def process_queue(config_path: Path) -> None:
                             "is_key_session": d.get("is_key", False),
                             "is_rest": d.get("is_rest", False),
                         }
-                        for d in (outer_res.data or [])
+                        for d in outer_res
                     ]
                     logger.info("Fetched %d outer days (beyond day 42) to preserve", len(outer_days))
                 coach_feedback = await run_replan_from_config(config_path, user_comment=user_comment, outer_scheduled_days=outer_days)
@@ -1261,7 +1302,7 @@ async def process_queue(config_path: Path) -> None:
 
             done_payload: dict = {
                 "status": "done",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
             }
             if coach_feedback:
                 done_payload["coach_feedback"] = coach_feedback
@@ -1272,7 +1313,7 @@ async def process_queue(config_path: Path) -> None:
             sb.table("replan_jobs").update({
                 "status": "error",
                 "error_message": str(exc)[:500],
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
             }).eq("id", job_id).execute()
             logger.error("❌ Job %s failed: %s", job_id, exc)
 
@@ -1443,15 +1484,15 @@ def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = Non
     sb = get_supabase()
     uid = os.environ.get("SUPABASE_USER_ID", "")
 
-    strength = (
+    strength = rows(
         sb.table("strength_sessions").select("id, date, name, estimated_duration_secs")
         .eq("user_id", uid).gte("date", today_iso).order("date").execute()
-    ).data or []
+    )
     new_sessions = []
     for s in strength:
-        exercises = (
+        exercises = rows(
             sb.table("exercises").select("*").eq("session_id", s["id"]).order("display_order").execute()
-        ).data or []
+        )
         new_sessions.append({
             "date": s["date"], "name": s["name"], "exercises": exercises,
             "estimated_duration_secs": s["estimated_duration_secs"],
@@ -1465,11 +1506,11 @@ def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = Non
             sb.table("strength_sessions").update({"garmin_workout_id": entry["workout_id"]}) \
                 .eq("user_id", uid).eq("date", d).execute()
 
-    days_rows = (
+    days_rows = rows(
         sb.table("scheduled_days").select("date, focus, running_segments")
         .eq("user_id", uid).gte("date", today_iso)
         .not_.is_("running_segments", "null").order("date").execute()
-    ).data or []
+    )
     running = [{"date": r["date"], "segments": r["running_segments"]} for r in days_rows if r["running_segments"]]
     if running:
         logger.info("📲 Re-pushing %d running session(s) after shift…", len(running))

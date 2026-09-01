@@ -1,36 +1,32 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# garmin-ai-coach — web
 
-## Getting Started
+Next.js (App Router) front end for the coaching pipeline described in the
+[root README](../README.md). Supabase-backed, deployed on Vercel.
 
-First, run the development server:
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev       # http://localhost:3000
+npm run lint
+npx tsc --noEmit
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires a Supabase project (URL + keys) and the same LLM provider keys as the
+Python side — see the root README's [Providers & Model Selection](../README.md#-providers--model-selection)
+section and `services/supabase/` for the schema these pages read/write.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Pages
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `/` — dashboard (KPIs, this week's sessions, plan calendar)
+- `/plan` — full 4-week structured plan + drift detection
+- `/nutrition` — calorie/macro targets, food logging, barcode scanning
+- `/report` — weekly analysis/check-in
+- `/setup`, `/profile` — Supabase-authenticated account and training config
 
-## Learn More
+## Contributing
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Read [`AGENTS.md`](AGENTS.md) first — this project pins a Next.js version whose
+APIs and file conventions differ from what most training data assumes (e.g.
+`proxy.ts`, not `middleware.ts`).

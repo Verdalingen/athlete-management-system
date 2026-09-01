@@ -3,13 +3,14 @@ import json
 import os
 import sys
 from datetime import date, timedelta
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-from services.garmin.client import GarminConnectClient  # noqa: E402
+from services.garmin.client import GarminConnectClient
 
 
 def main() -> None:

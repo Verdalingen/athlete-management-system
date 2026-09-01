@@ -24,7 +24,8 @@ class StrengthSessionSlot(BaseModel):
     order, sets, reps) is populated automatically from the athlete's strength_session_templates —
     not authored by the model. Barbell bench's sets/reps come from a deterministic wave function
     (services/supabase/bench_wave.py) instead of the template. This is a scheduling decision only:
-    which template slot, on which date — not what's in it."""
+    which template slot, on which date — not what's in it.
+    """
     date: str = Field(..., description="ISO date YYYY-MM-DD")
     slot: Literal["A", "B", "C"] = Field(..., description="Which of the athlete's 3 saved strength session templates to schedule on this date.")
 
@@ -32,7 +33,8 @@ class StrengthSessionSlot(BaseModel):
 class RunningSegment(BaseModel):
     """One phase of a run: warm-up, interval, recovery, cool-down, or a continuous steady
     effort. Exactly one of duration_secs/distance_meters is set — time-based for warm-up/
-    cool-down/jog-recovery, distance-based for interval reps."""
+    cool-down/jog-recovery, distance-based for interval reps.
+    """
     segment_type: Literal["warmup", "interval", "recovery", "cooldown", "steady"] = Field(
         ..., description="What kind of phase this is."
     )
@@ -68,7 +70,8 @@ class RunningSessionData(BaseModel):
     day's run. description on the matching ScheduledDay is rendered FROM these segments
     deterministically (services/garmin/running_uploader.py::render_running_description), not
     authored separately — do not try to make description and segments agree by hand, only the
-    segments matter."""
+    segments matter.
+    """
     date: str = Field(..., description="ISO date YYYY-MM-DD, must match a 'run' scheduled_day.")
     segments: list[RunningSegment] = Field(
         ..., description="Ordered list of segments making up the full session, in execution "
@@ -89,7 +92,7 @@ class ScheduledDay(BaseModel):
         ...,
         description=(
             "Compact workout notation matching the plan "
-            "(e.g. 'Bench 5×5 @ 97.5kg + row 4×8'). Empty string for rest days. "
+            "(e.g. 'Bench 5x5 @ 97.5kg + row 4x8'). Empty string for rest days. "
             "For session_type='run', this field is IGNORED and overwritten deterministically "
             "from the matching RunningSessionData entry in running_sessions — do not spend "
             "effort authoring it precisely for run days, only the segments matter."

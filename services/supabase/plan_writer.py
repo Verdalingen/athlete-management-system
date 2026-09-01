@@ -4,11 +4,11 @@ from __future__ import annotations
 import html as _html
 import logging
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from .athlete_profile import get_weight_goal_direction
-from .client import get_supabase
+from .client import get_supabase, row, rows
 
 logger = logging.getLogger(__name__)
 
@@ -64,11 +64,11 @@ def write_report(
         fields["kpis"] = kpis
     if personal_records is not None:
         fields["personal_records"] = personal_records
-    fields["updated_at"] = datetime.now(timezone.utc).isoformat()
+    fields["updated_at"] = datetime.now(UTC).isoformat()
 
-    existing = sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).order("updated_at", desc=True).limit(1).execute()
-    if existing.data:
-        report_id = existing.data[0]["id"]
+    existing = rows(sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).order("updated_at", desc=True).limit(1).execute())
+    if existing:
+        report_id = existing[0]["id"]
         sb.table("analyses").update(fields).eq("id", report_id).execute()
         logger.info("📋 Report updated in Supabase (id=%s)", report_id)
     else:
@@ -79,8 +79,8 @@ def write_report(
             "analysis_html": analysis_html or "", "planning_html": planning_html or "",
             **{k: v for k, v in fields.items() if k not in ("analysis_html", "planning_html")},
         }
-        row = sb.table("analyses").insert(payload).execute()
-        report_id = row.data[0]["id"]
+        inserted = rows(sb.table("analyses").insert(payload).execute())
+        report_id = inserted[0]["id"]
         logger.info("📋 Report saved to Supabase (id=%s)", report_id)
     return report_id
 
@@ -114,7 +114,7 @@ def upsert_kpis(
     # gets misinterpreted as already-UTC by Postgres, silently skewing this by the
     # local UTC offset (verified live: a CEST run showed as 2h ahead of true UTC,
     # breaking the web dashboard's "last synced Xh ago" freshness display).
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     race_fields: dict = {}
     if predicted_5k_secs is not None:
@@ -126,9 +126,9 @@ def upsert_kpis(
     if predicted_marathon_secs is not None:
         race_fields["predicted_marathon_secs"] = predicted_marathon_secs
 
-    existing = sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).limit(1).execute()
-    if existing.data:
-        row_id = existing.data[0]["id"]
+    existing = rows(sb.table("analyses").select("id").eq("user_id", user_id).eq("report_date", today).limit(1).execute())
+    if existing:
+        row_id = existing[0]["id"]
         update: dict = {"kpis": kpis, "updated_at": now, **race_fields}
         if personal_records is not None:
             update["personal_records"] = personal_records
@@ -146,8 +146,8 @@ def upsert_kpis(
         }
         if personal_records is not None:
             payload["personal_records"] = personal_records
-        row = sb.table("analyses").insert(payload).execute()
-        logger.info("📊 KPIs inserted for %s (id=%s)", today, row.data[0]["id"])
+        inserted = rows(sb.table("analyses").insert(payload).execute())
+        logger.info("📊 KPIs inserted for %s (id=%s)", today, inserted[0]["id"])
 
 
 def upsert_daily_metrics_batch(
@@ -268,10 +268,11 @@ def get_scheduled_day(date_str: str) -> dict[str, Any] | None:
     """Return the scheduled_days row for a single date (from the athlete's live plan), or None if
     no plan covers that date. Used by the standalone daily nutrition job to look up today's planned
     session type — reads Supabase directly rather than the legacy local-file plan storage, since
-    Supabase is the durable source of truth the rest of the pipeline already writes to."""
+    Supabase is the durable source of truth the rest of the pipeline already writes to.
+    """
     sb = get_supabase()
     uid = _user_id()
-    result = (
+    found = rows(
         sb.table("scheduled_days")
         .select("date, session_type, focus, description, is_key, is_rest, running_segments")
         .eq("user_id", uid)
@@ -279,14 +280,14 @@ def get_scheduled_day(date_str: str) -> dict[str, Any] | None:
         .limit(1)
         .execute()
     )
-    rows = result.data or []
-    return rows[0] if rows else None
+    return found[0] if found else None
 
 
 def _day_type_for(day: dict[str, Any] | None) -> str:
     """Matches targets/generate/route.ts exactly: is_rest -> 'rest', is_key -> 'hard', else
     'easy'. 'default' (no plan for that date) is not a real day_type for expenditure-matching
-    purposes — callers treat it as "no historical comparison available"."""
+    purposes — callers treat it as "no historical comparison available".
+    """
     if day is None:
         return "default"
     if day.get("is_rest"):
@@ -331,12 +332,11 @@ def _running_distance_km(segments: list[dict[str, Any]]) -> float:
 def _get_strength_duration_secs(date_str: str) -> int | None:
     sb = get_supabase()
     uid = _user_id()
-    result = (
+    found = rows(
         sb.table("strength_sessions").select("estimated_duration_secs")
         .eq("user_id", uid).eq("date", date_str).limit(1).execute()
     )
-    rows = result.data or []
-    return rows[0]["estimated_duration_secs"] if rows else None
+    return found[0]["estimated_duration_secs"] if found else None
 
 
 def _estimate_session_calories(today: dict[str, Any] | None, weight_kg: float) -> float | None:
@@ -385,10 +385,10 @@ def _estimate_active_calories(
     sb = get_supabase()
     uid = _user_id()
 
-    today_metrics = (
+    today_metrics = row(
         sb.table("daily_metrics").select("active_calories")
         .eq("user_id", uid).eq("date", today_str).maybe_single().execute()
-    ).data
+    )
     if today_metrics and (today_metrics.get("active_calories") or 0) > 50:
         return float(today_metrics["active_calories"])
 
@@ -398,18 +398,18 @@ def _estimate_active_calories(
             return session_est
 
     since = (date.today() - timedelta(days=84)).isoformat()
-    days = (
+    days = rows(
         sb.table("scheduled_days").select("date, is_key, is_rest")
         .eq("user_id", uid).gte("date", since).lt("date", today_str).execute()
-    ).data or []
+    )
     matching_dates = [d["date"] for d in days if _day_type_for(d) == day_type]
     if not matching_dates:
         return None
 
-    metrics = (
+    metrics = rows(
         sb.table("daily_metrics").select("active_calories")
         .eq("user_id", uid).in_("date", matching_dates).execute()
-    ).data or []
+    )
     values = [m["active_calories"] for m in metrics if m.get("active_calories")]
     return sum(values) / len(values) if values else None
 
@@ -427,25 +427,23 @@ def _get_bmr_estimate(today_str: str) -> float | None:
     """
     sb = get_supabase()
     uid = _user_id()
-    result = (
+    found = rows(
         sb.table("daily_metrics").select("date, bmr_calories")
         .eq("user_id", uid).lt("date", today_str)
         .not_.is_("bmr_calories", "null")
         .order("date", desc=True).limit(1).execute()
     )
-    rows = result.data or []
-    return float(rows[0]["bmr_calories"]) if rows else None
+    return float(found[0]["bmr_calories"]) if found else None
 
 
 def _get_latest_weight_kg() -> float | None:
     sb = get_supabase()
     uid = _user_id()
-    result = (
+    found = rows(
         sb.table("body_weight_log").select("weight_kg")
         .eq("user_id", uid).order("date", desc=True).limit(1).execute()
     )
-    rows = result.data or []
-    return float(rows[0]["weight_kg"]) if rows else None
+    return float(found[0]["weight_kg"]) if found else None
 
 
 def sync_todays_nutrition_target() -> dict[str, Any] | None:
@@ -500,12 +498,12 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
             f"Estimated TDEE {round(tdee)} kcal (BMR {round(bmr)} + ~{round(active_est)} active) "
             f"for a {day_type} day, {goal_direction} adjustment applied."
         )
-        row = {
+        row: dict[str, Any] = {
             "user_id": uid, "date": today_str,
             "calories": round(calories), "protein_g": protein_g, "carbs_g": carbs_g,
             "fat_g": fat_g, "fiber_g": fiber_g, "water_ml": water_ml,
             "workout_context": workout_context, "notes": notes,
-            "source": "planner", "updated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "planner", "updated_at": datetime.now(UTC).isoformat(),
         }
         sb.table("nutrition_daily_targets").upsert(row, on_conflict="user_id,date").execute()
         logger.info(
@@ -518,9 +516,9 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
         "Insufficient data for a data-driven nutrition target (weight=%s, bmr=%s, active_est=%s) "
         "— falling back to the flat template.", weight_kg, bmr, active_est,
     )
-    templates = (
+    templates = rows(
         sb.table("nutrition_targets").select("*").eq("user_id", uid).execute()
-    ).data or []
+    )
     lookup_type = day_type if day_type != "default" else "default"
     template = next((t for t in templates if t["day_type"] == lookup_type), None)
     if template is None:
@@ -541,7 +539,7 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
         "workout_context": workout_context,
         "notes": template.get("notes"),
         "source": "planner",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
     }
     sb.table("nutrition_daily_targets").upsert(row, on_conflict="user_id,date").execute()
     logger.info("Synced template nutrition target for %s (day_type=%s): %s kcal", today_str, lookup_type, template["calories"])
@@ -555,7 +553,7 @@ def get_planned_exercises_by_date(from_date: str, to_date: str) -> dict[str, lis
     """
     sb = get_supabase()
     uid = _user_id()
-    result = (
+    result = rows(
         sb.table("strength_sessions")
         .select("date, exercises(id, garmin_category, display_name, sets, reps_min, reps_max, display_order)")
         .eq("user_id", uid)
@@ -564,9 +562,9 @@ def get_planned_exercises_by_date(from_date: str, to_date: str) -> dict[str, lis
         .execute()
     )
     by_date: dict[str, list[dict[str, Any]]] = {}
-    for row in (result.data or []):
-        exercises = sorted(row.get("exercises") or [], key=lambda e: e.get("display_order", 0))
-        by_date[row["date"]] = exercises
+    for r in result:
+        exercises = sorted(r.get("exercises") or [], key=lambda e: e.get("display_order", 0))
+        by_date[r["date"]] = exercises
     return by_date
 
 
@@ -621,7 +619,7 @@ def _sync_garmin_weight(sb, uid: str, weight_records: list[dict]) -> None:
     dates = [r["date"] for r in weight_records]
 
     # Fetch existing entries to protect manual ones
-    existing_resp = (
+    existing_rows = rows(
         sb.table("body_weight_log")
         .select("date, source")
         .eq("user_id", uid)
@@ -629,26 +627,27 @@ def _sync_garmin_weight(sb, uid: str, weight_records: list[dict]) -> None:
         .execute()
     )
     manual_dates = {
-        row["date"]
-        for row in (existing_resp.data or [])
-        if row.get("source") == "manual"
+        r["date"]
+        for r in existing_rows
+        if r.get("source") == "manual"
     }
 
-    rows = [
+    to_upsert = [
         {"user_id": uid, "date": r["date"], "weight_kg": r["weight_kg"], "source": "garmin"}
         for r in weight_records
         if r["date"] not in manual_dates
     ]
-    if not rows:
+    if not to_upsert:
         return
 
-    sb.table("body_weight_log").upsert(rows, on_conflict="user_id,date").execute()
-    logger.info("⚖️  body_weight_log: synced %d Garmin weight entries", len(rows))
+    sb.table("body_weight_log").upsert(to_upsert, on_conflict="user_id,date").execute()
+    logger.info("⚖️  body_weight_log: synced %d Garmin weight entries", len(to_upsert))
 
 
 def monday_of(d: date | str) -> str:
     """Monday (ISO date string) of the week containing `d` — the `week_start` key
-    weekly_reviews is unique on."""
+    weekly_reviews is unique on.
+    """
     if isinstance(d, str):
         d = date.fromisoformat(d[:10])
     return (d - timedelta(days=d.weekday())).isoformat()
@@ -658,7 +657,8 @@ def _split_insight_label(item: str) -> tuple[str | None, str]:
     """Split a leading "Short label: body" prefix out of a feedback line, so the UI can
     show it as a heading. Returns (label, body) or (None, item) when there's no clean
     prefix — guards keep it from firing on a mid-sentence colon (a real label is short,
-    and won't contain sentence punctuation)."""
+    and won't contain sentence punctuation).
+    """
     label, sep, rest = item.partition(":")
     rest = rest.strip()
     if not sep or not rest or len(label) > 24 or any(c in label for c in ".,(;"):
@@ -724,17 +724,17 @@ def compute_weekly_kpi_delta(week_start: str, user_id: str | None = None) -> dic
     start = date.fromisoformat(week_start)
     prior_start = start - timedelta(days=7)
     cols = ", ".join(["date", *_WEEKLY_DELTA_METRICS])
-    rows = (
+    metric_rows = rows(
         sb.table("daily_metrics").select(cols)
         .eq("user_id", uid)
         .gte("date", prior_start.isoformat())
         .lte("date", (start + timedelta(days=6)).isoformat())
         .execute()
-    ).data or []
+    )
 
     def avg(metric: str, lo: date, hi: date) -> float | None:
         vals = [
-            float(r[metric]) for r in rows
+            float(r[metric]) for r in metric_rows
             if r.get(metric) is not None and lo <= date.fromisoformat(r["date"]) <= hi
         ]
         return sum(vals) / len(vals) if vals else None
@@ -804,7 +804,7 @@ def get_future_garmin_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
     """
     sb = get_supabase()
     user_id = _user_id()
-    result = (
+    result = rows(
         sb.table("strength_sessions")
         .select("date, garmin_workout_id")
         .eq("user_id", user_id)
@@ -812,16 +812,17 @@ def get_future_garmin_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
         .not_.is_("garmin_workout_id", "null")
         .execute()
     )
-    return {row["date"]: {"workout_id": row["garmin_workout_id"]} for row in (result.data or [])}
+    return {r["date"]: {"workout_id": r["garmin_workout_id"]} for r in result}
 
 
 def get_future_garmin_running_workout_ids(from_date: str) -> dict[str, dict[str, Any]]:
     """Return {date: {"workout_id": id}} for every currently-stored 'run' scheduled_days row with
     a Garmin workout scheduled on/after from_date. Mirrors get_future_garmin_workout_ids() above —
-    call this BEFORE write_plan() for the same reason (write_plan() replaces scheduled_days rows)."""
+    call this BEFORE write_plan() for the same reason (write_plan() replaces scheduled_days rows).
+    """
     sb = get_supabase()
     user_id = _user_id()
-    result = (
+    result = rows(
         sb.table("scheduled_days")
         .select("date, garmin_workout_id")
         .eq("user_id", user_id)
@@ -830,12 +831,13 @@ def get_future_garmin_running_workout_ids(from_date: str) -> dict[str, dict[str,
         .not_.is_("garmin_workout_id", "null")
         .execute()
     )
-    return {row["date"]: {"workout_id": row["garmin_workout_id"]} for row in (result.data or [])}
+    return {r["date"]: {"workout_id": r["garmin_workout_id"]} for r in result}
 
 
 def _estimate_session_duration_secs(exercises: list[dict[str, Any]]) -> int:
     """Rough session length from the athlete's fixed 3-min-rest-between-every-set rule, plus a
-    small per-set work allowance and a fixed warm-up/transition buffer."""
+    small per-set work allowance and a fixed warm-up/transition buffer.
+    """
     total = 300  # warm-up + transitions between exercises
     for ex in exercises:
         sets = ex.get("sets") or 0
@@ -850,15 +852,15 @@ _SLOT_ROTATION = ["A", "B", "C"]
 def get_next_strength_slot() -> str:
     """Return the slot that should follow whatever was most recently scheduled, continuing the
     fixed A -> B -> C -> A ... rotation. Defaults to "A" if the athlete has no strength session
-    history yet."""
+    history yet.
+    """
     sb = get_supabase()
     user_id = _user_id()
-    result = (
+    found = rows(
         sb.table("strength_sessions").select("slot")
         .eq("user_id", user_id).order("date", desc=True).limit(1).execute()
     )
-    rows = result.data or []
-    last_slot = rows[0]["slot"] if rows else None
+    last_slot = found[0]["slot"] if found else None
     if last_slot not in _SLOT_ROTATION:
         return "A"
     return _SLOT_ROTATION[(_SLOT_ROTATION.index(last_slot) + 1) % 3]
@@ -883,14 +885,13 @@ def get_sync_gap_days(default_days: int, cap_days: int = 400) -> int:
     """
     sb = get_supabase()
     user_id = _user_id()
-    result = (
+    found = rows(
         sb.table("daily_metrics").select("date")
         .eq("user_id", user_id).order("date", desc=True).limit(1).execute()
     )
-    rows = result.data or []
-    if not rows:
+    if not found:
         return default_days
-    last_date = date.fromisoformat(rows[0]["date"])
+    last_date = date.fromisoformat(found[0]["date"])
     gap_days = (date.today() - last_date).days
     return max(default_days, min(gap_days, cap_days))
 
@@ -972,8 +973,8 @@ def plan_shift_layout(
         kept.extend(boundary_rows)
 
     cursor = start + timedelta(days=days)
-    for row in kept:
-        row["_new_date"] = cursor.isoformat()
+    for r in kept:
+        r["_new_date"] = cursor.isoformat()
         cursor += timedelta(days=1)
     return kept, dropped, warnings
 
@@ -1009,39 +1010,39 @@ def shift_plan(
     uid = user_id or _user_id()
     start = date.fromisoformat(from_date)
 
-    plan = (
+    plan = rows(
         sb.table("plans").select("id").eq("user_id", uid)
         .order("created_at", desc=True).limit(1).execute()
-    ).data
+    )
     if not plan:
         return {"shifted": 0, "dropped": [], "warnings": ["No active plan to shift."]}
     plan_id = plan[0]["id"]
 
-    rows = (
+    scheduled_rows = rows(
         sb.table("scheduled_days").select("*")
         .eq("user_id", uid).eq("plan_id", plan_id)
         .gte("date", from_date).order("date").execute()
-    ).data or []
-    if not rows:
+    )
+    if not scheduled_rows:
         return {"shifted": 0, "dropped": [], "warnings": ["No scheduled days on or after that date."]}
 
-    profile = (
+    profile = row(
         sb.table("athlete_profile").select("events")
         .eq("user_id", uid).maybe_single().execute()
-    ).data or {}
+    ) or {}
     # Only events that fall inside the range being shifted can collide with it.
-    last_date = date.fromisoformat(rows[-1]["date"])
+    last_date = date.fromisoformat(scheduled_rows[-1]["date"])
     race_dates = sorted({
         ev["date"] for ev in (profile.get("events") or [])
         if ev.get("date") and start < date.fromisoformat(ev["date"]) <= last_date + timedelta(days=days)
     })
 
-    kept, dropped, warnings = plan_shift_layout(rows, race_dates, from_date, days)
+    kept, dropped, warnings = plan_shift_layout(scheduled_rows, race_dates, from_date, days)
     updates = [(r["id"], r["_new_date"]) for r in kept if r["_new_date"] != r["date"]]
 
-    for row in dropped:
-        sb.table("strength_sessions").delete().eq("user_id", uid).eq("date", row["date"]).execute()
-        sb.table("scheduled_days").delete().eq("id", row["id"]).execute()
+    for d in dropped:
+        sb.table("strength_sessions").delete().eq("user_id", uid).eq("date", d["date"]).execute()
+        sb.table("scheduled_days").delete().eq("id", d["id"]).execute()
 
     # Move latest-first so an in-flight update never collides with a date still occupied by a
     # row that hasn't moved yet (scheduled_days/strength_sessions are keyed per user+date).
@@ -1096,9 +1097,9 @@ def count_completed_bench_sessions(
     )
     if before_date:
         query = query.lt("date", before_date)
-    rows = query.execute().data or []
+    activity_rows = rows(query.execute())
     return len({
-        r["date"] for r in rows
+        r["date"] for r in activity_rows
         if r.get("duration_secs") is None
         or r["duration_secs"] >= _MIN_REAL_STRENGTH_SESSION_SECS
     })
@@ -1142,18 +1143,18 @@ def expand_strength_session_slots(slot_assignments: list[dict[str, Any]]) -> lis
             )
         next_slot = _SLOT_ROTATION[(_SLOT_ROTATION.index(next_slot) + 1) % 3]
 
-    templates = (
+    templates = rows(
         sb.table("strength_session_templates").select("*")
         .eq("user_id", user_id).order("slot").order("display_order").execute()
-    ).data or []
+    )
     by_slot: dict[str, list[dict[str, Any]]] = {}
-    for row in templates:
-        by_slot.setdefault(row["slot"], []).append(row)
+    for t in templates:
+        by_slot.setdefault(t["slot"], []).append(t)
 
-    profile = (
+    profile = row(
         sb.table("athlete_profile").select("bench_wave_start_date, recurring_session_requests")
         .eq("user_id", user_id).maybe_single().execute()
-    ).data or {}
+    ) or {}
     wave_start_str = profile.get("bench_wave_start_date")
 
     # Block length follows the athlete's own strength cadence, so the wave means "4 weeks of
@@ -1185,37 +1186,37 @@ def expand_strength_session_slots(slot_assignments: list[dict[str, Any]]) -> lis
 
     sessions: list[dict[str, Any]] = []
     for offset, (session_date_str, slot) in enumerate(corrected_slots.items()):
-        rows = by_slot.get(slot)
-        if not rows:
+        rows_for_slot = by_slot.get(slot)
+        if not rows_for_slot:
             logger.warning("No strength_session_templates rows for slot %r on %s — skipping", slot, session_date_str)
             continue
-        session_date = date.fromisoformat(session_date_str)
+        date.fromisoformat(session_date_str)
 
         exercises = []
-        for row in rows:
-            if row["is_dynamic_bench"]:
+        for t in rows_for_slot:
+            if t["is_dynamic_bench"]:
                 prescription = compute_bench_prescription(completed_before + offset, strength_per_week)
                 sets, reps_min, reps_max, rir = (
                     prescription["sets"], prescription["reps_min"], prescription["reps_max"], prescription["rir"],
                 )
             else:
-                sets, reps_min, reps_max, rir = row["sets"], row["reps_min"], row["reps_max"], row["rir"]
+                sets, reps_min, reps_max, rir = t["sets"], t["reps_min"], t["reps_max"], t["rir"]
             exercises.append({
-                "garmin_category": row["garmin_category"],
-                "garmin_exercise_key": row["garmin_exercise_key"],
-                "display_name": row["display_name"],
+                "garmin_category": t["garmin_category"],
+                "garmin_exercise_key": t["garmin_exercise_key"],
+                "display_name": t["display_name"],
                 "sets": sets,
                 "reps_min": reps_min,
                 "reps_max": reps_max,
-                "rest_seconds": row["rest_seconds"],
+                "rest_seconds": t["rest_seconds"],
                 "rir": rir,
             })
 
         sessions.append({
             "date": session_date_str,
-            "name": f"Strength {slot} - {rows[0]['slot_name']}",
+            "name": f"Strength {slot} - {rows_for_slot[0]['slot_name']}",
             "slot": slot,
-            "slot_name": rows[0]["slot_name"],
+            "slot_name": rows_for_slot[0]["slot_name"],
             "exercises": exercises,
             "estimated_duration_secs": _estimate_session_duration_secs(exercises),
         })
@@ -1241,13 +1242,13 @@ def write_plan(
     end_date = max(dates) if dates else str(date.today() + timedelta(days=27))
 
     # ── Insert plan ──────────────────────────────────────────────────────────
-    plan_row = sb.table("plans").insert({
+    plan_row = rows(sb.table("plans").insert({
         "user_id": user_id,
         "start_date": start_date,
         "end_date": end_date,
         "markdown": markdown,
-    }).execute()
-    plan_id = plan_row.data[0]["id"]
+    }).execute())
+    plan_id = plan_row[0]["id"]
     logger.info("Created plan %s (%s → %s)", plan_id, start_date, end_date)
 
     # ── Delete previous plan's data for the same horizon ────────────────────
@@ -1292,7 +1293,7 @@ def write_plan(
         session_date = s["date"]
         garmin_id = garmin_workout_ids.get(session_date, {}).get("workout_id")
 
-        session_row = sb.table("strength_sessions").insert({
+        session_row = rows(sb.table("strength_sessions").insert({
             "plan_id": plan_id,
             "user_id": user_id,
             "date": session_date,
@@ -1300,8 +1301,8 @@ def write_plan(
             "slot": s.get("slot"),
             "garmin_workout_id": garmin_id,
             "estimated_duration_secs": s.get("estimated_duration_secs", 3600),
-        }).execute()
-        session_id = session_row.data[0]["id"]
+        }).execute())
+        session_id = session_row[0]["id"]
         session_count += 1
 
         exercises = s.get("exercises", [])
