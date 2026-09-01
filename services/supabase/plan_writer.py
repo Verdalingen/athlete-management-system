@@ -973,8 +973,8 @@ def plan_shift_layout(
         kept.extend(boundary_rows)
 
     cursor = start + timedelta(days=days)
-    for row in kept:
-        row["_new_date"] = cursor.isoformat()
+    for r in kept:
+        r["_new_date"] = cursor.isoformat()
         cursor += timedelta(days=1)
     return kept, dropped, warnings
 

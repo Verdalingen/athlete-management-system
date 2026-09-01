@@ -16,7 +16,7 @@ def get_athlete_memory(user_id: str) -> str | None:
         result = sb.rpc("get_athlete_memory", {"p_user_id": user_id}).execute()
         # This RPC returns a text scalar, not a row/table — the standard rows()/row() cast
         # helpers assume dict-shaped results, so cast directly here instead.
-        text = cast(str, result.data or "")
+        text = cast("str", result.data or "")
         return text.strip() or None
     except Exception as exc:
         logger.warning("Failed to load athlete memory for %s: %s", user_id, exc)

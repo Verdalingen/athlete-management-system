@@ -15,15 +15,11 @@ jobs:
         with:
           pixi-version: v0.41.4
 
-      # Non-blocking for now: pre-existing debt (ruff/mypy) predates this workflow.
-      # Tighten to blocking once the backlog is paid down.
       - name: Lint (ruff)
         run: pixi run lint-ruff
-        continue-on-error: true
 
       - name: Type check (mypy)
         run: pixi run type-check
-        continue-on-error: true
 
       - name: Test
         run: pixi run test

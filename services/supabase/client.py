@@ -25,7 +25,7 @@ def rows(response: Any) -> list[dict[str, Any]]:
     single cast point for that instead of scattering `# type: ignore`/asserts across
     every call site.
     """
-    return cast(list[dict[str, Any]], response.data or [])
+    return cast("list[dict[str, Any]]", response.data or [])
 
 
 def row(response: Any) -> dict[str, Any] | None:

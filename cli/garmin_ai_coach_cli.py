@@ -48,7 +48,7 @@ from services.garmin.strength_uploader import (
 )
 from services.garmin.training_paces import extract_predicted_5k_secs
 from services.outside.client import OutsideApiGraphQlClient
-from services.supabase.client import get_supabase
+from services.supabase.client import get_supabase, rows
 from services.supabase.plan_drift import analyze_plan_drift
 from services.supabase.plan_writer import (
     compute_weekly_kpi_delta,
@@ -711,7 +711,7 @@ def _compute_kpis(garmin_data: dict[str, Any]) -> dict[str, Any]:
     from statistics import mean as _mean
 
     def _dg(*keys: str, src: dict | None = None) -> Any:
-        node = src if src is not None else garmin_data
+        node: Any = src if src is not None else garmin_data
         for k in keys:
             if not isinstance(node, dict):
                 return None
@@ -1083,8 +1083,8 @@ def _sync_strength_sessions(
         ).items():
             to_delete.setdefault(session_date, set()).update(ids)
 
-        for session_date, ids in to_delete.items():
-            for workout_id in ids:
+        for session_date, id_set in to_delete.items():
+            for workout_id in id_set:
                 try:
                     delete_strength_workout(client, workout_id)
                 except Exception:
@@ -1172,8 +1172,8 @@ def _sync_running_sessions(
         ).items():
             to_delete.setdefault(session_date, set()).update(ids)
 
-        for session_date, ids in to_delete.items():
-            for workout_id in ids:
+        for session_date, id_set in to_delete.items():
+            for workout_id in id_set:
                 try:
                     delete_running_workout(client, workout_id)
                 except Exception:
@@ -1227,7 +1227,7 @@ def _sync_running_sessions(
 
 async def process_queue(config_path: Path) -> None:
     """Process pending replan jobs queued via the web UI."""
-    from services.supabase.client import get_supabase
+    from services.supabase.client import get_supabase, rows
 
     sb = get_supabase()
     uid = os.environ.get("SUPABASE_USER_ID", "")
@@ -1235,8 +1235,9 @@ async def process_queue(config_path: Path) -> None:
         logger.error("❌ SUPABASE_USER_ID not set — cannot process queue")
         sys.exit(1)
 
-    result = sb.table("replan_jobs").select("*").eq("user_id", uid).eq("status", "pending").order("created_at").execute()
-    jobs = result.data or []
+    jobs = rows(
+        sb.table("replan_jobs").select("*").eq("user_id", uid).eq("status", "pending").order("created_at").execute()
+    )
 
     if not jobs:
         logger.info("✅ No pending replan jobs.")
@@ -1270,12 +1271,14 @@ async def process_queue(config_path: Path) -> None:
                 # around availability constraints).
                 # Fetch scheduled days beyond the 6-week window to preserve them
                 cutoff = (datetime.now() + timedelta(days=42)).strftime("%Y-%m-%d")
-                plan_res = sb.table("plans").select("id").eq("user_id", uid).order("created_at", desc=True).limit(1).execute()
+                plan_res = rows(
+                    sb.table("plans").select("id").eq("user_id", uid).order("created_at", desc=True).limit(1).execute()
+                )
                 outer_days: list[dict] = []
-                if plan_res.data:
-                    outer_res = sb.table("scheduled_days").select(
+                if plan_res:
+                    outer_res = rows(sb.table("scheduled_days").select(
                         "date, session_type, focus, description, is_key, is_rest"
-                    ).eq("plan_id", plan_res.data[0]["id"]).gte("date", cutoff).execute()
+                    ).eq("plan_id", plan_res[0]["id"]).gte("date", cutoff).execute())
                     outer_days = [
                         {
                             "date": d["date"],
@@ -1285,7 +1288,7 @@ async def process_queue(config_path: Path) -> None:
                             "is_key_session": d.get("is_key", False),
                             "is_rest": d.get("is_rest", False),
                         }
-                        for d in (outer_res.data or [])
+                        for d in outer_res
                     ]
                     logger.info("Fetched %d outer days (beyond day 42) to preserve", len(outer_days))
                 coach_feedback = await run_replan_from_config(config_path, user_comment=user_comment, outer_scheduled_days=outer_days)
@@ -1481,15 +1484,15 @@ def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = Non
     sb = get_supabase()
     uid = os.environ.get("SUPABASE_USER_ID", "")
 
-    strength = (
+    strength = rows(
         sb.table("strength_sessions").select("id, date, name, estimated_duration_secs")
         .eq("user_id", uid).gte("date", today_iso).order("date").execute()
-    ).data or []
+    )
     new_sessions = []
     for s in strength:
-        exercises = (
+        exercises = rows(
             sb.table("exercises").select("*").eq("session_id", s["id"]).order("display_order").execute()
-        ).data or []
+        )
         new_sessions.append({
             "date": s["date"], "name": s["name"], "exercises": exercises,
             "estimated_duration_secs": s["estimated_duration_secs"],
@@ -1503,11 +1506,11 @@ def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = Non
             sb.table("strength_sessions").update({"garmin_workout_id": entry["workout_id"]}) \
                 .eq("user_id", uid).eq("date", d).execute()
 
-    days_rows = (
+    days_rows = rows(
         sb.table("scheduled_days").select("date, focus, running_segments")
         .eq("user_id", uid).gte("date", today_iso)
         .not_.is_("running_segments", "null").order("date").execute()
-    ).data or []
+    )
     running = [{"date": r["date"], "segments": r["running_segments"]} for r in days_rows if r["running_segments"]]
     if running:
         logger.info("📲 Re-pushing %d running session(s) after shift…", len(running))
