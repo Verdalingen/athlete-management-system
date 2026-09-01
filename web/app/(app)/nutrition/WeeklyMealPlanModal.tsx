@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatShort, formatWeekday, todayISO } from "@/lib/dates";
 import { formatWeight } from "./format";
 import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
@@ -70,7 +70,10 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [showShoppingList, setShowShoppingList] = useState(false);
 
-  const load = useCallback(() => {
+  // load() was only ever called from this one mount effect (no retry button reuses it), so
+  // the useCallback indirection was pure overhead - inlined directly.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
     fetch(`/api/nutrition/meal-recommendations?start=${start}&end=${end}`)
@@ -79,8 +82,6 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
       .catch(() => setError("Failed to load meal plan"))
       .finally(() => setLoading(false));
   }, [start, end]);
-
-  useEffect(() => { load(); }, [load]);
 
   async function planWeek() {
     setGenerating(true);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useCallback, useRef } from "react";
+import { useState, useTransition, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import type { ReplanJob, ReplanJobType } from "@/app/actions/replan";
@@ -39,14 +39,24 @@ function timeAgo(iso: string): string {
 
 // Renders nothing on the server and on the client's first paint (so SSR and hydration always
 // match), then fills in the live "X ago" label client-side once mounted — avoids the hydration
-// mismatch that comes from computing a time-since-now value during render.
-function TimeAgo({ iso }: { iso: string }) {
-  const [label, setLabel] = useState("");
-  useEffect(() => {
-    setLabel(timeAgo(iso));
-    const id = setInterval(() => setLabel(timeAgo(iso)), 30000);
+// mismatch that comes from computing a time-since-now value during render. Ticks via
+// useSyncExternalStore rather than a mount effect calling setState: the cached label is
+// refreshed on (re)subscribe (covers both first mount and `iso` changing) and every 30s after.
+function useTimeAgo(iso: string): string {
+  const cachedRef = useRef(timeAgo(iso));
+  const subscribe = useCallback((cb: () => void) => {
+    cachedRef.current = timeAgo(iso);
+    cb();
+    const id = setInterval(() => { cachedRef.current = timeAgo(iso); cb(); }, 30000);
     return () => clearInterval(id);
   }, [iso]);
+  const getSnapshot = useCallback(() => cachedRef.current, []);
+  const getServerSnapshot = useCallback(() => "", []);
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+function TimeAgo({ iso }: { iso: string }) {
+  const label = useTimeAgo(iso);
   return <>{label}</>;
 }
 
@@ -289,7 +299,10 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
   const [activeModal, setActiveModal] = useState<Exclude<ReplanJobType, "sync_kpis"> | null>(null);
   const [comment, setComment] = useState("");
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
-  const [jobs, setJobs] = useState<ReplanJob[]>(initialJobs);
+  // jobs is never mutated independently of the prop, so it doesn't need its own state - the
+  // parent Server Component re-fetches and re-passes initialJobs (see the polling effect
+  // below), and that's the only source of truth this ever needs.
+  const jobs = initialJobs;
   const [error, setError] = useState<string | null>(null);
   const anchorRef = useRef<{ date: string; mode: "select" | "deselect" } | null>(null);
   const baseSelectionRef = useRef<string[]>([]);
@@ -302,8 +315,6 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
     const id = setInterval(() => router.refresh(), 4000);
     return () => clearInterval(id);
   }, [jobs, router]);
-
-  useEffect(() => { setJobs(initialJobs); }, [initialJobs]);
 
   useEffect(() => {
     if (selectedDates.length === 0) {

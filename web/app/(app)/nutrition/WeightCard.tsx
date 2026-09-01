@@ -117,6 +117,10 @@ export function WeightCard({ date }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Fetching is the reason this needs to be an effect at all; setLoading(true) here is
+    // only a no-op on the very first run (loading already starts true) - it's what shows
+    // the spinner again when date/rangeDays changes and a new fetch begins.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetch(`/api/weight?days=${rangeDays}`)
       .then(r => r.json())
