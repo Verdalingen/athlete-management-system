@@ -17,7 +17,7 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
-from .client import get_supabase
+from .client import get_supabase, rows
 
 logger = logging.getLogger(__name__)
 
@@ -107,21 +107,21 @@ def analyze_plan_drift(
     # Completions are read a week past today so a late session still matches its planned day.
     end = (today + timedelta(days=7)).isoformat()
 
-    planned_rows = (
+    planned_rows = rows(
         sb.table("scheduled_days").select("date, session_type, focus, is_rest, is_key")
         .eq("user_id", uid).gte("date", start).lt("date", today.isoformat())
         .order("date").execute()
-    ).data or []
+    )
     planned = [
         {"date": r["date"], "session_type": r["session_type"], "focus": r.get("focus"), "is_key": r.get("is_key")}
         for r in planned_rows
         if not r.get("is_rest") and r.get("session_type") not in (None, "rest")
     ]
 
-    activity_rows = (
+    activity_rows = rows(
         sb.table("completed_activities").select("date, activity_type, duration_secs, activity_training_load")
         .eq("user_id", uid).gte("date", start).lte("date", end).execute()
-    ).data or []
+    )
     completed_by_date: dict[str, set[str]] = {}
     activities_by_date: dict[str, list[dict]] = {}
     for r in activity_rows:
