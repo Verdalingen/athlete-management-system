@@ -2,7 +2,7 @@
 name = "garmin-ai-coach"
 version = "2.2.0"
 description = "CLI tool for Garmin data analysis with AI-powered insights"
-authors = ["Leon Zajchowski <l.zajchowski@web.de>"]
+authors = ["Adrian Walderhaug-Johnsen"]
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 
