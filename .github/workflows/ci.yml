@@ -13,7 +13,7 @@ jobs:
 
       - uses: prefix-dev/setup-pixi@v0.8.1
         with:
-          pixi-version: v0.41.4
+          pixi-version: v0.70.2
 
       - name: Lint (ruff)
         run: pixi run lint-ruff
