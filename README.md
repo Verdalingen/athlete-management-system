@@ -1,14 +1,15 @@
 # garmin-ai-coach — 🏊‍♂️🚴‍♂️🏃‍♂️ Your AI Endurance Coach
 
-> CLI-first tool that turns Garmin Connect data into:
->
-> - an evidence-based training analysis report (`analysis.html`)
-> - a season strategy + compact 4-week plan (`planning.html`)
->
-> Powered by a LangGraph multi-agent workflow with optional human-in-the-loop (HITL) questions.
+> Personal training system built around a LangGraph multi-agent coaching pipeline:
+> pulls Garmin Connect data, produces an evidence-based training analysis
+> (`analysis.html`) and a season strategy + compact 4-week plan (`planning.html`),
+> then pushes the resulting structured workouts *back* to Garmin Connect. A
+> Next.js + Supabase web app sits on top for day-to-day use — plan calendar,
+> nutrition tracking, and weekly check-ins — backed by the same Python pipeline.
 
 [![Made with Python](https://img.shields.io/badge/Made%20with-Python-blue.svg)](https://python.org)
 [![Powered by LangGraph](https://img.shields.io/badge/Powered%20by-LangGraph-purple.svg)](https://langchain-ai.github.io/langgraph/)
+[![Next.js](https://img.shields.io/badge/Web-Next.js%20%2B%20Supabase-black.svg)](web/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Providers:** OpenAI, Anthropic, and OpenRouter (DeepSeek/Gemini/Grok via OpenRouter).
@@ -17,16 +18,38 @@
 
 ---
 
-## 🚀 Quick Start (Pixi)
+## Two halves of one system
+
+- **[`web/`](web/)** — the actual day-to-day interface: a Next.js dashboard
+  (deployed on Vercel) with a plan calendar, nutrition tracking, and weekly
+  check-ins. This is what's in daily use.
+- **CLI (`cli/`)** — the pipeline driver underneath it. It runs the same
+  LangGraph coaching workflow and Garmin sync (`services/ai/langgraph/`,
+  `services/garmin/`), invoked both interactively (`--config`, `--replan`)
+  and as the background job runner behind the web app's check-ins and
+  syncs (`--queue`, `--sync-kpis`, `--shift`). Athlete context, credentials,
+  and the plan itself all live in Supabase — the CLI reads/writes there
+  directly rather than working off local files. See [`cli/README.md`](cli/README.md).
+
+Both require a Supabase project and an LLM provider key (`.env`, based on
+[`.env.example`](.env.example)); the CLI additionally needs `SUPABASE_USER_ID`
+set to the athlete it's running for.
+
+---
+
+## 🚀 Quick Start (CLI, Pixi)
 
 ```bash
 # 1) Install dependencies
 pixi install
 
-# 2) Create your configuration
+# 2) Set provider + Supabase env vars (see .env.example)
+cp .env.example .env
+
+# 3) Create a config (athlete name/email; coaching context comes from Supabase)
 pixi run coach-init my_training_config.yaml
 
-# 3) Edit the config with your details, then run
+# 4) Run
 pixi run coach-cli --config my_training_config.yaml
 ```
 
@@ -34,6 +57,8 @@ Open the generated reports:
 
 - `./data/analysis.html`
 - `./data/planning.html`
+
+For the web app, see [`web/README.md`](web/README.md).
 
 ---
 
@@ -44,6 +69,9 @@ Open the generated reports:
 - Physiology & readiness: baseline profiling + crash signature detection
 - Actionable recommendations grouped by domain (load, running, cycling, recovery)
 - Season strategy (typically 12–24 weeks) + compact 4-week plan (28 days)
+- **Bidirectional Garmin sync**: pulls activities/metrics, and pushes the plan's
+  structured workouts (strength sets/reps, running interval segments with pace
+  targets) back to Garmin Connect so they show up on-watch
 - Optional: HITL questions (`hitl_enabled: true`)
 - Optional: competition import from Outside (BikeReg/RunReg/TriReg/SkiReg)
 - Optional: LangSmith tracing + cost tracking (`LANGSMITH_API_KEY`)
@@ -76,6 +104,28 @@ Open the generated reports:
 
 ---
 
+## 🖥️ Web App
+
+[`web/`](web/) is a Next.js app (deployed on Vercel) that runs the same
+coaching pipeline against Supabase instead of local files, for day-to-day use:
+
+- **Dashboard** — KPIs, plan calendar, and this week's sessions at a glance
+- **Plan** — the full 4-week structured plan, with drift detection when actual
+  training diverges from what was planned
+- **Nutrition** — daily calorie/macro targets computed from BMR + session-specific
+  active burn, food logging with live barcode scanning (`BarcodeDetector` on
+  Chromium, native-camera-capture + ZXing fallback on iOS/WebKit), and
+  Open Food Facts lookup with Nordic/Scandinavian coverage
+- **Report** — the weekly analysis/check-in, rendered from the same LangGraph
+  output as `analysis.html`
+- **Setup / Profile** — Supabase-authenticated config, replacing the CLI's YAML file
+
+Multi-user by design: credentials and training config live per-user in Supabase
+(`services/supabase/`), with Garmin credentials resolved via Supabase Vault
+(`services/garmin/credentials.py`) rather than a shared local config.
+
+---
+
 ## 🧠 How It Works (High Level)
 
 ```mermaid
@@ -83,17 +133,29 @@ flowchart LR
     GC["Garmin Connect"] --> SUM["Summarizers<br>metrics • physiology • activity"]
     SUM --> EXP["Experts<br>metrics • physiology • activity"]
     EXP --> ORCH["Master Orchestrator<br>(HITL optional)"]
-    ORCH --> ANALYSIS["analysis.html"]
+    ORCH --> ANALYSIS["analysis.html / Report page"]
     ORCH --> SEASON["Season plan<br>(12–24 weeks)"]
     SEASON --> WEEK["4-week plan<br>(28 days)"]
-    WEEK --> PLANNING["planning.html"]
+    WEEK --> PLANNING["planning.html / Plan page"]
+    WEEK --> PUSH["Structured workouts"]
+    PUSH --> GC
 ```
 
 Docs:
 
 - CLI usage: [`cli/README.md`](cli/README.md)
+- Web app: [`web/README.md`](web/README.md)
 - Full architecture diagram: [`agents_docs/langgraph_architecture_diagram.mmd`](agents_docs/langgraph_architecture_diagram.mmd)
 - Tech stack & internals: [`agents_docs/techStack.md`](agents_docs/techStack.md)
+
+### Design principle: checkable rules live in code, not prompts
+
+Anything mechanically verifiable — weekly volume enforcement, leg-day/hard-run
+spacing, running-session rendering, plan-drift detection — is implemented in
+Python with tests, not as an LLM prompt instruction. Several of these moved
+out of the prompt only after the prompt-based version demonstrably failed on
+real check-ins. The LLM is reserved for judgment calls (season strategy,
+context-dependent coaching notes); anything countable is enforced deterministically.
 
 ---
 
@@ -109,11 +171,7 @@ Minimal example:
 ```yaml
 athlete:
   name: "Your Name"
-  email: "you@example.com"
-
-context:
-  analysis: "Recovering from injury; focus on base building"
-  planning: "Half marathon in 12 weeks; build aerobic base"
+  email: "you@example.com"  # ignored if SUPABASE_USER_ID resolves an email via Vault
 
 extraction:
   activities_days: 21
@@ -143,6 +201,10 @@ output:
 credentials:
   password: ""
 ```
+
+Coaching context (the athlete's goals/constraints the LLM plans around) isn't
+part of this file — it's read live from Supabase (`athlete_profile`, set up via
+the web app's setup wizard), keyed by `SUPABASE_USER_ID`.
 
 ---
 
@@ -181,7 +243,8 @@ Optional:
 
 ## 🔒 Privacy / Data Handling
 
-- No first-party backend: the CLI runs locally and writes outputs to your machine.
+- Your Garmin metrics, plans, and nutrition logs are stored in your own Supabase project — no shared, first-party backend.
+- The CLI additionally writes local report files (`analysis.html`, `planning.html`) to your machine.
 - Your Garmin-derived data is sent to your configured LLM provider to generate the reports.
 - If `LANGSMITH_API_KEY` is set, workflow traces (including prompt/response content) are sent to LangSmith.
 
@@ -216,11 +279,14 @@ Project structure:
 garmin-ai-coach/
 ├── core/                     # Configuration
 ├── services/
-│   ├── garmin/               # Garmin Connect extraction
+│   ├── garmin/               # Garmin Connect extraction + workout upload (strength/running)
 │   ├── ai/langgraph/         # LangGraph workflows + nodes
 │   ├── ai/tools/plotting/    # Optional plotting tools
+│   ├── supabase/             # DB writes: plan writing, drift, credentials
 │   └── outside/              # Outside (BikeReg/RunReg/...) competitions
 ├── cli/                      # CLI entrypoint + config template
+├── supabase/migrations/      # Numbered SQL migrations (append-only)
+├── web/                      # Next.js + Supabase web app
 ├── agents_docs/              # Internal docs (architecture/stack)
 └── tests/
 ```
@@ -231,7 +297,9 @@ garmin-ai-coach/
 
 ## 🤝 Contributing
 
-PRs welcome. If you’re adding features, please keep the CLI-first workflow intact and add tests where it makes sense.
+PRs welcome. If you're adding features, please keep the checkable-rules-in-code
+principle above intact and add tests where it makes sense — Python side via
+`pixi run test`, web side per [`web/AGENTS.md`](web/AGENTS.md).
 
 ---
 
