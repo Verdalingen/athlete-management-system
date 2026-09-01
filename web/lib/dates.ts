@@ -2,6 +2,20 @@ export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export function daysAgoISO(days: number): string {
+  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+}
+
+export function daysUntil(target: Date | string): number {
+  const targetMs = target instanceof Date ? target.getTime() : new Date(target).getTime();
+  return Math.ceil((targetMs - Date.now()) / 86400000);
+}
+
+export function daysSince(past: Date | string): number {
+  const pastMs = past instanceof Date ? past.getTime() : new Date(past).getTime();
+  return Math.round((Date.now() - pastMs) / 86400000);
+}
+
 export function weekBounds(today: string): { start: string; end: string } {
   const d = new Date(today);
   const day = d.getDay();

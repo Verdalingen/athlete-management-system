@@ -12,7 +12,13 @@ export function useQuantityInput(initialGrams: number, portions: Portion[]) {
   const [unitLabel, setUnitLabel] = useState<string | null>(null); // null = grams mode
 
   // If the active unit disappears (e.g. portions reloaded for a new food), fall back to grams.
+  // This is scoped to the same food by QuantityInput's key-based remount (see its docstring) -
+  // it only fires for the same food's portions list arriving/changing asynchronously after
+  // the initial render, which activePortion's plain derivation below can't detect on its own
+  // (it would silently and correctly fall back to null, but unitLabel itself - read directly
+  // by QuantityInput's <select> - would keep pointing at a unit that's no longer selectable).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (unitLabel && !portions.some(p => p.label === unitLabel)) setUnitLabel(null);
   }, [portions, unitLabel]);
 

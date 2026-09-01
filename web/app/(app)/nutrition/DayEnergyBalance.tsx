@@ -15,10 +15,10 @@ export function DayEnergyBalance({ date, caloriesEaten }: Props) {
   const isConcluded = date !== todayISO();
 
   useEffect(() => {
-    if (!isConcluded) {
-      setBurned(null);
-      return;
-    }
+    // No fetch (and no setBurned reset) needed for a non-concluded day: the render guard
+    // below already returns null whenever !isConcluded, regardless of whatever stale
+    // `burned` value might be sitting in state from a previously viewed concluded day.
+    if (!isConcluded) return;
     const controller = new AbortController();
     fetch(`/api/nutrition/expenditure?date=${date}`, { signal: controller.signal })
       .then(r => (r.ok ? r.json() : null))

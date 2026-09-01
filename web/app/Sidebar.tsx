@@ -1,8 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+
+// Same useSyncExternalStore approach as ThemeContext/UnitSystemContext: resolves the real
+// collapsed state synchronously on the client instead of a mount-effect setState. The blocking
+// script in layout.tsx still handles the very first paint (via the sb-collapsed-init class,
+// before React/JS has even run) — this just keeps React's own `collapsed` state in sync with
+// localStorage without a flash once hydration happens.
+const collapsedListeners = new Set<() => void>();
+function subscribeCollapsed(cb: () => void) {
+  collapsedListeners.add(cb);
+  return () => collapsedListeners.delete(cb);
+}
+function getCollapsedSnapshot(): boolean {
+  try {
+    const saved = localStorage.getItem("sb-collapsed");
+    return saved !== null ? JSON.parse(saved) : false;
+  } catch {
+    return false;
+  }
+}
+function getCollapsedServerSnapshot(): boolean {
+  return false;
+}
 
 const NAV = [
   { href: "/",           label: "Today",     icon: "ti-home" },
@@ -59,20 +81,14 @@ function BottomTabBar() {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
 
-  // Restore collapse preference from localStorage. The blocking script in
-  // layout.tsx already snapshotted the same preference onto
-  // <html class="sb-collapsed-init"> so the first paint renders correctly
-  // (see the CSS comment in globals.css) — drop that snapshot class here,
-  // once this component's own `collapsed` state is about to take over, so
-  // later toggles get their normal transition instead of colliding with the
+  // The blocking script in layout.tsx already snapshotted the collapse preference onto
+  // <html class="sb-collapsed-init"> so the first paint renders correctly (see the CSS comment
+  // in globals.css) — drop that snapshot class here, once this component's own `collapsed`
+  // value is live, so later toggles get their normal transition instead of colliding with the
   // pre-hydration "no transition" override.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("sb-collapsed");
-      if (saved !== null) setCollapsed(JSON.parse(saved));
-    } catch {}
     document.documentElement.classList.remove("sb-collapsed-init");
   }, []);
 
@@ -80,8 +96,8 @@ export function Sidebar() {
 
   function toggleCollapsed() {
     const next = !collapsed;
-    setCollapsed(next);
     try { localStorage.setItem("sb-collapsed", JSON.stringify(next)); } catch {}
+    collapsedListeners.forEach(cb => cb());
   }
 
   const onSettings = BOTTOM_ITEM.href === "/" ? pathname === "/" : pathname.startsWith(BOTTOM_ITEM.href);

@@ -1,5 +1,5 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
-import { todayISO, formatShort } from "@/lib/dates";
+import { todayISO, daysAgoISO, formatShort } from "@/lib/dates";
 import { parseWeekGoals, parseDayMeta } from "@/lib/plan-parser";
 import { buildStrengthMap, getWeightRecommendation, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
 import type { Plan, ScheduledDay, StrengthSession, CompletedActivity } from "@/lib/types";
@@ -51,7 +51,7 @@ export default async function PlanPage() {
   const plan: Plan | null = planRes.data?.[0] ?? null;
   const planId = plan?.id ?? null;
 
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+  const sixtyDaysAgo = daysAgoISO(60);
 
   const [daysRes, strengthRes, activitiesRes, replanJobs, athleteProfile, completedSetsRes] = await Promise.all([
     planId

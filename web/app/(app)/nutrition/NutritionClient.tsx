@@ -13,7 +13,7 @@ import { WeeklyMealPlanModal } from "./WeeklyMealPlanModal";
 import { QuantityInput } from "./QuantityInput";
 import type { Portion } from "./useQuantityInput";
 import { useFormatQty } from "./UnitSystemContext";
-import { todayISO } from "@/lib/dates";
+import { todayISO, daysSince } from "@/lib/dates";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -1999,7 +1999,7 @@ export function NutritionClient({
                             Recent foods
                           </div>
                           {recentFoods.map((food, i) => {
-                            const daysAgo = Math.round((Date.now() - new Date(food.date).getTime()) / 86_400_000);
+                            const daysAgo = daysSince(food.date);
                             const dateLabel = daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : daysAgo <= 6 ? `${daysAgo}d ago` : new Date(food.date).toLocaleDateString("en", { month: "short", day: "numeric" });
                             return (
                               <div

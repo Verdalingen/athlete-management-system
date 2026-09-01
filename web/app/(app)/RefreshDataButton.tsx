@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import type { ReplanJob } from "@/app/actions/replan";
@@ -10,6 +10,28 @@ import type { ReplanJob } from "@/app/actions/replan";
 // when the queued job actually runs); this is just so the button doesn't invite a
 // click that the backend will silently no-op.
 const MIN_INTERVAL_MS = 2 * 60 * 60 * 1000;
+
+// A ticking "now", updated every 30s, via useSyncExternalStore instead of a mount effect
+// calling setState: getServerSnapshot returns null (avoids a hydration mismatch from
+// computing elapsed time during server render). getSnapshot must return a stable value
+// between store-change notifications (useSyncExternalStore's contract), so the tick is
+// cached rather than freshly computed on every call — otherwise every render would see a
+// "changed" snapshot and trigger a corrective re-render regardless of the real 30s cadence.
+let cachedNow = Date.now();
+function subscribeNow(cb: () => void) {
+  // Refresh immediately on subscribe (the module-level cache may be stale if this is a
+  // remount long after the bundle first loaded), then every 30s after that.
+  cachedNow = Date.now();
+  cb();
+  const id = setInterval(() => { cachedNow = Date.now(); cb(); }, 30000);
+  return () => clearInterval(id);
+}
+function getNowSnapshot(): number {
+  return cachedNow;
+}
+function getNowServerSnapshot(): number | null {
+  return null;
+}
 
 function formatElapsed(ms: number): string {
   const totalMinutes = Math.floor(ms / 60000);
@@ -40,21 +62,13 @@ export function RefreshDataButton({ lastSyncedAt, initialJobs }: {
   initialJobs: ReplanJob[];
 }) {
   const router = useRouter();
-  const [jobs, setJobs] = useState<ReplanJob[]>(initialJobs);
+  // jobs is never mutated independently of the prop, so it doesn't need its own state -
+  // the parent Server Component re-fetches and re-passes initialJobs (see the polling
+  // effect below), and that's the only source of truth this ever needs.
+  const jobs = initialJobs;
   const [queuing, setQueuing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState<number | null>(null);
-
-  // Client-only "now" (avoids a hydration mismatch from computing elapsed time
-  // during server render), refreshed every 30s so the label and disabled state
-  // stay live without needing a full page reload.
-  useEffect(() => {
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => { setJobs(initialJobs); }, [initialJobs]);
+  const now = useSyncExternalStore(subscribeNow, getNowSnapshot, getNowServerSnapshot);
 
   const syncJobs = jobs.filter(j => j.type === "sync_kpis");
   const latestSyncJob = syncJobs[0] ?? null;
