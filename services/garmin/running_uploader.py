@@ -347,7 +347,7 @@ def render_running_description(segments: list[dict]) -> str:
             i = j
         else:
             zone = f" {seg['zone']}" if seg.get("zone") else ""
-            label = _TYPE_LABEL.get(seg.get("segment_type"), "")
+            label = _TYPE_LABEL.get(seg.get("segment_type") or "", "")
             label_suffix = f" {label}" if label else ""
             note = f" {seg['note']}" if seg.get("note") and not label else ""
             parts.append(f"{_format_duration_or_distance(seg)}{zone}{label_suffix}{note}{_format_pace_suffix(seg)}")

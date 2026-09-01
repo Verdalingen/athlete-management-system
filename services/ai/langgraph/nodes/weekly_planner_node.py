@@ -448,8 +448,8 @@ def _check_strength_recovery_spacing(
 
     slot_groups = _slot_muscle_groups(templates)
     slot_by_date = {s.get("date"): s.get("slot") for s in strength_sessions if s.get("date")}
-    strength_dates = sorted(
-        d.get("date") for d in scheduled_days if d.get("session_type") == "strength" and d.get("date")
+    strength_dates: list[str] = sorted(
+        d["date"] for d in scheduled_days if d.get("session_type") == "strength" and d.get("date")
     )
 
     warnings: list[str] = []
@@ -532,7 +532,7 @@ def _fix_weekly_volume(
 
     def is_strength(iso: str) -> bool:
         day = by_date.get(iso)
-        return bool(day) and day.get("session_type") == "strength" and not day.get("is_rest")
+        return bool(day and day.get("session_type") == "strength" and not day.get("is_rest"))
 
     for week_start, dates in sorted(weeks.items()):
         if len(dates) < 7:
@@ -625,10 +625,10 @@ def _fix_weekly_volume(
                         day = by_date[iso]
                         if is_free(iso) or day.get("is_key_session") or day.get("session_type") == session_type:
                             continue
-                        target = next((o for o in dates if is_free(o) and o != iso), None)
-                        if target is None or not spacing_ok(iso):
+                        dest = next((o for o in dates if is_free(o) and o != iso), None)
+                        if dest is None or not spacing_ok(iso):
                             continue
-                        by_date[target].update({
+                        by_date[dest].update({
                             "session_type": day.get("session_type"), "focus": day.get("focus"),
                             "description": day.get("description"), "is_rest": False,
                             "is_key_session": False,
@@ -636,10 +636,10 @@ def _fix_weekly_volume(
                         for coll in (running_sessions, strength_sessions):
                             for entry in coll:
                                 if entry.get("date") == iso:
-                                    entry["date"] = target
+                                    entry["date"] = dest
                         logger.info(
                             "Auto-corrected weekly volume: displaced %s from %s to %s to reclaim a "
-                            "preferred %s day", day.get("focus"), iso, target, session_type,
+                            "preferred %s day", day.get("focus"), iso, dest, session_type,
                         )
                         slot_iso = iso
                         break
@@ -735,7 +735,7 @@ def _fix_legs_before_hard_runs(
     strength_by_date = {s["date"]: s for s in strength_sessions if s.get("date")}
 
     def is_leg_slot(slot: str | None) -> bool:
-        return bool(slot) and "lower" in slot_groups.get(slot, set())
+        return bool(slot and "lower" in slot_groups.get(slot, set()))
 
     sorted_strength_dates = sorted(strength_by_date.keys())
     true_slot_by_date: dict[str, str] = {}

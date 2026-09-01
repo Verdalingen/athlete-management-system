@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from .client import get_supabase
 
@@ -13,7 +14,9 @@ def get_athlete_memory(user_id: str) -> str | None:
     try:
         sb = get_supabase()
         result = sb.rpc("get_athlete_memory", {"p_user_id": user_id}).execute()
-        text = result.data or ""
+        # This RPC returns a text scalar, not a row/table — the standard rows()/row() cast
+        # helpers assume dict-shaped results, so cast directly here instead.
+        text = cast(str, result.data or "")
         return text.strip() or None
     except Exception as exc:
         logger.warning("Failed to load athlete memory for %s: %s", user_id, exc)
