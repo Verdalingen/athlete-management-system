@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from .client import get_supabase
+from .client import get_supabase, row, rows
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +12,14 @@ def get_meal_variety_preference(user_id: str) -> str:
     """Return the athlete's meal variety preference ('minimal'/'balanced'/'high'), defaulting to 'balanced'."""
     try:
         sb = get_supabase()
-        result = (
+        result = row(
             sb.table("athlete_profile")
             .select("meal_variety_preference")
             .eq("user_id", user_id)
             .maybe_single()
             .execute()
         )
-        value = (result.data or {}).get("meal_variety_preference")
+        value = (result or {}).get("meal_variety_preference")
         return value or "balanced"
     except Exception as exc:
         logger.warning("Failed to load meal variety preference for %s: %s", user_id, exc)
@@ -33,14 +33,13 @@ def get_meal_location_context(user_id: str) -> str:
     """
     try:
         sb = get_supabase()
-        result = (
+        data = row(
             sb.table("athlete_profile")
             .select("country,grocery_stores_notes")
             .eq("user_id", user_id)
             .maybe_single()
             .execute()
-        )
-        data = result.data or {}
+        ) or {}
         country = (data.get("country") or "").strip()
         stores = (data.get("grocery_stores_notes") or "").strip()
         parts = []
@@ -58,14 +57,14 @@ def get_weight_goal_direction(user_id: str) -> str:
     """Return the athlete's weight goal direction ('lose'/'maintain'/'gain'), defaulting to 'maintain'."""
     try:
         sb = get_supabase()
-        result = (
+        result = row(
             sb.table("athlete_profile")
             .select("weight_goal_direction")
             .eq("user_id", user_id)
             .maybe_single()
             .execute()
         )
-        value = (result.data or {}).get("weight_goal_direction")
+        value = (result or {}).get("weight_goal_direction")
         return value or "maintain"
     except Exception as exc:
         logger.warning("Failed to load weight goal direction for %s: %s", user_id, exc)
@@ -78,14 +77,14 @@ def get_analysis_context(user_id: str) -> str:
     """
     try:
         sb = get_supabase()
-        result = (
+        result = row(
             sb.table("athlete_profile")
             .select("generated_analysis_context")
             .eq("user_id", user_id)
             .maybe_single()
             .execute()
         )
-        return (result.data or {}).get("generated_analysis_context") or ""
+        return (result or {}).get("generated_analysis_context") or ""
     except Exception as exc:
         logger.warning("Failed to load analysis context for %s: %s", user_id, exc)
         return ""
@@ -95,14 +94,14 @@ def get_recurring_session_requests(user_id: str) -> list[dict]:
     """Return the athlete's structured recurring session requests (e.g. 'long run on Sunday')."""
     try:
         sb = get_supabase()
-        result = (
+        result = row(
             sb.table("athlete_profile")
             .select("recurring_session_requests")
             .eq("user_id", user_id)
             .maybe_single()
             .execute()
         )
-        return (result.data or {}).get("recurring_session_requests") or []
+        return (result or {}).get("recurring_session_requests") or []
     except Exception as exc:
         logger.warning("Failed to load recurring session requests for %s: %s", user_id, exc)
         return []
@@ -115,7 +114,7 @@ def get_strength_session_templates(user_id: str) -> list[dict]:
     """
     try:
         sb = get_supabase()
-        result = (
+        return rows(
             sb.table("strength_session_templates")
             .select("*")
             .eq("user_id", user_id)
@@ -123,7 +122,6 @@ def get_strength_session_templates(user_id: str) -> list[dict]:
             .order("display_order")
             .execute()
         )
-        return result.data or []
     except Exception as exc:
         logger.warning("Failed to load strength session templates for %s: %s", user_id, exc)
         return []
@@ -135,13 +133,13 @@ def build_strength_templates_context(user_id: str) -> str:
     exercise content; that comes from these templates via the deterministic expansion step in
     plan_writer.expand_strength_session_slots(), not from the LLM.
     """
-    rows = get_strength_session_templates(user_id)
-    if not rows:
+    templates = get_strength_session_templates(user_id)
+    if not templates:
         return "No strength session templates saved."
 
     by_slot: dict[str, list[dict]] = {}
-    for row in rows:
-        by_slot.setdefault(row["slot"], []).append(row)
+    for t in templates:
+        by_slot.setdefault(t["slot"], []).append(t)
 
     lines = []
     for slot in sorted(by_slot):
@@ -171,8 +169,7 @@ def build_planning_context(user_id: str) -> str:
     """
     try:
         sb = get_supabase()
-        result = sb.table("athlete_profile").select("*").eq("user_id", user_id).maybe_single().execute()
-        profile = result.data or {}
+        profile = row(sb.table("athlete_profile").select("*").eq("user_id", user_id).maybe_single().execute()) or {}
     except Exception as exc:
         logger.warning("Failed to load profile for planning context %s: %s", user_id, exc)
         profile = {}
