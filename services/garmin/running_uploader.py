@@ -19,10 +19,12 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-
-from garminconnect import Garmin
+from typing import TYPE_CHECKING
 
 from services.garmin.strength_uploader import _schedule_workout, delete_strength_workout
+
+if TYPE_CHECKING:
+    from garminconnect import Garmin
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +102,8 @@ def _pace_to_mps(pace: str) -> float:
 def _speed_target(pace_low: str, pace_high: str) -> dict:
     """pace_low is the fast end (lower time) -> higher speed; pace_high is the slow end -> lower
     speed. targetValueOne/Two ordering (low speed bound, high speed bound) is a best guess — see
-    module docstring."""
+    module docstring.
+    """
     fast_mps = _pace_to_mps(pace_low)
     slow_mps = _pace_to_mps(pace_high)
     return {
@@ -137,7 +140,8 @@ def build_running_workout_json(session: PlannedRunningSession) -> dict:
     """Convert a PlannedRunningSession into the JSON dict Garmin's API expects. Adjacent segments
     sharing the same repeat_count > 1 (e.g. an interval + its paired recovery, both "6x") are
     combined into a single RepeatGroupDTO, matching how strength_uploader.py groups active+rest
-    steps for one exercise."""
+    steps for one exercise.
+    """
     workout_steps: list[dict] = []
     step_order = 1
     i = 0
@@ -220,7 +224,8 @@ def upload_running_session(client: Garmin, session: PlannedRunningSession) -> di
 
 def delete_running_workout(client: Garmin, workout_id: int) -> None:
     """Permanently delete a running workout from the Garmin library. Deleting a workout removes
-    all of its scheduled dates too, so no separate unschedule step is needed."""
+    all of its scheduled dates too, so no separate unschedule step is needed.
+    """
     delete_strength_workout(client, workout_id)
 
 
@@ -259,7 +264,8 @@ def estimate_running_duration_secs(segments: list[dict]) -> int:
     """Best-effort total duration for a session's segments, for the workout's informational
     estimatedDurationInSecs field only (not used for watch behavior — each step's own
     endCondition is what actually governs execution). Distance-based segments are estimated from
-    the midpoint of their pace range, falling back to a flat 5:30/km guess when no pace is set."""
+    the midpoint of their pace range, falling back to a flat 5:30/km guess when no pace is set.
+    """
     total = 0.0
     for seg in segments:
         rc = seg.get("repeat_count", 1)
@@ -309,7 +315,8 @@ def render_running_description(segments: list[dict]) -> str:
     @3:50-4:00/km, 2:30min jog r) + 10min Z2 cool-down"), so existing display code
     (web/lib/workout-structure.tsx, web/lib/duration.ts) keeps working unchanged. segments is a
     list of plain dicts (RunningSegment.model_dump() shape), not dataclass instances, since this
-    runs on raw AI-output / Supabase JSONB data."""
+    runs on raw AI-output / Supabase JSONB data.
+    """
     if not segments:
         return ""
 

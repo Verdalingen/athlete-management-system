@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import os
@@ -5,7 +6,6 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from services.ai.ai_settings import AgentRole
-from services.ai.langgraph.schemas import AgentOutput
 from services.ai.langgraph.schemas.agent_outputs import WeeklyPlanOutput
 from services.ai.langgraph.state.training_analysis_state import TrainingAnalysisState
 from services.ai.langgraph.utils.message_helper import normalize_langchain_messages
@@ -320,7 +320,7 @@ Rules:
 - description: for session_type="run", leave this as a short placeholder (e.g. the focus text) —
   it is ignored and overwritten from the running_sessions segments for that date, see the
   Structured Running Sessions rule above. For "strength", use compact notation matching the
-  slot's content (e.g. "Bench 5×5 @ 97.5kg + row 4×8"). Empty string for rest days.
+  slot's content (e.g. "Bench 5x5 @ 97.5kg + row 4x8"). Empty string for rest days.
 - is_key_session: true for hard interval sessions, long runs >75min, and heavy strength days.
   Most easy aerobic runs should be is_key_session=false AND is_rest=false — this is a real,
   expected middle category, not an edge case. Marking every non-rest day as key indicates you are
@@ -423,7 +423,8 @@ _MUSCLE_GROUP_BUCKETS = {
 def _slot_muscle_groups(templates: list[dict[str, Any]]) -> dict[str, set[str]]:
     """Muscle-group buckets ('upper'/'lower'/'core') present in each strength session template
     slot (a slot can have more than one, e.g. a slot combining legs + back + biceps is both
-    'lower' and 'upper'). Templates are fixed, so this is exact, not a best-effort guess."""
+    'lower' and 'upper'). Templates are fixed, so this is exact, not a best-effort guess.
+    """
     by_slot: dict[str, set[str]] = {}
     for row in templates:
         bucket = _MUSCLE_GROUP_BUCKETS.get((row.get("garmin_category") or "").upper())
@@ -440,7 +441,8 @@ def _check_strength_recovery_spacing(
     """Post-generation visibility check: flag adjacent-day strength sessions whose assigned slots
     share a muscle-group bucket (e.g. two slots that both include legs, scheduled back-to-back).
     Same philosophy as the recurring-request check — surface it in coach_feedback, don't
-    retry-loop."""
+    retry-loop.
+    """
     if not scheduled_days or not strength_sessions or not templates:
         return []
 
@@ -451,7 +453,7 @@ def _check_strength_recovery_spacing(
     )
 
     warnings: list[str] = []
-    for prev_date, next_date in zip(strength_dates, strength_dates[1:]):
+    for prev_date, next_date in itertools.pairwise(strength_dates):
         try:
             gap_days = (date.fromisoformat(next_date) - date.fromisoformat(prev_date)).days
         except ValueError:
@@ -593,7 +595,7 @@ def _fix_weekly_volume(
                     day = by_date[iso]
                     return bool(day.get("is_rest") or day.get("session_type") in (None, "rest"))
 
-                def spacing_ok(iso: str) -> bool:
+                def spacing_ok(iso: str, session_type: str = session_type) -> bool:
                     if session_type != "strength":
                         return True
                     d = date.fromisoformat(iso)

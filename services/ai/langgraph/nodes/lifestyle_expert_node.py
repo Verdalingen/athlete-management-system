@@ -84,7 +84,7 @@ Produce 3 structured fields. For EACH field:
   (a) whether lifestyle readiness supports the planned training load,
   (b) specific days or periods where load should be reduced due to poor readiness signals,
   (c) any green-light windows where the athlete appears well-recovered for a hard block.
-- **Be directive**: "Reduce load Tuesday–Thursday", "Green light for intensity this weekend", etc."""
+- **Be directive**: "Reduce load Tuesday-Thursday", "Green light for intensity this weekend", etc."""
 
 LIFESTYLE_FINAL_CHECKLIST = """
 ## Final Checklist

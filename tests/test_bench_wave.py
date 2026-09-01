@@ -32,7 +32,7 @@ class TestBlockProgression:
             assert compute_bench_prescription(n, 3) == compute_bench_prescription(n + 48, 3)
 
     def test_rep_target_holds_for_a_whole_block(self):
-        assert all(reps_at(n, 3) == 10 for n in range(0, 12))
+        assert all(reps_at(n, 3) == 10 for n in range(12))
         assert all(reps_at(n, 3) == 8 for n in range(12, 24))
 
     def test_block_boundary_is_exact(self):
@@ -43,7 +43,7 @@ class TestBlockProgression:
 class TestDeload:
     def test_last_week_of_each_block_is_a_deload(self):
         # 3x/week: sessions 0-8 are the three loading weeks, 9-11 the deload week.
-        assert all(sets_at(n, 3) == 4 for n in range(0, 9))
+        assert all(sets_at(n, 3) == 4 for n in range(9))
         assert all(sets_at(n, 3) == 3 for n in range(9, 12))
 
     def test_deload_drops_sets_not_reps(self):
@@ -61,7 +61,8 @@ class TestDeload:
 
 class TestCadenceScaling:
     """A block is a constant DOSE (4 weeks of training as performed), not a constant count.
-    Hardcoding 12 sessions would give a 5x/week lifter a 2.4-week block."""
+    Hardcoding 12 sessions would give a 5x/week lifter a 2.4-week block.
+    """
 
     def test_block_length_scales_with_cadence(self):
         # 2x/week => 8-session block, so the second block starts at session 8, not 12.
@@ -102,4 +103,4 @@ class TestInputHandling:
         assert compute_bench_prescription(-10, 3) == compute_bench_prescription(0, 3)
 
     def test_rir_is_always_two(self):
-        assert all(compute_bench_prescription(n, 3)["rir"] == 2 for n in range(0, 48))
+        assert all(compute_bench_prescription(n, 3)["rir"] == 2 for n in range(48))

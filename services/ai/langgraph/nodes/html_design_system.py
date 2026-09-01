@@ -1,5 +1,4 @@
-"""
-Fixed HTML design system for all formatter nodes.
+"""Fixed HTML design system for all formatter nodes.
 
 Both analysis.html and planning.html use a shared HTML skeleton. The AI fills in
 content using predefined CSS class names from globals.css — it never writes CSS.

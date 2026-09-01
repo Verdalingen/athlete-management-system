@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from services.garmin.client import GarminConnectClient
@@ -17,7 +18,6 @@ from services.garmin.strength_uploader import (
     build_strength_workout_json,
     delete_strength_workout,
 )
-
 
 PROBE_SESSION = PlannedStrengthSession(
     name="PROBE exerciseName test",

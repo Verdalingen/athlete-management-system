@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from services.garmin.client import GarminConnectClient
@@ -45,7 +46,7 @@ def main() -> None:
                 if not cat:
                     continue
                 en = inner.get("exerciseName")
-                print(f"{str(en):<35} {cat:<20} {json.dumps(en)}")
+                print(f"{en!s:<35} {cat:<20} {json.dumps(en)}")
 
     gc.disconnect()
 

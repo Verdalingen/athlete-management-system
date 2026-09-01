@@ -4,8 +4,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from garminconnect import Garmin
+if TYPE_CHECKING:
+    from garminconnect import Garmin
 
 logger = logging.getLogger(__name__)
 
@@ -400,7 +402,8 @@ def unschedule_workout(client: Garmin, schedule_id: int) -> None:
 
 def reschedule_workout(client: Garmin, entry: dict, new_date: str) -> int | None:
     """Move a scheduled workout to a new date. entry is a garmin_workout_ids dict value.
-    Returns new schedule_id, or None if rescheduling failed."""
+    Returns new schedule_id, or None if rescheduling failed.
+    """
     workout_id = entry["workout_id"]
     schedule_id = entry.get("schedule_id")
 

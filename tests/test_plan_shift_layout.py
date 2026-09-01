@@ -10,6 +10,7 @@ Rows here mirror the scheduled_days shape: one row per calendar day (rest days i
 contiguous, ordered, using the DB's `is_key` spelling rather than the LLM schema's
 `is_key_session`.
 """
+import itertools
 from datetime import date, timedelta
 
 from services.supabase.plan_writer import _removal_rank, plan_shift_layout
@@ -29,11 +30,9 @@ def day(offset: int, *, rest: bool = False, key: bool = False, focus: str = "Ses
 
 def week(**overrides: dict) -> list[dict]:
     """Seven ordinary non-key training days, with individual offsets overridden by kwargs
-    like `d2={"rest": True}`."""
-    rows = []
-    for i in range(7):
-        rows.append(day(i, **overrides.get(f"d{i}", {})))
-    return rows
+    like `d2={"rest": True}`.
+    """
+    return [day(i, **overrides.get(f"d{i}", {})) for i in range(7)]
 
 
 def new_dates(kept: list[dict]) -> dict[str, str]:
@@ -80,8 +79,8 @@ class TestShiftWithoutEvents:
         kept, _, _ = plan_shift_layout(week(), [], START, 4)
         olds = [date.fromisoformat(r["date"]) for r in kept]
         news = [date.fromisoformat(r["_new_date"]) for r in kept]
-        old_gaps = [(b - a).days for a, b in zip(olds, olds[1:])]
-        new_gaps = [(b - a).days for a, b in zip(news, news[1:])]
+        old_gaps = [(b - a).days for a, b in itertools.pairwise(olds)]
+        new_gaps = [(b - a).days for a, b in itertools.pairwise(news)]
         assert old_gaps == new_gaps
 
     def test_nothing_is_dropped_when_there_is_no_event_to_protect(self):

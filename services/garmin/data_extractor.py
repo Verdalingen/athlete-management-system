@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, TypeVar
 
 import requests
+
 try:
     from garth.exc import GarthHTTPError as _GarthHTTPError
 except ImportError:
@@ -17,6 +18,8 @@ try:
     # whole extraction instead of being skipped like other per-metric API failures.
     from garminconnect import (
         GarminConnectConnectionError as _GCConnectionError,
+    )
+    from garminconnect import (
         GarminConnectTooManyRequestsError as _GCTooManyRequestsError,
     )
     # GarminConnectAuthenticationError is deliberately NOT in this tuple: bad or

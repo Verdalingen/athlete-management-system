@@ -42,7 +42,7 @@ def build_daily_metrics_records(garmin_data: dict[str, Any]) -> list[dict[str, A
         r["monotony"] = entry.get("monotony_7d")
         r["strain"]   = entry.get("strain_7d")
 
-    # ── VO2max history (sparse – only days Garmin emits a new estimate) ────────
+    # ── VO2max history (sparse - only days Garmin emits a new estimate) ────────
     vo2_hist = garmin_data.get("vo2_max_history") or {}
     for entry in vo2_hist.get("running") or []:
         d = entry.get("date")

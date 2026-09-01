@@ -15,7 +15,7 @@ def planned(*items: tuple[str, str]) -> list[dict]:
 
 
 def completed(**by_date: str | list) -> dict[str, set[str]]:
-    """completed(d2026_01_05="run") -> {"2026-01-05": {"run"}}"""
+    """Build a completed-sessions map, e.g. `d2026_01_05="run"` -> {"2026-01-05": {"run"}}."""
     out = {}
     for key, kinds in by_date.items():
         iso = key[1:].replace("_", "-")
