@@ -18,12 +18,6 @@ import { RefreshDataButton } from "./RefreshDataButton";
 import type { TrendSeries } from "./report/ProgressTabs";
 import { GoalProgressGrid } from "./GoalProgressGrid";
 
-function fmtTime(totalSecs: number): string {
-  const m = Math.floor(totalSecs / 60);
-  const s = totalSecs % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 function greeting(hour: number, name: string): string {
   const part = hour < 5 ? "night" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
   return `Good ${part}, ${name}`;

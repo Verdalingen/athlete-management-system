@@ -20,8 +20,6 @@ interface PlanMeta {
   totalWeeks: number;
 }
 
-import type { WeekGoal } from "@/lib/plan-parser";
-
 function parseMeta(md: string, start: string, end: string): PlanMeta {
   const titleMatch   = md.match(/^#\s+(.+)$/m);
   const phaseMatch   = md.match(/\*\*Phase:\*\*\s*([^\n|]+)/);

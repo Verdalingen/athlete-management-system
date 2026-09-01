@@ -112,7 +112,7 @@ function niceAxis(min: number, max: number, targetTicks = 5) {
 
 // Draw zone bands + optional in-chart labels
 function ZoneBands({
-  bands, yC, plotLeft, plotWidth, plotTop, plotH, effMin, effMax,
+  bands, yC, plotLeft, plotWidth, plotTop, plotH, effMin: _effMin, effMax: _effMax,
 }: {
   bands: ZoneBand[];
   yC: (v: number) => number;
@@ -882,6 +882,19 @@ function WeeklyKpiDeltas({ delta }: { delta: WeeklyKpiDelta }) {
   );
 }
 
+type ReportTab = "week" | "trends" | "analysis";
+
+function TabBtn({ id, label, activeTab, onSelect }: { id: ReportTab; label: string; activeTab: ReportTab; onSelect: (id: ReportTab) => void }) {
+  return (
+    <button onClick={() => onSelect(id)} style={{
+      background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 16px",
+      color: activeTab === id ? "var(--text)" : "var(--muted)",
+      borderBottom: activeTab === id ? "2px solid var(--accent)" : "2px solid transparent",
+      marginBottom: -1, transition: "color .15s",
+    }}>{label}</button>
+  );
+}
+
 // ── Main ProgressTabs ─────────────────────────────────────────────────────────
 
 export default function ProgressTabs({
@@ -896,7 +909,7 @@ export default function ProgressTabs({
   completedActivities: CompletedActivity[];
 }) {
   const hasAnalysis = !!(analysisHtml || planningHtml);
-  const [tab, setTab] = useState<"week" | "trends" | "analysis">("trends");
+  const [tab, setTab] = useState<ReportTab>("trends");
   const [expandedLabel, setExpandedLabel] = useState<string | null>(null);
 
   // Close modal on Escape
@@ -917,23 +930,12 @@ export default function ProgressTabs({
   const hasPMC     = !!(ctlSeries && atlSeries && tsbSeries);
   const gridSeries = activeSeries.filter(s => !pmcLabels.has(s.label));
 
-  function TabBtn({ id, label }: { id: typeof tab; label: string }) {
-    return (
-      <button onClick={() => setTab(id)} style={{
-        background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 16px",
-        color: tab === id ? "var(--text)" : "var(--muted)",
-        borderBottom: tab === id ? "2px solid var(--accent)" : "2px solid transparent",
-        marginBottom: -1, transition: "color .15s",
-      }}>{label}</button>
-    );
-  }
-
   return (
     <>
       <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)" }}>
-        <TabBtn id="week" label="This week" />
-        <TabBtn id="trends" label="Trends" />
-        {hasAnalysis && <TabBtn id="analysis" label="Season analysis" />}
+        <TabBtn id="week" label="This week" activeTab={tab} onSelect={setTab} />
+        <TabBtn id="trends" label="Trends" activeTab={tab} onSelect={setTab} />
+        {hasAnalysis && <TabBtn id="analysis" label="Season analysis" activeTab={tab} onSelect={setTab} />}
       </div>
 
       {tab === "week" && (

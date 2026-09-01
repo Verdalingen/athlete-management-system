@@ -1,7 +1,6 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { createServerClient as createSSRClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { formatShort } from "@/lib/dates";
 import type { Plan } from "@/lib/types";
 import { signOut } from "@/app/login/actions";
 import { MaxHRInput } from "./MaxHRInput";
@@ -66,15 +65,12 @@ export default async function ProfilePage() {
     getAthleteProfile(),
   ]);
 
-  const plan: Plan | null = planRes.data?.[0] ?? null;
+  const _plan: Plan | null = planRes.data?.[0] ?? null;
   const garminMaxHR: number | null = garminHrRes.data?.[0]?.max_heart_rate_bpm ?? null;
   const manualMaxHR: number | null = settingsRes.data?.[0]?.max_heart_rate_bpm ?? null;
   const effectiveMaxHR: number | null = manualMaxHR ?? garminMaxHR;
 
   const zones = ZONES;
-  const planGenerated = plan
-    ? new Date(plan.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-    : null;
 
   return (
     <div className="page">
