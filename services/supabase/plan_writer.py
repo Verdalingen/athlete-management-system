@@ -446,6 +446,103 @@ def _get_latest_weight_kg() -> float | None:
     return float(found[0]["weight_kg"]) if found else None
 
 
+def _build_data_driven_target_row(
+    uid: str, date_str: str, workout_context: str | None, day_type: str,
+    weight_kg: float, bmr: float, active: float, *, finalized: bool,
+) -> dict[str, Any]:
+    """Shared BMR+active -> macros math, fed either a morning estimate (sync_todays_nutrition_
+    target) or Garmin's finalized totals for a day that's now over (finalize_recent_nutrition_
+    targets) — same formula, the `finalized` flag only changes the notes wording.
+    """
+    tdee = bmr + active
+    goal_direction = get_weight_goal_direction(uid)
+    if goal_direction == "lose":
+        calories = tdee - 400
+    elif goal_direction == "gain":
+        calories = tdee + 400
+    else:
+        calories = tdee
+
+    protein_g = round(2.2 * weight_kg)
+    fat_g = round(calories * 0.25 / 9)
+    carbs_g = max(round((calories - protein_g * 4 - fat_g * 9) / 4), 0)
+    fiber_g = round(calories / 1000 * 14)
+    water_ml = round(35 * weight_kg) + (600 if day_type == "hard" else 300 if day_type == "easy" else 0)
+    kind = "Actual TDEE" if finalized else "Estimated TDEE"
+    notes = (
+        f"{kind} {round(tdee)} kcal (BMR {round(bmr)} + {round(active)} active) "
+        f"for a {day_type} day, {goal_direction} adjustment applied."
+    )
+    return {
+        "user_id": uid, "date": date_str,
+        "calories": round(calories), "protein_g": protein_g, "carbs_g": carbs_g,
+        "fat_g": fat_g, "fiber_g": fiber_g, "water_ml": water_ml,
+        "workout_context": workout_context, "notes": notes,
+        "source": "planner", "updated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def finalize_recent_nutrition_targets(days_back: int = 3) -> list[dict[str, Any]]:
+    """Replace the morning's estimate with what the athlete actually burned, for any of the last
+    `days_back` days that are now fully over.
+
+    sync_todays_nutrition_target() sets each day's target that morning from an *estimate* —
+    today's still-partial Garmin reading, or a session/duration-based projection (see
+    _estimate_active_calories()). Once a day is in the past, Garmin has finished attributing its
+    real active_calories and bmr_calories, so there's no reason to keep showing the guess: this
+    recomputes the same BMR + active ± goal-direction formula from the real numbers and
+    overwrites the row. Only touches rows sync_todays_nutrition_target() itself wrote
+    (source == "planner") — a manual or check-in override to a day's target is left alone.
+    Cheap (no LLM), so safe to call on every sync-kpis run alongside its sibling. Returns the
+    rows actually rewritten.
+    """
+    sb = get_supabase()
+    uid = _user_id()
+    written: list[dict[str, Any]] = []
+
+    weight_kg = _get_latest_weight_kg()
+    if not weight_kg:
+        return written
+
+    for days_ago in range(1, days_back + 1):
+        date_str = str(date.today() - timedelta(days=days_ago))
+
+        existing = row(
+            sb.table("nutrition_daily_targets").select("source")
+            .eq("user_id", uid).eq("date", date_str).maybe_single().execute()
+        )
+        if existing is None or existing.get("source") != "planner":
+            continue
+
+        metrics = row(
+            sb.table("daily_metrics").select("active_calories, bmr_calories")
+            .eq("user_id", uid).eq("date", date_str).maybe_single().execute()
+        )
+        if not metrics or not metrics.get("active_calories") or not metrics.get("bmr_calories"):
+            continue
+
+        day = get_scheduled_day(date_str)
+        day_type = _day_type_for(day)
+        workout_context = (
+            " · ".join(filter(None, [day.get("focus"), day.get("description")])) or None
+            if day and day_type in ("hard", "easy") else None
+        )
+
+        target_row = _build_data_driven_target_row(
+            uid, date_str, workout_context, day_type,
+            weight_kg, float(metrics["bmr_calories"]), float(metrics["active_calories"]),
+            finalized=True,
+        )
+        sb.table("nutrition_daily_targets").upsert(target_row, on_conflict="user_id,date").execute()
+        logger.info(
+            "Finalized actual nutrition target for %s (day_type=%s): %d kcal (was an estimate)",
+            date_str, day_type, target_row["calories"],
+        )
+        written.append(target_row)
+
+    return written
+
+
 def sync_todays_nutrition_target() -> dict[str, Any] | None:
     """Set today's nutrition_daily_targets row from actual estimated energy expenditure, not a
     flat lookup by day category — total calories = BMR (passive burn) + estimated active-calorie
@@ -480,37 +577,15 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
     active_est = _estimate_active_calories(day_type, today_str, today, weight_kg)
 
     if weight_kg and bmr is not None and active_est is not None:
-        tdee = bmr + active_est
-        goal_direction = get_weight_goal_direction(uid)
-        if goal_direction == "lose":
-            calories = tdee - 400
-        elif goal_direction == "gain":
-            calories = tdee + 400
-        else:
-            calories = tdee
-
-        protein_g = round(2.2 * weight_kg)
-        fat_g = round(calories * 0.25 / 9)
-        carbs_g = max(round((calories - protein_g * 4 - fat_g * 9) / 4), 0)
-        fiber_g = round(calories / 1000 * 14)
-        water_ml = round(35 * weight_kg) + (600 if day_type == "hard" else 300 if day_type == "easy" else 0)
-        notes = (
-            f"Estimated TDEE {round(tdee)} kcal (BMR {round(bmr)} + ~{round(active_est)} active) "
-            f"for a {day_type} day, {goal_direction} adjustment applied."
+        target_row = _build_data_driven_target_row(
+            uid, today_str, workout_context, day_type, weight_kg, bmr, active_est, finalized=False,
         )
-        row: dict[str, Any] = {
-            "user_id": uid, "date": today_str,
-            "calories": round(calories), "protein_g": protein_g, "carbs_g": carbs_g,
-            "fat_g": fat_g, "fiber_g": fiber_g, "water_ml": water_ml,
-            "workout_context": workout_context, "notes": notes,
-            "source": "planner", "updated_at": datetime.now(UTC).isoformat(),
-        }
-        sb.table("nutrition_daily_targets").upsert(row, on_conflict="user_id,date").execute()
+        sb.table("nutrition_daily_targets").upsert(target_row, on_conflict="user_id,date").execute()
         logger.info(
             "Synced data-driven nutrition target for %s (day_type=%s, TDEE=%.0f): %d kcal",
-            today_str, day_type, tdee, row["calories"],
+            today_str, day_type, bmr + active_est, target_row["calories"],
         )
-        return row
+        return target_row
 
     logger.info(
         "Insufficient data for a data-driven nutrition target (weight=%s, bmr=%s, active_est=%s) "

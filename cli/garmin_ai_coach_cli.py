@@ -53,6 +53,7 @@ from services.supabase.plan_drift import analyze_plan_drift
 from services.supabase.plan_writer import (
     compute_weekly_kpi_delta,
     expand_strength_session_slots,
+    finalize_recent_nutrition_targets,
     get_future_garmin_running_workout_ids,
     get_future_garmin_workout_ids,
     get_planned_exercises_by_date,
@@ -1441,11 +1442,14 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
     # Refresh today's nutrition target now that today's active_calories may have moved —
     # this is what makes the target genuinely track estimated burn "at all times" rather than
     # being frozen at whatever it was set to that morning. Free (no LLM), so safe to redo on
-    # every sync-kpis run rather than needing its own separate cron.
+    # every sync-kpis run rather than needing its own separate cron. Also finalize the last few
+    # days' targets against Garmin's now-settled totals, so a concluded day shows what was
+    # actually burned rather than the estimate that was set that morning.
     try:
         sync_todays_nutrition_target()
+        finalize_recent_nutrition_targets()
     except Exception:
-        logger.exception("Failed to sync today's nutrition target — continuing KPI sync")
+        logger.exception("Failed to sync nutrition targets — continuing KPI sync")
 
     _SYNC_STAMP.write_text(now.isoformat())
     logger.info("✅ KPI sync complete at %s.", now.isoformat(timespec="seconds"))
