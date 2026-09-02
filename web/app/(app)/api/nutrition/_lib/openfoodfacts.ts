@@ -3,9 +3,12 @@ const OFF_SEARCH_BASE = "https://search.openfoodfacts.org/search";
 const OFF_SEARCH_FIELDS =
   "code,product_name,brands,nutriments,serving_size,serving_quantity,categories_tags,image_front_small_url";
 
-// Open Food Facts stores most nutrients in g/100g, but some vitamins in mg/100g.
-// We normalise everything to the same units as USDA (mg where applicable).
+// Open Food Facts stores every nutrient — vitamins and minerals alike — internally in
+// g/100g regardless of the substance's natural scale (confirmed live: a product's
+// "vitamin-a_100g" comes back as e.g. 6.19125e-07, i.e. grams). We normalise everything
+// to the same units as USDA (mg/mcg where applicable).
 function g2mg(v: number | undefined): number { return Math.round(((v ?? 0) * 1000) * 10) / 10; }
+function g2mcg(v: number | undefined): number { return Math.round(((v ?? 0) * 1_000_000) * 10) / 10; }
 function r1(v: number | undefined): number { return Math.round((v ?? 0) * 10) / 10; }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,19 +45,18 @@ export function normaliseOffProduct(barcode: string, p: Record<string, any>) {
     // Sodium: OFF stores g/100g → convert to mg/100g
     sodium:             g2mg(n.sodium_100g),
 
-    // ── Vitamins ──────────────────────────────────────────────────────────
-    // OFF stores vitamin C in mg/100g (consistent), others may vary
-    vitamin_a_mcg:      r1(n["vitamin-a_100g"]),        // IU in some products
-    vitamin_c_mg:       r1(n["vitamin-c_100g"]),         // mg/100g
-    vitamin_d_mcg:      r1(n["vitamin-d_100g"]),
-    vitamin_e_mg:       r1(n["vitamin-e_100g"]),
-    vitamin_k_mcg:      r1(n["vitamin-k_100g"]),
-    thiamin_mg:         r1(n.thiamin_100g ?? n["vitamin-b1_100g"]),
-    riboflavin_mg:      r1(n.riboflavin_100g ?? n["vitamin-b2_100g"]),
-    niacin_mg:          r1(n.niacin_100g ?? n["vitamin-pp_100g"]),
-    vitamin_b6_mg:      r1(n["vitamin-b6_100g"]),
-    folate_mcg:         r1(n.folate_100g ?? n["vitamin-b9_100g"]),
-    vitamin_b12_mcg:    r1(n["vitamin-b12_100g"]),
+    // ── Vitamins (OFF: g/100g → convert to mg or mcg per nutrient's natural scale) ──
+    vitamin_a_mcg:      g2mcg(n["vitamin-a_100g"]),
+    vitamin_c_mg:       g2mg(n["vitamin-c_100g"]),
+    vitamin_d_mcg:      g2mcg(n["vitamin-d_100g"]),
+    vitamin_e_mg:       g2mg(n["vitamin-e_100g"]),
+    vitamin_k_mcg:      g2mcg(n["vitamin-k_100g"]),
+    thiamin_mg:         g2mg(n.thiamin_100g ?? n["vitamin-b1_100g"]),
+    riboflavin_mg:      g2mg(n.riboflavin_100g ?? n["vitamin-b2_100g"]),
+    niacin_mg:          g2mg(n.niacin_100g ?? n["vitamin-pp_100g"]),
+    vitamin_b6_mg:      g2mg(n["vitamin-b6_100g"]),
+    folate_mcg:         g2mcg(n.folate_100g ?? n["vitamin-b9_100g"]),
+    vitamin_b12_mcg:    g2mcg(n["vitamin-b12_100g"]),
 
     // ── Minerals (OFF: g/100g → convert to mg/100g) ───────────────────────
     calcium_mg:         g2mg(n.calcium_100g),
