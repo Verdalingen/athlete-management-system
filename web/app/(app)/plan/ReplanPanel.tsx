@@ -304,6 +304,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
   // below), and that's the only source of truth this ever needs.
   const jobs = initialJobs;
   const [error, setError] = useState<string | null>(null);
+  const [jobsCollapsed, setJobsCollapsed] = useState(true);
   const anchorRef = useRef<{ date: string; mode: "select" | "deselect" } | null>(null);
   const baseSelectionRef = useRef<string[]>([]);
 
@@ -488,9 +489,29 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
         {/* Recent jobs */}
         {jobs.length > 0 && (
           <div style={{ marginTop: 16, borderTop: "1px solid rgba(var(--overlay-rgb),.06)", paddingTop: 14 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
-              Recent jobs
-            </div>
+            <button
+              onClick={() => setJobsCollapsed(c => !c)}
+              aria-expanded={!jobsCollapsed}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: "none", padding: 0, cursor: "pointer",
+                fontFamily: "inherit",
+                marginBottom: jobsCollapsed ? 0 : 8,
+              }}
+            >
+              <i
+                className="ti ti-chevron-right"
+                style={{
+                  fontSize: 12, color: "var(--dim)",
+                  transform: jobsCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                  transition: "transform .12s",
+                }}
+              />
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)" }}>
+                Recent jobs
+              </span>
+            </button>
+            {!jobsCollapsed && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {jobs.map(job => (
                 <div key={job.id}>
@@ -529,6 +550,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
                 </div>
               ))}
             </div>
+            )}
           </div>
         )}
       </div>
