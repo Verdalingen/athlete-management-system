@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDuration } from "@/lib/dates";
 import type { ScheduledDay, StrengthSession } from "@/lib/types";
 import { formatReps, isBarbellBench, estimateBenchWeight, type WeightRecommendation } from "@/lib/strength";
@@ -42,7 +42,7 @@ export function TodaySessionCard({
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const exercises = session?.exercises ?? [];
+  const exercises = useMemo(() => session?.exercises ?? [], [session?.exercises]);
 
   // Whether to show the "scroll for more" fade — recomputed whenever the
   // exercise list changes (a fresh scroll container starts at scrollTop 0)

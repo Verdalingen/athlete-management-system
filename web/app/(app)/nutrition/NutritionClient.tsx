@@ -13,7 +13,7 @@ import { WeeklyMealPlanModal } from "./WeeklyMealPlanModal";
 import { QuantityInput } from "./QuantityInput";
 import type { Portion } from "./useQuantityInput";
 import { useFormatQty } from "./UnitSystemContext";
-import { todayISO } from "@/lib/dates";
+import { todayISO, daysSince } from "@/lib/dates";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -963,6 +963,10 @@ export function NutritionClient({
     const horizonEnd = (() => { const d = new Date(todayISO()); d.setDate(d.getDate() + 6); return d.toISOString().slice(0, 10); })();
     if (date < todayISO() || date > horizonEnd) return;
     weekAutoPlanned.current = true;
+    // Fires an async POST that eventually calls setMealRecommendations/setRecsGenerating -
+    // a genuine one-time action on mount, guarded by the ref above (not state, so it can't
+    // itself trigger a re-render loop), not a value being synchronized from render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     generateMealRecommendations(7, todayISO());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1999,7 +2003,7 @@ export function NutritionClient({
                             Recent foods
                           </div>
                           {recentFoods.map((food, i) => {
-                            const daysAgo = Math.round((Date.now() - new Date(food.date).getTime()) / 86_400_000);
+                            const daysAgo = daysSince(food.date);
                             const dateLabel = daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : daysAgo <= 6 ? `${daysAgo}d ago` : new Date(food.date).toLocaleDateString("en", { month: "short", day: "numeric" });
                             return (
                               <div

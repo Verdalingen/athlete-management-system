@@ -1,6 +1,6 @@
 import type React from "react";
 import { createServerClient, getUserId, getUserFirstName } from "@/lib/supabase-server";
-import { todayISO, weekBounds, formatLong, formatShort, formatWeekday, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
+import { todayISO, daysAgoISO, daysUntil, weekBounds, formatLong, formatShort, formatWeekday, daysBetween, mesocycleWeek, mesocycleTotalWeeks } from "@/lib/dates";
 import { parseDayMeta } from "@/lib/plan-parser";
 import { buildStrengthMap, getWeightRecommendation, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
 import type { CompletedActivity, Plan, ScheduledDay, StrengthSession } from "@/lib/types";
@@ -50,14 +50,14 @@ export default async function DashboardPage() {
   const plan: Plan | null = planRes.data?.[0] ?? null;
   const planId = plan?.id ?? null;
 
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
-  const heatmapWindowStart = new Date(Date.now() - 182 * 86400000).toISOString().slice(0, 10);
-  const fitnessTrendStart = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-  const sicknessWindowStart = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10);
+  const sixtyDaysAgo = daysAgoISO(60);
+  const heatmapWindowStart = daysAgoISO(182);
+  const fitnessTrendStart = daysAgoISO(90);
+  const sicknessWindowStart = daysAgoISO(28);
   // Garmin's race predictor only exposes up to 366 days of daily history per call
   // (see services/garmin/data_extractor.py's get_race_prediction_history) — matches
   // that same window here rather than fetching an unbounded range.
-  const raceHistoryStart = new Date(Date.now() - 366 * 86400000).toISOString().slice(0, 10);
+  const raceHistoryStart = daysAgoISO(366);
 
   // Window for the dashboard's MiniMonthCalendar (prev/current/next month, so
   // its prev/next arrows work against already-fetched data with no extra round trip).
@@ -231,10 +231,7 @@ export default async function DashboardPage() {
   const nextCheckinDate = lastCheckinDate
     ? new Date(lastCheckinDate.getTime() + 7 * 24 * 60 * 60 * 1000)
     : null;
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const daysUntilCheckin = nextCheckinDate
-    ? Math.ceil((nextCheckinDate.getTime() - Date.now()) / msPerDay)
-    : null;
+  const daysUntilCheckin = nextCheckinDate ? daysUntil(nextCheckinDate) : null;
   const checkinOverdue = daysUntilCheckin !== null && daysUntilCheckin <= 0 && !seasonEnded;
   const daysSinceCheckin = daysUntilCheckin !== null && daysUntilCheckin < 0 ? Math.abs(daysUntilCheckin) : 0;
 
@@ -449,9 +446,7 @@ export default async function DashboardPage() {
 
             {/* Event cards from athlete profile */}
             {events.map((ev: { name: string; date: string; priority: string; target_time: string }, i: number) => {
-              const daysToEvent = ev.date
-                ? Math.ceil((new Date(ev.date).getTime() - Date.now()) / msPerDay)
-                : null;
+              const daysToEvent = ev.date ? daysUntil(ev.date) : null;
               const isPast = daysToEvent !== null && daysToEvent < 0;
               const priorityColor =
                 ev.priority === "A" ? "var(--accent)" :

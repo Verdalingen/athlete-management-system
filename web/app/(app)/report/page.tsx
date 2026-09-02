@@ -1,5 +1,6 @@
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
+import { daysAgoISO } from "@/lib/dates";
 import type { CompletedActivity } from "@/lib/types";
 import ProgressTabs, { type TrendSeries, type ZoneBand, type ZoneLine } from "./ProgressTabs";
 
@@ -7,7 +8,7 @@ export default async function ProgressPage() {
   const sb = createServerClient();
   const uid = await getUserId();
 
-  const activityHistoryStart = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const activityHistoryStart = daysAgoISO(365);
 
   const [latestRes, dailyMetricsRes, fallbackTrendRes, weeklyReviewRes, athleteProfile, completedActivitiesRes, benchRes] = await Promise.all([
     sb
