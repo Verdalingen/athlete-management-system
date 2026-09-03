@@ -5,6 +5,7 @@ import { parseDayMeta } from "@/lib/plan-parser";
 import { buildStrengthMap, getWeightRecommendation, type CompletedSetRow, type WeightRecommendation } from "@/lib/strength";
 import type { CompletedActivity, Plan, ScheduledDay, StrengthSession } from "@/lib/types";
 import { DashboardActions } from "./DashboardActions";
+import { CheckInCTA } from "./CheckInCTA";
 import { MiniMonthCalendar } from "./MiniMonthCalendar";
 import { RecentSessionsList } from "./RecentSessionsList";
 import { TodaySessionCard, TODAY_SESSION_CARD_HEIGHT } from "./TodaySessionCard";
@@ -386,10 +387,9 @@ export default async function DashboardPage() {
                 valueColor={checkinOverdue ? "var(--amber)" : undefined}
                 note={
                   daysUntilCheckin === null ? undefined
-                    : checkinOverdue ? (daysSinceCheckin === 0 ? "Today" : `${daysSinceCheckin}d overdue`)
+                    : checkinOverdue ? <CheckInCTA daysSinceCheckin={daysSinceCheckin} />
                     : nextCheckinDate ? formatShort(nextCheckinDate.toISOString().slice(0, 10)) : undefined
                 }
-                noteColor={checkinOverdue ? "var(--amber)" : undefined}
               />
               <MiniStat
                 label="This week"
@@ -431,10 +431,8 @@ export default async function DashboardPage() {
         <SicknessWatchCard signals={sicknessSignals} />
       </section>
 
-      {/* ── Action prompts ───────────────────────────────────────────────── */}
+      {/* ── Action prompts (season-end only — check-in CTA lives in "This Week") ── */}
       <DashboardActions
-        checkinOverdue={checkinOverdue}
-        daysSinceCheckin={daysSinceCheckin}
         seasonEnded={seasonEnded}
         planEndDate={plan ? formatShort(plan.end_date) : ""}
       />
