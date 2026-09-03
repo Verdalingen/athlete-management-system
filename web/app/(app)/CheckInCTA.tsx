@@ -29,20 +29,22 @@ export function CheckInCTA({ daysSinceCheckin }: { daysSinceCheckin: number }) {
 
   return (
     <>
+      <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 1, marginBottom: 5 }}>
+        {daysSinceCheckin === 0 ? "Due today" : `${daysSinceCheckin}d overdue`}
+      </div>
       <button
         onClick={() => { setComment(""); setError(null); setOpen(true); }}
         disabled={isPending}
         style={{
-          display: "inline-flex", alignItems: "center", gap: 4,
-          background: "none", border: "none", padding: 0, marginTop: 1,
+          display: "inline-flex", alignItems: "center", gap: 5,
+          padding: "4px 10px", borderRadius: 6,
+          background: "rgba(var(--amber-rgb),.14)", border: "1px solid rgba(var(--amber-rgb),.32)",
           color: "var(--amber)", fontSize: 11, fontWeight: 700,
-          cursor: isPending ? "default" : "pointer", textAlign: "left",
+          cursor: isPending ? "default" : "pointer", whiteSpace: "nowrap",
         }}
       >
-        <i className="ti ti-refresh" style={{ fontSize: 11 }} aria-hidden="true" />
-        {isPending
-          ? "Queuing…"
-          : daysSinceCheckin === 0 ? "Due today — run check-in" : `${daysSinceCheckin}d overdue — run check-in`}
+        <i className="ti ti-refresh" style={{ fontSize: 12 }} aria-hidden="true" />
+        {isPending ? "Queuing…" : "Run Check-In"}
       </button>
       {error && <div style={{ fontSize: 11, color: "var(--red)", marginTop: 3 }}>{error}</div>}
 
