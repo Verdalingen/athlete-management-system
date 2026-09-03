@@ -32,14 +32,17 @@ export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; 
   if (allDates.length === 0) return null;
   const cutoffMs = new Date(allDates.at(-1)!).getTime() - TF_DAYS[timeframe] * 86400000;
 
-  const visible = charts
-    .map(c => ({
-      ...c,
-      series: { ...c.series, data: c.series.data.filter(d => new Date(d.date).getTime() >= cutoffMs) },
-    }))
-    .filter(c => c.series.data.filter(d => d.value !== null).length >= 3);
-
-  if (visible.length === 0) return null;
+  const windowed = charts.map(c => ({
+    ...c,
+    series: { ...c.series, data: c.series.data.filter(d => new Date(d.date).getTime() >= cutoffMs) },
+  }));
+  // A chart only reaches this component after clearing page.tsx's "has ≥3 points
+  // ever" gate, so a chart with <3 points inside *this* window isn't missing data —
+  // it just went quiet recently (e.g. a sync gap, or the athlete didn't run/lift
+  // enough in this shorter window). Rendered below as a note rather than silently
+  // dropping the goal from the grid, which otherwise looks like the goal itself
+  // disappeared.
+  if (windowed.length === 0) return null;
 
   return (
     <div className="card">
@@ -47,7 +50,7 @@ export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; 
         <summary style={{ listStyle: "none", cursor: "pointer", userSelect: "none", outline: "none", display: "flex", alignItems: "center", gap: 10 }}>
           <div className="card-title" style={{ margin: 0, flexShrink: 0 }}>Goal Progress</div>
           <span style={{ fontSize: 12, color: "var(--dim)", marginLeft: "auto" }}>
-            {visible.length} goal{visible.length === 1 ? "" : "s"} tracked
+            {charts.length} goal{charts.length === 1 ? "" : "s"} tracked
           </span>
           <i className="ti ti-chevron-down" style={{ fontSize: 14, color: "var(--dim)", flexShrink: 0 }} aria-hidden="true" />
         </summary>
@@ -68,9 +71,17 @@ export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; 
           </div>
         </div>
         <div className="goal-progress-chart-grid">
-          {visible.map(c => (
-            <ExpandedChart key={c.key} series={c.series} events={events} showAnomalies={false} caption={c.caption} />
-          ))}
+          {windowed.map(c =>
+            c.series.data.filter(d => d.value !== null).length >= 3 ? (
+              <ExpandedChart key={c.key} series={c.series} events={events} showAnomalies={false} caption={c.caption} />
+            ) : (
+              <div key={c.key} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", gap: 6, minHeight: 160, padding: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".7px", color: "var(--dim)" }}>{c.series.label}</div>
+                <i className="ti ti-alert-circle" style={{ fontSize: 20, color: "var(--dim)" }} aria-hidden="true" />
+                <div style={{ fontSize: 13, color: "var(--muted)" }}>Not enough recent data for {timeframe}</div>
+              </div>
+            )
+          )}
         </div>
       </details>
     </div>
