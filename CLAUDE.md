@@ -1,4 +1,4 @@
-# Garmin AI Coach
+# Athlete Management System
 
 Personal training system for one athlete (Adrian). A Python pipeline pulls Garmin data,
 runs a LangGraph coaching workflow, writes plans to Supabase, and pushes structured
@@ -22,7 +22,7 @@ For a fast pass while iterating: `pixi run test -- -q --no-cov`.
 
 Web side (from `web/`): `npm run dev`, `npm run build`, `npx tsc --noEmit`, `npm run lint`.
 
-CLI entry point is `cli/garmin_ai_coach_cli.py`, driven by mutually-exclusive flags rather
+CLI entry point is `cli/ams.py`, driven by mutually-exclusive flags rather
 than subcommands: `--config`, `--replan`, `--queue`, `--sync-kpis`, `--sync-history`,
 `--shift`, `--set-password`, `--init-config`. See `cli/README.md`.
 

@@ -1,4 +1,4 @@
-# garmin-ai-coach — web
+# Athlete Management System — web
 
 Next.js (App Router) front end for the coaching pipeline described in the
 [root README](../README.md). Supabase-backed, deployed on Vercel.
@@ -14,7 +14,7 @@ npm run build
 ```
 
 Requires a Supabase project (URL + keys) and the same LLM provider keys as the
-Python side — see the root README's [Providers & Model Selection](../README.md#-providers--model-selection)
+Python side — see the root README's [Providers and model selection](../README.md#providers-and-model-selection)
 section and `services/supabase/` for the schema these pages read/write.
 
 ## Pages

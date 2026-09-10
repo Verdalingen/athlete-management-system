@@ -6,7 +6,7 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="$PROJECT_DIR/my_training_config.yaml"
-LOG="$HOME/.garmin-ai-coach-kpi-sync.log"
+LOG="$HOME/.ams-kpi-sync.log"
 
 # Load .env if it exists (for SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, etc.)
 if [ -f "$PROJECT_DIR/.env" ]; then
@@ -18,6 +18,6 @@ fi
 
 cd "$PROJECT_DIR"
 
-/opt/homebrew/bin/pixi run python cli/garmin_ai_coach_cli.py \
+/opt/homebrew/bin/pixi run python cli/ams.py \
   --sync-kpis "$CONFIG" \
   >> "$LOG" 2>&1

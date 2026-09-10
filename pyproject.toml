@@ -4,6 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -15,9 +16,9 @@ markers = [
 ]
 
 [project]
-name = "garmin-ai-coach"
+name = "athlete-management-system"
 version = "2.2.0"
-description = "CLI tool for Garmin data analysis with AI-powered insights"
+description = "Closed-loop training system: Garmin ingest, multi-agent planning, structured workout delivery"
 requires-python = ">=3.13"
 authors = [
     {name = "Adrian Walderhaug-Johnsen"}

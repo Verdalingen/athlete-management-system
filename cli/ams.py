@@ -1330,7 +1330,19 @@ def create_config_template(output_path: Path) -> None:
         logger.error("❌ Template file not found")
 
 
-_SYNC_STAMP = Path.home() / ".garmin-ai-coach-kpi-sync"
+_SYNC_STAMP = Path.home() / ".ams-kpi-sync"
+# Stamp path before the project was renamed. Read as a fallback so the first run
+# after the rename still respects KPI_SYNC_MIN_INTERVAL rather than firing
+# immediately. Writes always go to the current path, so this fades out on its own.
+_LEGACY_SYNC_STAMP = Path.home() / ".garmin-ai-coach-kpi-sync"
+
+
+def _read_sync_stamp() -> str | None:
+    """Return the last-run ISO timestamp, or None if there is no readable stamp."""
+    for path in (_SYNC_STAMP, _LEGACY_SYNC_STAMP):
+        if path.exists():
+            return path.read_text().strip()
+    return None
 
 # Minimum time between successful KPI syncs. This is a personal single-user app —
 # a finished workout or fresh HRV/sleep reading doesn't need sub-hour freshness for
@@ -1364,8 +1376,8 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
     """
     now = datetime.now()
 
-    if _SYNC_STAMP.exists():
-        raw = _SYNC_STAMP.read_text().strip()
+    raw = _read_sync_stamp()
+    if raw is not None:
         last_run = None
         try:
             last_run = datetime.fromisoformat(raw)
@@ -1574,8 +1586,8 @@ def cmd_sync_history(config_path: Path) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Garmin AI Coach CLI - AI Triathlon Coach",
-        epilog="Example: python garmin_ai_coach_cli.py --config my_config.yaml",
+        description="Athlete Management System CLI — hybrid training, nutrition and Garmin sync",
+        epilog="Example: python cli/ams.py --config my_config.yaml",
     )
 
     group = parser.add_mutually_exclusive_group(required=True)
@@ -1616,7 +1628,7 @@ def main():
             logger.error("❌ keyring not installed — run: pixi install")
             sys.exit(1)
         password = getpass.getpass(f"Garmin password for {email}: ")
-        keyring.set_password("garmin-ai-coach", email, password)
+        keyring.set_password("athlete-management-system", email, password)
         logger.info("✅ Password stored in system keychain for %s", email)
         return
 

@@ -1,7 +1,7 @@
 [workspace]
-name = "garmin-ai-coach"
+name = "athlete-management-system"
 version = "2.2.0"
-description = "CLI tool for Garmin data analysis with AI-powered insights"
+description = "Closed-loop training system: Garmin ingest, multi-agent planning, structured workout delivery"
 authors = ["Adrian Walderhaug-Johnsen"]
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
@@ -14,7 +14,7 @@ typing_extensions = ">=4.13.0"
 
 [pypi-dependencies]
 # Install the project itself in editable mode
-garmin-ai-coach = { path = ".", editable = true }
+athlete-management-system = { path = ".", editable = true }
 keyring = ">=25.0"
 garminconnect = ">=0.2.30, <0.3"
 anthropic = ">=0.71.0, <0.72"
@@ -48,7 +48,7 @@ types-requests = "*"
 
 [tasks]
 # Development tasks
-dev = "python cli/garmin_ai_coach_cli.py --help"
+dev = "python cli/ams.py --help"
 test = "pytest"
 test-cov = "pytest --cov=. --cov-report=term-missing --cov-report=html"
 lint = "flake8 ."
@@ -58,13 +58,13 @@ format = "black . && isort ."
 type-check = "mypy ."
 
 # Dead code detection
-dead-code = "vulture --config vulture.toml"
-dead-code-all = "vulture --config vulture.toml --min-confidence 60"
-dead-code-verbose = "vulture --config vulture.toml --verbose"
+dead-code = "vulture services cli core --min-confidence 80"
+dead-code-all = "vulture services cli core --min-confidence 60"
+dead-code-verbose = "vulture services cli core --min-confidence 80 --verbose"
 
 # CLI coach interface
-coach-cli = "python cli/garmin_ai_coach_cli.py"
-coach-init = "python cli/garmin_ai_coach_cli.py --init-config"
+coach-cli = "python cli/ams.py"
+coach-init = "python cli/ams.py --init-config"
 coach-daily = "python cli/daily_checkin_cli.py"
 
 [environments]
