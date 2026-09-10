@@ -13,7 +13,17 @@ export function createServerClient() {
 // Returns the authenticated user's ID from the current session.
 // Middleware guarantees a valid session exists before any page renders,
 // so this will always resolve in practice.
+//
+// DEMO_USER_ID (development only) overrides which user's *data* is read, so the
+// app can be explored with the fictional athlete from supabase/seed_demo.sql
+// instead of real data. Authentication is unchanged — you still have to be
+// signed in, and the guard below means this can never take effect in a
+// production build. It is deliberately not an auth bypass.
 export async function getUserId(): Promise<string> {
+  if (process.env.NODE_ENV === "development" && process.env.DEMO_USER_ID) {
+    await requireSession();
+    return process.env.DEMO_USER_ID;
+  }
   const cookieStore = await cookies();
   const supabase = createSSRClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,6 +42,24 @@ export async function getUserId(): Promise<string> {
 
 // First name for the dashboard greeting — falls back through OAuth metadata to the
 // email's local part, since there's no dedicated profile "name" field today.
+// Throws unless the caller has a valid Supabase session. Used by the DEMO_USER_ID
+// path so that overriding the data source never weakens the auth requirement.
+async function requireSession(): Promise<void> {
+  const cookieStore = await cookies();
+  const supabase = createSSRClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => cookieStore.getAll(),
+        setAll: () => {},
+      },
+    }
+  );
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+}
+
 export async function getUserFirstName(): Promise<string> {
   const cookieStore = await cookies();
   const supabase = createSSRClient(
