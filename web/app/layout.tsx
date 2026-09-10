@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 const bricolage = Bricolage_Grotesque({ variable: "--font-bricolage-grotesque", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Garmin AI Coach",
+  title: "Athlete Management System",
   description: "AI-powered training dashboard",
 };
 

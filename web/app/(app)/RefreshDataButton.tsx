@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import type { ReplanJob } from "@/app/actions/replan";
 
-// Mirrors KPI_SYNC_MIN_INTERVAL in cli/garmin_ai_coach_cli.py — keep these in sync.
+// Mirrors KPI_SYNC_MIN_INTERVAL in cli/ams.py — keep these in sync.
 // The backend enforces this authoritatively (via a local stamp file, checked again
 // when the queued job actually runs); this is just so the button doesn't invite a
 // click that the backend will silently no-op.
