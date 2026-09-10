@@ -540,6 +540,51 @@ select '00000000-0000-4000-8000-000000000001', d::date,
        'garmin'
 from generate_series(current_date - interval '56 days', current_date, interval '7 days') as g(d);
 
+-- ── 9b. Guarantee today is a strength day ──────────────────────────────────
+-- The dashboard hero card only renders its Exercise / Sets x Reps / Rest /
+-- Intensity table when the day has a strength session; a run day shows just a
+-- one-line description. Since the plan lifts on Mon/Wed/Fri, seeding on any
+-- other weekday would leave the first screen a new clone sees looking empty.
+-- So if today isn't already a lifting day, trade it with the nearest earlier
+-- one — moving the session and its exercises, and swapping the plan entries
+-- both ways so no day ends up duplicated or blank. Re-running is a no-op.
+do $$
+declare
+  demo constant uuid := '00000000-0000-4000-8000-000000000001';
+  src  date;
+  a    scheduled_days%rowtype;
+  b    scheduled_days%rowtype;
+begin
+  if exists (select 1 from scheduled_days
+             where user_id = demo and date = current_date and session_type = 'strength') then
+    return;
+  end if;
+
+  select max(date) into src
+  from scheduled_days
+  where user_id = demo and session_type = 'strength' and date < current_date;
+
+  if src is null then return; end if;
+
+  select * into a from scheduled_days where user_id = demo and date = current_date;
+  select * into b from scheduled_days where user_id = demo and date = src;
+
+  update scheduled_days set
+    session_type = b.session_type, focus = b.focus, description = b.description,
+    is_key = b.is_key, is_rest = b.is_rest, garmin_workout_id = b.garmin_workout_id
+  where user_id = demo and date = current_date;
+
+  update scheduled_days set
+    session_type = a.session_type, focus = a.focus, description = a.description,
+    is_key = a.is_key, is_rest = a.is_rest, garmin_workout_id = a.garmin_workout_id
+  where user_id = demo and date = src;
+
+  update strength_sessions set
+    date = current_date,
+    garmin_workout_id = 812000000 + (('x'||substr(md5(current_date::text),1,6))::bit(24)::int)
+  where user_id = demo and date = src;
+end $$;
+
 -- ── 10. A finished background job, so the jobs log isn't empty ─────────────
 insert into replan_jobs (user_id, type, status, created_at, started_at, completed_at, coach_feedback)
 values
