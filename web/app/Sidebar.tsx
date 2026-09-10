@@ -108,8 +108,8 @@ export function Sidebar() {
       <aside className={`sidebar${collapsed ? " sb-collapsed" : ""}`}>
         <div className="sb-brand">
           <div className="sb-brand-text">
-            <span className="sb-brand-name">AI Coach</span>
-            <span className="sb-brand-sub">Garmin Training</span>
+            <span className="sb-brand-name">AMS</span>
+            <span className="sb-brand-sub">Athlete Management System</span>
           </div>
           <button
             className="sb-collapse-btn"
@@ -131,7 +131,7 @@ export function Sidebar() {
 
       {/* ── Mobile: slim top bar ── */}
       <header className="mobile-header">
-        <span className="sb-brand-name" style={{ fontSize: 14 }}>AI Coach</span>
+        <span className="sb-brand-name" style={{ fontSize: 14 }}>AMS</span>
         <Link
           href={BOTTOM_ITEM.href}
           className={`mobile-header-icon-btn${onSettings ? " mobile-header-icon-active" : ""}`}
