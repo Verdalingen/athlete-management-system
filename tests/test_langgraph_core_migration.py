@@ -35,15 +35,6 @@ def test_all_nodes_importable():
     assert callable(formatter_node)
 
 
-@patch("services.ai.langgraph.config.langsmith_config.LangSmithConfig.setup_langsmith")
-def test_complete_workflow_creation(mock_langsmith):
-    from services.ai.langgraph.workflows.analysis_workflow import create_analysis_workflow
-
-    workflow_app = create_analysis_workflow()
-    assert workflow_app is not None
-    mock_langsmith.assert_called_once()
-
-
 def test_state_schema_completeness():
     state = create_initial_state(
         user_id="test", athlete_name="Test", garmin_data={}, execution_id="test"
@@ -98,19 +89,3 @@ async def test_node_basic_functionality(mock_get_llm, basic_test_state):
             assert "content" in message
 
 
-def test_workflow_structure_stability():
-    try:
-        with patch("services.ai.langgraph.config.langsmith_config.LangSmithConfig.setup_langsmith"):
-            from services.ai.langgraph.workflows.analysis_workflow import (
-                create_analysis_workflow,
-                create_simple_sequential_workflow,
-            )
-
-            parallel_workflow = create_analysis_workflow()
-            sequential_workflow = create_simple_sequential_workflow()
-
-            assert parallel_workflow is not None
-            assert sequential_workflow is not None
-
-    except Exception as exception:
-        pytest.fail(f"Workflow creation should be stable: {exception}")

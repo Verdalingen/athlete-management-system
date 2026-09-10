@@ -8,7 +8,7 @@ class LangSmithConfig:
 
     @staticmethod
     def setup_langsmith(
-        project_name: str = "garmin_ai_coach_analysis", api_key: str | None = None
+        project_name: str = "ams_analysis", api_key: str | None = None
     ) -> bool:
         try:
             if api_key:
@@ -58,7 +58,7 @@ class LangSmithConfig:
 
     @staticmethod
     def get_project_name(user_id: str, analysis_type: str = "training_analysis") -> str:
-        return f"garmin_ai_coach_{analysis_type}_{user_id!s}"
+        return f"ams_{analysis_type}_{user_id!s}"
 
     @staticmethod
     def disable_langsmith():

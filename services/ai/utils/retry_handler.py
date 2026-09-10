@@ -2,7 +2,6 @@ import asyncio
 import logging
 import random
 from collections.abc import Awaitable, Callable
-from functools import wraps
 from typing import Any
 
 import anthropic
@@ -109,29 +108,9 @@ async def retry_with_backoff(
     raise last_exception
 
 
-def with_retry(config: RetryConfig | None = None, context: str | None = None):
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            func_context = context or func.__name__
-
-            async def call_func():
-                return await func(*args, **kwargs)
-
-            return await retry_with_backoff(call_func, config, func_context)
-
-        return wrapper
-
-    return decorator
-
-
-DEFAULT_CONFIG = RetryConfig(max_retries=3, base_delay=1.0, max_delay=60.0)
-
 AI_ANALYSIS_CONFIG = RetryConfig(
     max_retries=5,
     base_delay=2.0,
     max_delay=120.0,
     exponential_base=2.5,
 )
-
-QUICK_RETRY_CONFIG = RetryConfig(max_retries=2, base_delay=0.5, max_delay=10.0)

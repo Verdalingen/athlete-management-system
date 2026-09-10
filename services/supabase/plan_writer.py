@@ -420,7 +420,7 @@ def _get_bmr_estimate(today_str: str) -> float | None:
     Garmin's bmr_calories for the current, still-running day is a cumulative intraday
     reading, not a finalized daily total: confirmed live it read 971 kcal at ~10:45am
     against a stable ~2429 on every complete prior day, because the morning sync-kpis
-    cron (see cli/garmin_ai_coach_cli.py) ran hours before Garmin finished attributing
+    cron (see cli/ams.py) ran hours before Garmin finished attributing
     the day's rest calories. Since BMR barely changes day to day, a stale-but-complete
     reading from yesterday is strictly more accurate than today's still-partial one —
     so today's own row is never used here even once it's non-null.

@@ -3,7 +3,6 @@ import os
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
 
 from langsmith import Client
 from requests import HTTPError
@@ -173,54 +172,6 @@ class LangSmithCostExtractor:
         except Exception:
             logger.exception("Failed to extract workflow costs for trace %s", trace_id)
             return self._zero_workflow_summary(trace_id)
-
-    def extract_run_costs(self, run_id: str) -> dict[str, Any]:
-        try:
-            root_run = self.safe_read_run(run_id, load_children=True)
-            if not root_run:
-                return self._zero_cost_summary(run_id)
-
-            workflow_summary = self.extract_workflow_costs_by_trace(str(root_run.trace_id))
-            workflow_summary.root_run_id = run_id
-
-            model_breakdown = {}
-            for node in workflow_summary.node_costs:
-                model_key = node.model or "unknown"
-                if model_key not in model_breakdown:
-                    model_breakdown[model_key] = {
-                        "cost_usd": 0.0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "total_tokens": 0,
-                        "web_search_requests": 0,
-                    }
-
-                model_breakdown[model_key]["cost_usd"] += node.cost_usd
-                model_breakdown[model_key]["input_tokens"] += node.input_tokens
-                model_breakdown[model_key]["output_tokens"] += node.output_tokens
-                model_breakdown[model_key]["total_tokens"] += node.tokens
-                model_breakdown[model_key]["web_search_requests"] += node.web_search_requests
-
-            return {
-                "total_cost_usd": workflow_summary.total_cost_usd,
-                "total_tokens": workflow_summary.total_tokens,
-                "model_breakdown": model_breakdown,
-                "run_id": run_id,
-                "trace_id": workflow_summary.trace_id,
-            }
-
-        except Exception:
-            logger.exception("Failed to extract costs from LangSmith run %s", run_id)
-            return self._zero_cost_summary(run_id)
-
-    def _zero_cost_summary(self, run_id: str | None = None) -> dict[str, Any]:
-        return {
-            "total_cost_usd": 0.0,
-            "total_tokens": 0,
-            "model_breakdown": {},
-            "run_id": run_id,
-            "trace_id": None,
-        }
 
     def _zero_workflow_summary(self, trace_id: str) -> WorkflowCostSummary:
         return WorkflowCostSummary(
