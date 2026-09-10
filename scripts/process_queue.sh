@@ -6,7 +6,7 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="$PROJECT_DIR/my_training_config.yaml"
-LOG="$HOME/.garmin-ai-coach-process-queue.log"
+LOG="$HOME/.ams-process-queue.log"
 
 # Load .env if it exists (for SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_USER_ID, etc.)
 if [ -f "$PROJECT_DIR/.env" ]; then
@@ -31,6 +31,6 @@ if [ -n "${SUPABASE_URL:-}" ] && [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
   fi
 fi
 
-/opt/homebrew/bin/pixi run python cli/garmin_ai_coach_cli.py \
+/opt/homebrew/bin/pixi run python cli/ams.py \
   --queue "$CONFIG" \
   >> "$LOG" 2>&1

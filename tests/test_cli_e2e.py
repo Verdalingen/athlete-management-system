@@ -7,11 +7,11 @@ from services.garmin.models import GarminData
 
 
 @pytest.mark.asyncio
-@patch("cli.garmin_ai_coach_cli._sync_completed_exercise_sets")
-@patch("cli.garmin_ai_coach_cli.upsert_completed_activities")
-@patch("cli.garmin_ai_coach_cli.upsert_daily_metrics_batch")
-@patch("cli.garmin_ai_coach_cli._write_to_supabase")
-@patch("cli.garmin_ai_coach_cli.get_sync_gap_days", side_effect=lambda days: days)
+@patch("cli.ams._sync_completed_exercise_sets")
+@patch("cli.ams.upsert_completed_activities")
+@patch("cli.ams.upsert_daily_metrics_batch")
+@patch("cli.ams._write_to_supabase")
+@patch("cli.ams.get_sync_gap_days", side_effect=lambda days: days)
 @patch("services.supabase.athlete_profile.get_recurring_session_requests", return_value=[])
 @patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
@@ -65,7 +65,7 @@ async def test_cli_e2e_smoke_with_mocks(
     mock_outside_instance.get_competitions.return_value = []
 
     # Import after patches are in place
-    from cli.garmin_ai_coach_cli import run_analysis_from_config
+    from cli.ams import run_analysis_from_config
 
     output_directory = tmp_path / "out"
     config_path = tmp_path / "config.yaml"
@@ -109,11 +109,11 @@ credentials:
 
 
 @pytest.mark.asyncio
-@patch("cli.garmin_ai_coach_cli._sync_completed_exercise_sets")
-@patch("cli.garmin_ai_coach_cli.upsert_completed_activities")
-@patch("cli.garmin_ai_coach_cli.upsert_daily_metrics_batch")
-@patch("cli.garmin_ai_coach_cli._write_to_supabase")
-@patch("cli.garmin_ai_coach_cli.get_sync_gap_days", side_effect=lambda days: days)
+@patch("cli.ams._sync_completed_exercise_sets")
+@patch("cli.ams.upsert_completed_activities")
+@patch("cli.ams.upsert_daily_metrics_batch")
+@patch("cli.ams._write_to_supabase")
+@patch("cli.ams.get_sync_gap_days", side_effect=lambda days: days)
 @patch("services.supabase.athlete_profile.get_recurring_session_requests", return_value=[])
 @patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
@@ -164,7 +164,7 @@ async def test_cli_e2e_with_hitl_enabled(
     mock_outside_instance.get_competitions.return_value = []
 
     # Import after patches are in place
-    from cli.garmin_ai_coach_cli import run_analysis_from_config
+    from cli.ams import run_analysis_from_config
 
     output_directory = tmp_path / "out_hitl"
     config_path = tmp_path / "config_hitl.yaml"

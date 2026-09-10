@@ -32,82 +32,6 @@ from services.ai.langgraph.utils.workflow_cost_tracker import ProgressIntegrated
 logger = logging.getLogger(__name__)
 
 
-def create_planning_workflow():
-    LangSmithConfig.setup_langsmith()
-
-    workflow = StateGraph(TrainingAnalysisState)
-
-    workflow.add_node("season_planner", season_planner_node)
-    workflow.add_node("master_orchestrator", master_orchestrator_node)
-    workflow.add_node("data_integration", data_integration_node)
-    workflow.add_node("weekly_planner", weekly_planner_node)
-    workflow.add_node("plan_formatter", plan_formatter_node)
-
-    workflow.add_edge(START, "season_planner")
-    workflow.add_edge("season_planner", "master_orchestrator")
-
-    workflow.add_edge("master_orchestrator", "data_integration")
-    workflow.add_edge("master_orchestrator", "plan_formatter")
-    workflow.add_edge("master_orchestrator", "season_planner")
-    workflow.add_edge("master_orchestrator", "weekly_planner")
-
-    workflow.add_edge("data_integration", "weekly_planner")
-    workflow.add_edge("weekly_planner", "master_orchestrator")
-    workflow.add_edge("plan_formatter", END)
-
-    checkpointer = MemorySaver()
-    app = workflow.compile(checkpointer=checkpointer)
-
-    logger.info("Created complete LangGraph planning workflow with 4 agents")
-    return app
-
-
-async def run_weekly_planning(
-    user_id: str,
-    athlete_name: str,
-    garmin_data: dict,
-    planning_context: str = "",
-    competitions: list | None = None,
-    current_date: dict | None = None,
-    week_dates: list | None = None,
-    metrics_outputs=None,
-    activity_outputs=None,
-    physiology_outputs=None,
-    plots: list | None = None,
-    available_plots: list | None = None,
-) -> dict:
-    execution_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_planning"
-    config = {"configurable": {"thread_id": execution_id}}
-
-    initial_state = create_initial_state(
-        user_id=user_id,
-        athlete_name=athlete_name,
-        garmin_data=garmin_data,
-        planning_context=planning_context,
-        competitions=competitions,
-        current_date=current_date,
-        week_dates=week_dates,
-        execution_id=execution_id,
-    )
-    initial_state.update({
-        "metrics_outputs": metrics_outputs,
-        "activity_outputs": activity_outputs,
-        "physiology_outputs": physiology_outputs,
-        "plots": plots or [],
-        "available_plots": available_plots or [],
-    })
-
-    async for chunk in create_planning_workflow().astream(
-        initial_state,
-        config=config,
-        stream_mode="values",
-    ):
-        logger.info("Planning workflow step: %s", list(chunk.keys()) if chunk else "None")
-        final_state = chunk
-
-    return final_state
-
-
 def create_integrated_analysis_and_planning_workflow():
     LangSmithConfig.setup_langsmith()
 
@@ -202,7 +126,7 @@ async def run_complete_analysis_and_planning(
     skip_synthesis: bool = False,
 ) -> dict:
     execution_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_complete"
-    cost_tracker = ProgressIntegratedCostTracker(f"garmin_ai_coach_{user_id}", progress_manager)
+    cost_tracker = ProgressIntegratedCostTracker(f"ams_{user_id}", progress_manager)
 
 
     final_state, execution = await cost_tracker.run_workflow_with_progress(

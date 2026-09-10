@@ -1,308 +1,321 @@
-# garmin-ai-coach — 🏊‍♂️🚴‍♂️🏃‍♂️ Your AI Endurance Coach
+# Athlete Management System
 
-> Personal training system built around a LangGraph multi-agent coaching pipeline:
-> pulls Garmin Connect data, produces an evidence-based training analysis
-> (`analysis.html`) and a season strategy + compact 4-week plan (`planning.html`),
-> then pushes the resulting structured workouts *back* to Garmin Connect. A
-> Next.js + Supabase web app sits on top for day-to-day use — plan calendar,
-> nutrition tracking, and weekly check-ins — backed by the same Python pipeline.
+A multi-agent coaching system for hybrid athletes: **strength, endurance,
+nutrition and recovery planned as one**, and written back to the watch.
 
-[![Made with Python](https://img.shields.io/badge/Made%20with-Python-blue.svg)](https://python.org)
-[![Powered by LangGraph](https://img.shields.io/badge/Powered%20by-LangGraph-purple.svg)](https://langchain-ai.github.io/langgraph/)
-[![Next.js](https://img.shields.io/badge/Web-Next.js%20%2B%20Supabase-black.svg)](web/)
+Most training tools do exactly one thing — a running plan, or a lifting log, or
+a calorie tracker — and leave the interactions between them to you. Those
+interactions are where the hard problems live. Leg volume placed the day before
+a quality run degrades both. Fuelling can't be decided without knowing what
+session is coming. Recovery data is meaningless unless the planner is allowed to
+act on it. This system treats them as one problem, because for the athlete they
+are one problem.
+
+[![CI](https://github.com/Verdalingen/athlete-management-system/actions/workflows/ci.yml/badge.svg)](https://github.com/Verdalingen/athlete-management-system/actions/workflows/ci.yml)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
+[![Next.js 16](https://img.shields.io/badge/web-Next.js%2016%20%2B%20Supabase-black.svg)](web/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-**Providers:** OpenAI, Anthropic, and OpenRouter (DeepSeek/Gemini/Grok via OpenRouter).
 
 > Not affiliated with Garmin. Not medical advice.
 
 ---
 
-## Two halves of one system
+## The loop
 
-- **[`web/`](web/)** — the actual day-to-day interface: a Next.js dashboard
-  (deployed on Vercel) with a plan calendar, nutrition tracking, and weekly
-  check-ins. This is what's in daily use.
-- **CLI (`cli/`)** — the pipeline driver underneath it. It runs the same
-  LangGraph coaching workflow and Garmin sync (`services/ai/langgraph/`,
-  `services/garmin/`), invoked both interactively (`--config`, `--replan`)
-  and as the background job runner behind the web app's check-ins and
-  syncs (`--queue`, `--sync-kpis`, `--shift`). Athlete context, credentials,
-  and the plan itself all live in Supabase — the CLI reads/writes there
-  directly rather than working off local files. See [`cli/README.md`](cli/README.md).
+A closed loop, not a report generator:
 
-Both require a Supabase project and an LLM provider key (`.env`, based on
-[`.env.example`](.env.example)); the CLI additionally needs `SUPABASE_USER_ID`
-set to the athlete it's running for.
+1. **Observe** — pull activities, HRV, sleep, resting HR and body composition
+   from Garmin Connect, and compute the load metrics rather than trusting the
+   vendor's (EWMA acute/chronic, an uncoupled chronic series, ramp, monotony).
+2. **Decide** — a team of specialist agents (metrics, physiology, activity,
+   nutrition, lifestyle) run in parallel, feed an orchestrator, and produce a
+   season strategy and a concrete 4-week plan.
+3. **Act** — structured workouts are written to Garmin Connect and sync to the
+   watch: real exercise keys, set counts, rest steps, pace-zone targets.
+4. **Measure** — drift detection compares what was planned against what was
+   actually done.
+5. **Correct** — re-plan from the divergence, on a schedule, unattended.
 
----
+Steps 3 to 5 are what make it a system rather than a dashboard. It doesn't
+advise; it acts, then checks whether the action took.
 
-## 🚀 Quick Start (CLI, Pixi)
-
-```bash
-# 1) Install dependencies
-pixi install
-
-# 2) Set provider + Supabase env vars (see .env.example)
-cp .env.example .env
-
-# 3) Create a config (athlete name/email; coaching context comes from Supabase)
-pixi run coach-init my_training_config.yaml
-
-# 4) Run
-pixi run coach-cli --config my_training_config.yaml
-```
-
-Open the generated reports:
-
-- `./data/analysis.html`
-- `./data/planning.html`
-
-For the web app, see [`web/README.md`](web/README.md).
+That closed loop is also why the next section isn't a stylistic preference. You
+cannot put an unverifiable component in a control loop that actuates on a
+person.
 
 ---
 
-## ✨ What You Get
+## The design principle
 
-- KPI dashboard: chronic/acute load, ACWR, HRV, sleep RHR, weight trend
-- Running execution analysis: progression evidence + coaching insights
-- Physiology & readiness: baseline profiling + crash signature detection
-- Actionable recommendations grouped by domain (load, running, cycling, recovery)
-- Season strategy (typically 12–24 weeks) + compact 4-week plan (28 days)
-- **Bidirectional Garmin sync**: pulls activities/metrics, and pushes the plan's
-  structured workouts (strength sets/reps, running interval segments with pace
-  targets) back to Garmin Connect so they show up on-watch
-- Optional: HITL questions (`hitl_enabled: true`)
-- Optional: competition import from Outside (BikeReg/RunReg/TriReg/SkiReg)
-- Optional: LangSmith tracing + cost tracking (`LANGSMITH_API_KEY`)
+**Rules that can be checked mechanically live in Python, not in the prompt.**
 
----
+Weekly volume caps, leg-day/hard-run spacing, bench-wave progression, slot
+rotation, running-session rendering, plan-drift detection — all of it is
+ordinary code with tests. Several of those rules moved out of the prompt only
+after the prompt-based version demonstrably failed on a real check-in: an LLM
+that is asked to count and space things will do it correctly most of the time,
+and "most of the time" is invisible until it isn't.
 
-## 🎯 See It In Action
+The model is left with the part that has no ground truth to check against —
+season strategy, and coaching notes that depend on context. Anything countable
+is enforced deterministically and can fail a build.
 
-### 📊 Analysis Reports
-
-![KPI Dashboard](docs/screenshots/kpi_dashboard.png)
-*Key Performance Indicators: training load, ACWR, HRV, recovery metrics, and body composition at a glance*
-
-![Running Execution Analysis](docs/screenshots/running_execution_analysis.png)
-*Evidence-based progression tracking with threshold durability insights and coaching notes*
-
-![Physiology & Readiness](docs/screenshots/physiology_readiness.png)
-*Deep physiological analysis: baseline profiling, crash signature detection, and current readiness assessment*
-
-![Actionable Recommendations](docs/screenshots/recommendations.png)
-*Sport-specific recommendations organized by category: load management, running, cycling, and recovery*
-
-### 📅 Training Plans
-
-![Season Plan Overview](docs/screenshots/season_plan_overview.png)
-*Macro-cycle season plan with race anchors, phase architecture, and periodization timeline*
-
-![Daily Workout Details](docs/screenshots/plan_workout_day.png)
-*Structured day plan with intensity zones, adaptations, and monitoring cues*
+If a prompt instruction is being added to enforce something countable, that is
+the signal it belongs in code with a test instead.
 
 ---
 
-## 🖥️ Web App
+## Scope and status
 
-[`web/`](web/) is a Next.js app (deployed on Vercel) that runs the same
-coaching pipeline against Supabase instead of local files, for day-to-day use:
+**One athlete, one tenant.** A personal system in daily use, not a product. It is
+open source so it can be read and reused, not because it is offered as a service.
+See [SECURITY.md](SECURITY.md) for what that scope means in practice.
 
-- **Dashboard** — KPIs, plan calendar, and this week's sessions at a glance
-- **Plan** — the full 4-week structured plan, with drift detection when actual
-  training diverges from what was planned
-- **Nutrition** — daily calorie/macro targets computed from BMR + session-specific
-  active burn, food logging with live barcode scanning (`BarcodeDetector` on
-  Chromium, native-camera-capture + ZXing fallback on iOS/WebKit), and
-  Open Food Facts lookup with Nordic/Scandinavian coverage
-- **Report** — the weekly analysis/check-in, rendered from the same LangGraph
-  output as `analysis.html`
-- **Setup / Profile** — Supabase-authenticated config, replacing the CLI's YAML file
-
-Multi-user by design: credentials and training config live per-user in Supabase
-(`services/supabase/`), with Garmin credentials resolved via Supabase Vault
-(`services/garmin/credentials.py`) rather than a shared local config.
+It runs on a phone and a laptop equally, which is the reason it has a backend at
+all: it started as a CLI printing an HTML report, and that was useless at the
+gym. Logging a meal or checking tomorrow's session had to work from a phone,
+which meant a hosted database rather than local files — and once there was a
+backend there had to be auth, and once there was auth the data had to be scoped
+per user and Garmin credentials could no longer sit in a config file. Every
+architectural decision follows from that one requirement.
 
 ---
 
-## 🧠 How It Works (High Level)
+## What sits behind each stage
+
+**Observe.** Pulls activities, training load, HRV, sleep, resting HR, VO2max and
+body composition from Garmin Connect. Training-load metrics are computed here
+rather than taken at face value: EWMA acute/chronic load (7d/28d), an
+uncoupled chronic series so a spike can't mask itself, ramp rate, and
+monotony/strain — see [`training_metrics.py`](services/garmin/utils/training_metrics.py).
+
+**Decide.** A LangGraph workflow over 25 nodes: five domain summarisers fan out in
+parallel, feed five expert nodes, then an orchestrator, season planner and
+weekly planner produce a 12–24 week season strategy and a concrete 4-week plan.
+Expert outputs are typed Pydantic payloads, not free text. Optional
+human-in-the-loop, LangSmith tracing and per-run cost attribution.
+
+**Act.** Structured workouts are written to Garmin Connect so they appear
+on the watch — strength sessions with sets, reps and named exercises from
+Garmin's own catalogue, and running sessions as interval segments with pace-zone
+targets.
+
+**Measure and correct.** Drift detection compares the plan against what was
+actually done and re-plans from the difference. The web app — plan calendar,
+nutrition tracking with barcode scanning, weekly check-in — is where that loop
+surfaces day to day, on a phone or a laptop.
+
+---
+
+## The round-trip
+
+The part that isn't just another dashboard: the plan doesn't stop at a web page.
+Structured workouts are written to Garmin Connect and sync to the watch — named
+by the slot the planner assigned, with the exact exercise keys from Garmin's own
+catalogue, per-exercise set counts, rest steps, and lap-button advance.
+
+<p align="center">
+  <img src="docs/screenshots/garmin_workout_overview.jpg" width="46%" alt="A generated session in Garmin Connect: title, total time, and the muscle map Garmin derives from the exercise keys" />
+  <img src="docs/screenshots/garmin_workout_steps.jpg" width="46%" alt="The same session's steps: 3 sets close-grip barbell bench press, rest, 2 sets lunges, 2 sets barbell hip thrust" />
+</p>
+
+*Left: Garmin renders its own muscle map from the exercise keys the uploader
+sends — it only does that when the keys are exactly right. Right: the step
+structure, set counts and rest intervals as the watch will run them.*
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    GC["Garmin Connect"] --> SUM["Summarizers<br>metrics • physiology • activity"]
-    SUM --> EXP["Experts<br>metrics • physiology • activity"]
-    EXP --> ORCH["Master Orchestrator<br>(HITL optional)"]
-    ORCH --> ANALYSIS["analysis.html / Report page"]
-    ORCH --> SEASON["Season plan<br>(12–24 weeks)"]
-    SEASON --> WEEK["4-week plan<br>(28 days)"]
-    WEEK --> PLANNING["planning.html / Plan page"]
-    WEEK --> PUSH["Structured workouts"]
-    PUSH --> GC
+    GC["Garmin Connect"] -->|activities, HRV, sleep, load| PY
+
+    subgraph PY["Python pipeline"]
+        SUM["5 summarisers<br/>(parallel)"] --> EXP["5 expert nodes"]
+        EXP --> ORCH["Orchestrator"]
+        ORCH --> SEASON["Season planner<br/>12–24 weeks"]
+        SEASON --> WEEK["Weekly planner<br/>28 days"]
+        WEEK --> RULES["Deterministic rules<br/>volume · spacing · waves · drift"]
+    end
+
+    RULES --> DB[("Supabase")]
+    RULES -->|structured workouts| GC
+    DB <--> WEB["Next.js app<br/>(Vercel) — phone"]
 ```
 
-Docs:
-
-- CLI usage: [`cli/README.md`](cli/README.md)
-- Web app: [`web/README.md`](web/README.md)
-- Full architecture diagram: [`agents_docs/langgraph_architecture_diagram.mmd`](agents_docs/langgraph_architecture_diagram.mmd)
-- Tech stack & internals: [`agents_docs/techStack.md`](agents_docs/techStack.md)
-
-### Design principle: checkable rules live in code, not prompts
-
-Anything mechanically verifiable — weekly volume enforcement, leg-day/hard-run
-spacing, running-session rendering, plan-drift detection — is implemented in
-Python with tests, not as an LLM prompt instruction. Several of these moved
-out of the prompt only after the prompt-based version demonstrably failed on
-real check-ins. The LLM is reserved for judgment calls (season strategy,
-context-dependent coaching notes); anything countable is enforced deterministically.
+The CLI and the web app are two front ends over the same pipeline. The CLI runs
+it interactively and as a scheduled job runner (macOS LaunchAgents in
+[`scripts/`](scripts/)); the web app is what I actually touch day to day.
+Supabase is the single source of truth for athlete context, credentials and the
+plan itself.
 
 ---
 
-## 📋 Configuration (YAML/JSON)
+## Stack
 
-Start from the template:
-
-- `pixi run coach-init my_training_config.yaml`
-- or copy [`cli/coach_config_template.yaml`](cli/coach_config_template.yaml)
-
-Minimal example:
-
-```yaml
-athlete:
-  name: "Your Name"
-  email: "you@example.com"  # ignored if SUPABASE_USER_ID resolves an email via Vault
-
-extraction:
-  activities_days: 21
-  metrics_days: 56
-  ai_mode: "standard"          # development | standard | cost_effective | pro
-  enable_plotting: false
-  hitl_enabled: true
-  skip_synthesis: false
-
-competitions:
-  - name: "Target Race"
-    date: "2026-04-15"
-    race_type: "Half Marathon"
-    priority: "A"
-    target_time: "01:40:00"
-
-# Optional: auto-import competitions from Outside (BikeReg/RunReg/TriReg/SkiReg)
-outside:
-  bikereg:
-    - id: 71252
-      priority: "B"
-
-output:
-  directory: "./data"
-
-# Optional: keep empty to be prompted securely at runtime
-credentials:
-  password: ""
-```
-
-Coaching context (the athlete's goals/constraints the LLM plans around) isn't
-part of this file — it's read live from Supabase (`athlete_profile`, set up via
-the web app's setup wizard), keyed by `SUPABASE_USER_ID`.
+| Layer | Choice |
+|---|---|
+| Pipeline | Python 3.13, LangGraph, Pydantic v2, managed by [Pixi](https://pixi.sh) |
+| Models | Anthropic, OpenAI, OpenRouter — role-based assignment per mode |
+| Data | Supabase (Postgres, Auth, Vault), 41 append-only migrations |
+| Web | Next.js 16, React 19, Tailwind 4, deployed on Vercel |
+| Quality | 339 tests, mypy strict (0 errors), ruff — all gated in CI |
 
 ---
 
-## 📦 Outputs
+## Running it
 
-Generated files in `output.directory` (default: `./data`):
+This is not a `clone && run` project: the pipeline reads athlete context,
+credentials and the plan from Supabase, so the database and an account have to
+exist first. The order matters.
 
-- `analysis.html` — training analysis report
-- `planning.html` — season overview + compact 4-week plan
-- `metrics_expert.json`, `activity_expert.json`, `physiology_expert.json` — structured expert outputs
-- `season_plan.md`, `weekly_plan.md` — intermediate planning artifacts
-- `summary.json` — metadata + cost summary (`trace_id` / `root_run_id` when LangSmith is enabled)
+**1. Database.** Create a Supabase project and apply the migrations in
+[`supabase/migrations/`](supabase/migrations/) in numeric order — via the
+Supabase SQL editor, or `supabase db push` if you have the CLI linked.
 
----
+**2. Environment.** Copy [`.env.example`](.env.example) to `.env` and fill in the
+Supabase URL, the service-role key, and at least one LLM provider key.
 
-## 🎛️ Providers & Model Selection
-
-Set at least one provider API key (e.g. in `.env`):
-
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `OPENROUTER_API_KEY` (DeepSeek/Gemini/Grok, and can also act as a fallback router)
-
-The run’s `ai_mode` comes from `extraction.ai_mode` (the CLI exports it to `AI_MODE` internally).
-
-Defaults (role→model mapping) live in:
-
-- [`services/ai/ai_settings.py`](services/ai/ai_settings.py)
-- [`services/ai/model_config.py`](services/ai/model_config.py)
-
-Optional:
-
-- `LANGSMITH_API_KEY` enables LangSmith tracing / cost tracking.
-
----
-
-## 🔒 Privacy / Data Handling
-
-- Your Garmin metrics, plans, and nutrition logs are stored in your own Supabase project — no shared, first-party backend.
-- The CLI additionally writes local report files (`analysis.html`, `planning.html`) to your machine.
-- Your Garmin-derived data is sent to your configured LLM provider to generate the reports.
-- If `LANGSMITH_API_KEY` is set, workflow traces (including prompt/response content) are sent to LangSmith.
-
----
-
-<details>
-<summary>Advanced: Installation without Pixi</summary>
+**3. Account.** Run the web app and complete the setup wizard — it writes the
+`athlete_profile` row that holds your goals and constraints. That wizard is the
+single source of truth for coaching context; the YAML config does not carry it.
 
 ```bash
-pip install -r requirements.txt
-python cli/garmin_ai_coach_cli.py --init-config my_training_config.yaml
-python cli/garmin_ai_coach_cli.py --config my_training_config.yaml
+cd web && npm install && npm run dev
 ```
 
-</details>
+**4. Point the CLI at that account.** Set `SUPABASE_USER_ID` in `.env` to the
+account's UUID (Supabase dashboard → Authentication → Users). Without it the CLI
+cannot resolve coaching context and exits.
 
-<details>
-<summary>Advanced: Development</summary>
+**5. Run it.**
 
 ```bash
-pixi run lint-ruff
-pixi run ruff-fix
-pixi run format
-pixi run type-check
-pixi run test
-pixi run dead-code
+pixi install
+pixi run coach-init my_training_config.yaml
+pixi run coach-cli --config my_training_config.yaml
 ```
 
-Project structure:
+Reports land in `./data/` as `analysis.html` and `planning.html`; the plan itself
+is written to Supabase and the structured workouts are pushed to Garmin.
 
-```text
-garmin-ai-coach/
-├── core/                     # Configuration
-├── services/
-│   ├── garmin/               # Garmin Connect extraction + workout upload (strength/running)
-│   ├── ai/langgraph/         # LangGraph workflows + nodes
-│   ├── ai/tools/plotting/    # Optional plotting tools
-│   ├── supabase/             # DB writes: plan writing, drift, credentials
-│   └── outside/              # Outside (BikeReg/RunReg/...) competitions
-├── cli/                      # CLI entrypoint + config template
-├── supabase/migrations/      # Numbered SQL migrations (append-only)
-├── web/                      # Next.js + Supabase web app
-├── agents_docs/              # Internal docs (architecture/stack)
-└── tests/
+The CLI is flag-driven rather than subcommand-driven — `--config`, `--replan`,
+`--queue`, `--sync-kpis`, `--sync-history`, `--shift`, `--set-password`,
+`--init-config`. The sync and queue flags are what the LaunchAgents in
+[`scripts/`](scripts/) run on a schedule. See [`cli/README.md`](cli/README.md)
+for the full reference, and [`web/README.md`](web/README.md) for the app.
+
+Common tasks:
+
+```bash
+pixi run test        # pytest
+pixi run type-check  # mypy
+pixi run lint-ruff   # ruff
+pixi run dead-code   # vulture
 ```
-
-</details>
 
 ---
 
-## 🤝 Contributing
+## Exploring it without a Garmin account
 
-PRs welcome. If you're adding features, please keep the checkable-rules-in-code
-principle above intact and add tests where it makes sense — Python side via
-`pixi run test`, web side per [`web/AGENTS.md`](web/AGENTS.md).
+A fresh clone points at an empty database, which shows you nothing. To see the
+app populated, seed the fictional athlete in
+[`supabase/seed_demo.sql`](supabase/seed_demo.sql) — a full four-month season:
+two accumulation blocks, a peak, and a taper into a goal race, with the load
+metrics *derived* from that training rather than drawn, plus a 28-day plan,
+logged lifts, check-in reports and a nutrition diary:
+
+```bash
+# paste supabase/seed_demo.sql into the Supabase SQL editor, then:
+cd web && DEMO_USER_ID=00000000-0000-4000-8000-000000000001 npm run dev
+```
+
+`DEMO_USER_ID` changes which user's data the pages read. It is ignored outside a
+development build, and you still have to sign in — it overrides the data source,
+not authentication. Remove the demo athlete with
+[`supabase/seed_demo_teardown.sql`](supabase/seed_demo_teardown.sql).
 
 ---
 
-## 📄 License
+## Providers and model selection
 
-MIT License — see [LICENSE](LICENSE) for details.
+Models are assigned **per role, per mode** rather than globally — cheap models
+for summarising and HTML formatting, stronger ones for the expert and planner
+nodes. See [`services/ai/ai_settings.py`](services/ai/ai_settings.py).
+
+| Mode | Intent |
+|---|---|
+| `development` | Cheapest tier that still produces a full run |
+| `cost_effective` | Reduced cost for routine weekly re-plans |
+| `standard` | The default — what I actually run |
+| `pro` | Strongest models available. **Can exceed $10 per run** |
+
+Set it per run with `extraction.ai_mode` in the config, or globally with
+`AI_MODE` in `.env`. Anthropic is the primary provider; OpenAI and OpenRouter
+(DeepSeek, Gemini, Grok) are supported, and OpenRouter acts as the fallback when
+`ANTHROPIC_API_KEY` is absent.
+
+Optional: set `LANGSMITH_API_KEY` for tracing and per-node cost attribution.
+Note that this sends prompt contents — which include health data — to LangSmith.
+
+---
+
+## Layout
+
+| Path | What |
+|---|---|
+| [`services/ai/langgraph/`](services/ai/langgraph/) | The coaching workflow — nodes, schemas, state |
+| [`services/garmin/`](services/garmin/) | Garmin extraction, metrics, workout upload |
+| [`services/supabase/`](services/supabase/) | All DB writes — plan writing, drift, bench wave |
+| [`services/outside/`](services/outside/) | Optional race import (BikeReg/RunReg/TriReg/SkiReg) |
+| [`cli/`](cli/) | Command-line entry point and job runner |
+| [`supabase/migrations/`](supabase/migrations/) | Numbered SQL migrations, append-only |
+| [`tests/`](tests/) | pytest suite |
+| [`web/`](web/) | Next.js app |
+
+---
+
+## Security
+
+The system stores health data and a third-party account password, so the trust
+boundaries are written down rather than left implicit:
+**[SECURITY.md](SECURITY.md)** covers the deployment model, what is enforced,
+the known limitations and their accepted-risk rationale, and what would have to
+change before a second user existed.
+
+Short version: it authenticates to Garmin with a real account password because
+there is no public OAuth flow for this use case, so **do not run this as a
+service for other people** on the current design.
+
+---
+
+## Lineage
+
+This began as a fork of [leonzzz435/garmin-ai-coach](https://github.com/leonzzz435/garmin-ai-coach)
+(MIT), which is where the multi-agent analysis stage and its summariser/expert
+structure came from. That project is a **reporter**: it reads Garmin data, runs
+the agent pipeline, and writes an HTML analysis. The loop ends at the report,
+and a human decides what to do with it.
+
+This is a different kind of thing. It closes the loop — it writes workouts back
+to the watch, watches what actually got done, and re-plans from the difference —
+and it covers nutrition and recovery as part of the same plan rather than
+leaving them out of scope.
+
+Everything that makes those possible is new here: the Supabase data layer and
+its 41 migrations, the web application, the Garmin workout uploaders for both
+strength and running, the deterministic rule engine, plan-drift detection, the
+training-load metrics implementation, and the scheduled job runner. Roughly
+24,000 lines are new against about 4,600 in the inherited analysis stage, and
+that stage has itself been substantially rewritten — typed expert payloads,
+nutrition and lifestyle agents, race strategy, and the season and weekly
+planners.
+
+The lineage is real and worth stating plainly. So is the difference.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

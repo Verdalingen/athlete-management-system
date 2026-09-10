@@ -71,22 +71,3 @@ def run_plot_code_get_html(code: str, timeout_s: int = 6):
         except Exception as e:
             logger.error("Subprocess execution failed: %s", e)
             return {"ok": False, "error": f"Execution failed: {e!s}"}
-
-
-class ProductionSecureExecutor:
-
-    def __init__(self, timeout_s: int = 6):
-        self.timeout_s = timeout_s
-        logger.info("Initialized ProductionSecureExecutor with %ss timeout", timeout_s)
-
-    def execute_plotting_code(self, code: str) -> tuple[bool, str, str]:
-        logger.info("Executing plotting code in secure subprocess")
-
-        result = run_plot_code_get_html(code, self.timeout_s)
-
-        if result["ok"]:
-            logger.info("Plotting code executed successfully")
-            return True, result["html"], ""
-        else:
-            logger.warning("Plotting code failed: %s", result["error"])
-            return False, "", result["error"]

@@ -71,19 +71,8 @@ class PlotStorage:
         plots_list.sort(key=lambda x: x["created_at"])
         return plots_list
 
-    def get_plots_by_agent(self, agent_name: str) -> list[PlotMetadata]:
-        agent_plots = [plot for plot in self.plots.values() if plot.agent_name == agent_name]
-        agent_plots.sort(key=lambda x: x.created_at)
-        return agent_plots
-
     def get_all_plots(self) -> dict[str, PlotMetadata]:
         return self.plots.copy()
-
-    def clear_plots(self):
-        plot_count = len(self.plots)
-        self.plots.clear()
-        self.plot_counter = 0
-        logger.info("Cleared %d plots from execution %s", plot_count, self.execution_id)
 
     def get_storage_stats(self) -> dict[str, Any]:
         total_plots = len(self.plots)

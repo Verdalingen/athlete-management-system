@@ -70,14 +70,3 @@ class FilePlanStorage(PlanStorage):
             logger.info("Saved %s JSON for user %s to %s", key, user_id, path)
         except Exception:
             logger.exception("Error saving JSON %s for user %s", key, user_id)
-
-    def load_json(self, user_id: str, key: str) -> Any | None:
-        try:
-            path = self._get_user_dir(user_id) / f"{_as_safe_filename(key)}.json"
-            if path.exists():
-                logger.info("Loading %s JSON for user %s from %s", key, user_id, path)
-                return json.loads(path.read_text(encoding="utf-8"))
-            return None
-        except Exception:
-            logger.exception("Error loading JSON %s for user %s", key, user_id)
-            return None

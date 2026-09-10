@@ -93,7 +93,7 @@ export function LoginCard({
             <i className="ti ti-device-watch-stats" style={{ fontSize: 26, color: "var(--accent)" }} />
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-.3px", marginBottom: 4 }}>
-            Garmin AI Coach
+            Athlete Management System
           </div>
           <div style={{ fontSize: 13, color: "var(--dim)" }}>
             Your personal training intelligence

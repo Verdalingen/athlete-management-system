@@ -146,20 +146,3 @@ class HTMLPlotEmbedder:
     height: auto !important;
 }
 </style>"""
-
-    @staticmethod
-    def wrap_html_document(content: str) -> str:
-        styles = HTMLPlotEmbedder.add_plot_styles()
-
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training Analysis Report</title>
-    {styles}
-</head>
-<body>
-    {content}
-</body>
-</html>"""

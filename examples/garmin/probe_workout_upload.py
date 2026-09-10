@@ -21,7 +21,7 @@ from services.garmin.strength_uploader import (
 
 
 def main() -> None:
-    email = os.getenv("GARMIN_EMAIL", "adrianwalderhaugjohnsen@gmail.com")
+    email = os.getenv("GARMIN_EMAIL") or input("Garmin email: ")
     password = os.getenv("GARMIN_PASSWORD", "")
     if not password:
         password = getpass.getpass("Garmin password: ")

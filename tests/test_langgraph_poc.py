@@ -6,7 +6,6 @@ import pytest
 
 from services.ai.langgraph.nodes.metrics_expert_node import metrics_expert_node
 from services.ai.langgraph.state.training_analysis_state import create_initial_state
-from services.ai.langgraph.workflows.analysis_workflow import create_analysis_workflow
 
 
 @pytest.fixture
@@ -42,12 +41,6 @@ def test_state_creation(sample_garmin_data):
     assert state["garmin_data"] == sample_garmin_data
     assert state["metrics_outputs"] is None
     assert state["plots"] == []
-
-
-@patch("services.ai.langgraph.config.langsmith_config.LangSmithConfig.setup_langsmith")
-def test_workflow_creation(mock_langsmith):
-    assert create_analysis_workflow() is not None
-    mock_langsmith.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -40,7 +40,7 @@ class OutsideApiGraphQlClient:
     ):
         self.app_type = self._normalize_and_validate_app_type(app_type)
         self.endpoint = endpoint
-        base_headers = headers or {"User-Agent": "garmin-ai-coach/1.0"}
+        base_headers = headers or {"User-Agent": "athlete-management-system/1.0"}
         self._client = client or httpx.Client(timeout=timeout_s, headers=base_headers)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info("Initialized OutsideApiGraphQlClient for app_type=%s", self.app_type)

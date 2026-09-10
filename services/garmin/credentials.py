@@ -35,7 +35,11 @@ def resolve_garmin_credentials(config: dict[str, Any]) -> tuple[str, str]:
     try:
         import keyring
 
-        stored = keyring.get_password("garmin-ai-coach", email)
+        stored = keyring.get_password("athlete-management-system", email)
+        if stored is None:
+            # Pre-rename entries live under the old service name. Read them so an
+            # existing keychain item keeps working without re-entering the password.
+            stored = keyring.get_password("garmin-ai-coach", email)
         if stored:
             return email, stored
     except Exception:

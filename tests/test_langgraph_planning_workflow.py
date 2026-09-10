@@ -6,17 +6,10 @@ from services.ai.langgraph.state.training_analysis_state import (
 )
 from services.ai.langgraph.workflows.planning_workflow import (
     create_integrated_analysis_and_planning_workflow,
-    create_planning_workflow,
 )
 
 
 class TestWorkflowStability:
-
-    def test_planning_workflow_creation(self):
-        workflow = create_planning_workflow()
-        assert workflow is not None
-        assert hasattr(workflow, "invoke")
-        assert hasattr(workflow, "ainvoke")
 
     def test_integrated_workflow_creation(self):
         workflow = create_integrated_analysis_and_planning_workflow()
@@ -62,10 +55,8 @@ class TestWorkflowIntegration:
 
     def test_workflow_accepts_valid_state(self, minimal_valid_state):
         """Test workflows can accept valid state structure."""
-        planning_workflow = create_planning_workflow()
         integrated_workflow = create_integrated_analysis_and_planning_workflow()
 
-        assert planning_workflow is not None
         assert integrated_workflow is not None
         assert isinstance(minimal_valid_state, dict)
 
@@ -87,10 +78,8 @@ class TestWorkflowIntegration:
         assert len(combined_plots) == 2
 
     def test_workflow_node_count_stability(self):
-        planning_workflow = create_planning_workflow()
         integrated_workflow = create_integrated_analysis_and_planning_workflow()
 
-        assert planning_workflow is not None
         assert integrated_workflow is not None
 
 
@@ -149,16 +138,14 @@ class TestWorkflowImports:
     def test_workflow_functions_importable(self):
         from services.ai.langgraph.workflows.planning_workflow import (
             create_integrated_analysis_and_planning_workflow,
-            create_planning_workflow,
             run_complete_analysis_and_planning,
-            run_weekly_planning,
+            run_replan,
         )
 
         functions = [
-            create_planning_workflow,
             create_integrated_analysis_and_planning_workflow,
-            run_weekly_planning,
             run_complete_analysis_and_planning,
+            run_replan,
         ]
         for func in functions:
             assert callable(func)

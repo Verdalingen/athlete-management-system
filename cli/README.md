@@ -1,132 +1,93 @@
-# Garmin AI Coach CLI (primary interface)
+# Athlete Management System — CLI
 
-Command-line interface for the AI triathlon coach. Uses a YAML or JSON config file to extract your Garmin data, run multi-agent AI analysis and planning, and save HTML reports.
+The pipeline driver underneath the [web app](../web/README.md). It runs the
+LangGraph coaching workflow and the Garmin sync, both interactively and as the
+scheduled job runner behind the web app's check-ins.
 
-- CLI script: [cli/garmin_ai_coach_cli.py](cli/garmin_ai_coach_cli.py)
-- Config template: [cli/coach_config_template.yaml](cli/coach_config_template.yaml)
-- Pixi tasks: [pixi.toml](../pixi.toml)
+- Entry point: [`ams.py`](ams.py)
+- Config template: [`coach_config_template.yaml`](coach_config_template.yaml)
+- Pixi tasks: [`pixi.toml`](../pixi.toml)
 
-## Quick Start
+## Prerequisites
 
-Using Pixi (recommended):
-```bash
-# 1) Create a config template
-pixi run coach-init my_config.yaml
+The CLI reads athlete context, credentials and the plan from Supabase, so it is
+not standalone. Before the first run you need:
 
-# 2) Edit the file with your details (athlete.email, context, etc.)
+- A Supabase project with the schema from [`supabase/migrations/`](../supabase/migrations/) applied
+- An account created through the web app's setup wizard (this writes `athlete_profile`)
+- `.env` with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_USER_ID` and a provider key
 
-# 3) Run the analysis and planning
-pixi run coach-cli --config my_config.yaml
-```
+`SUPABASE_USER_ID` is the UUID of that account (Supabase dashboard → Authentication
+→ Users). Without it the CLI cannot resolve coaching context and will exit.
 
-Using Python directly:
-```bash
-python cli/garmin_ai_coach_cli.py --init-config my_config.yaml
-python cli/garmin_ai_coach_cli.py --config my_config.yaml [--output-dir ./data]
-```
+See the [root README](../README.md#running-it) for the full first-run sequence.
 
-## Command reference
+## Quick start
 
 ```bash
-python cli/garmin_ai_coach_cli.py --config PATH [--output-dir PATH]
-python cli/garmin_ai_coach_cli.py --init-config PATH
+pixi run coach-init my_training_config.yaml   # write a config template
+pixi run coach-cli --config my_training_config.yaml
 ```
 
-Options:
-- --config PATH        Path to YAML or JSON config (mutually exclusive with --init-config)
-- --init-config PATH   Write a config template to PATH and exit
-- --output-dir PATH    Override the output.directory specified in the config
+Outputs land in `output.directory` (default `./data`): `analysis.html`,
+`planning.html`, the structured expert JSON, and `summary.json` with cost
+metadata.
 
-Notes:
-- If `credentials.password` is not provided in the config, you will be securely prompted at runtime.
-- The CLI sets AI_MODE from `extraction.ai_mode` automatically for downstream components.
+## Commands
+
+The CLI is flag-driven, and the modes are mutually exclusive.
+
+| Flag | What it does |
+|---|---|
+| `--config PATH` | Full run: extract Garmin data, analyse, plan, write to Supabase, push workouts |
+| `--replan PATH` | Weekly re-plan — fetches 14 days and re-runs planning against the current plan |
+| `--queue PATH` | Process re-plan jobs queued from the web UI (this is the background worker) |
+| `--sync-kpis PATH` | Lightweight KPI sync, no LLM calls. Safe to run frequently |
+| `--sync-history PATH` | Backfill up to 365 days of Garmin trend data into `daily_metrics` |
+| `--shift PATH` | Slide the remaining plan forward `--days` (default 1), preserving structure |
+| `--set-password PATH` | Store the Garmin password in the system keychain (local use; the hosted path uses Supabase Vault) |
+| `--init-config PATH` | Write a config template and exit |
+
+Extra options: `--output-dir PATH` overrides the config's output directory;
+`--days N` and `--from-date YYYY-MM-DD` apply to `--shift`.
+
+`--queue`, `--sync-kpis` and `--sync-history` are what the macOS LaunchAgents in
+[`scripts/`](../scripts/) invoke on a schedule.
 
 ## Configuration
 
-Top-level keys:
-- athlete: name, email
-- context: analysis, planning (freeform text; the AI will follow these constraints)
-- extraction: activities_days, metrics_days, ai_mode ("development" | "standard" | "cost_effective" | "pro")
-- competitions: list of {name, date (YYYY-MM-DD), race_type, priority (A/B/C), target_time (HH:MM:SS)}
-- output: directory
-- credentials: password (optional; leave empty for interactive prompt)
+The YAML file covers *mechanics* — how much data to pull, which model mode, where
+to write. **Coaching context is not in this file.** Goals, constraints and
+recurring session requests live in Supabase on `athlete_profile`, written by the
+web app's setup wizard and read live on every run.
+
+Keys:
+
+- `athlete` — `name`, `email` (the Garmin Connect address)
+- `extraction` — `activities_days`, `metrics_days`, `ai_mode`, `enable_plotting`,
+  `hitl_enabled`, `skip_synthesis`, and the long-term trend window
+- `competitions` — list of `{name, date, race_type, priority (A/B/C), target_time}`
+- `outside` — optional race import by BikeReg/RunReg/TriReg/SkiReg id or url
+- `output` — `directory`
+- `credentials` — `password`, optional; empty means Vault, then keychain, then prompt
 
 Minimal example:
+
 ```yaml
 athlete:
   name: "Your Name"
   email: "you@example.com"
 
-context:
-  analysis: "Recovering from injury; focus on base building"
-  planning: "Olympic triathlon in 12 weeks; build aerobic base"
-
 extraction:
-  activities_days: 7
-  metrics_days: 14
-  ai_mode: "development"
+  activities_days: 28
+  metrics_days: 56
+  ai_mode: "standard"
+  enable_plotting: false
+  hitl_enabled: true
 
 competitions:
   - name: "Target Race"
     date: "2026-04-15"
-    race_type: "Olympic"
-    priority: "A"
-
-output:
-  directory: "./data"
-
-credentials:
-  password: ""   # leave empty to be prompted
-```
-
-Advanced example (derived from real usage):
-```yaml
-athlete:
-  name: "Athlete Name"
-  email: "you@example.com"
-
-context:
-  analysis: |
-    Completed my first 70.3 recently. Great result but exposed durability gaps
-    due to last-minute shoe change. Analyze this multisport activity in detail.
-
-  planning: |
-    ## Start Date
-    Plan should start on **Monday, xxxx-xx-xx**.
-
-    ## Important Needs
-    - Functional Strength, Durability & Triathlon Transfer
-      Integrate explicit daily micro-workouts (5–10 min).
-      Goals: run economy & lower-leg robustness; bike posture & core transfer; durability & recovery.
-
-    - Shoe Adaptation & Running Technique
-      Get used to carbon plate shoes (front-foot style) with targeted technique/strength.
-
-    ## Session Constraints (Shoes)
-    - Per-session shoe exclusivity: every run is tagged either `carbon` or `non-carbon`.
-
-    ## Training Preferences
-    - No indoor bike trainer available.
-    - No swimming for now.
-
-    ## Training Zones
-    | Discipline | Base Metric                  |
-    |------------|------------------------------|
-    | Running    | LTHR ≈ 173 bpm / 4:35 min/km |
-    | Cycling    | FTP ≈ 271W                   |
-    | Heart Rate | Max HR ≈ 193 bpm             |
-
-    ## Closing
-    Provide structured daily checklists to support both athletic and personal goals.
-
-extraction:
-  activities_days: 21
-  metrics_days: 56
-  ai_mode: "standard"
-
-competitions:
-  - name: "Franklin Meilenlauf"
-    date: "2025-10-12"
     race_type: "Half Marathon"
     priority: "A"
     target_time: "01:40:00"
@@ -135,45 +96,16 @@ output:
   directory: "./data"
 
 credentials:
-  password: ""  # leave empty for secure interactive input
+  password: ""
 ```
 
-Validation tips:
-- Date format must be ISO `YYYY-MM-DD` for competitions.
-- `athlete.email` is required; the run will fail if missing.
+`ai_mode` is one of `development`, `standard`, `cost_effective`, `pro`, and
+overrides `AI_MODE` from `.env` for that run. **`pro` can exceed $10 per run**
+depending on how much data is extracted.
 
-## Outputs
+## Credentials
 
-Generated files (in output.directory, default `./data`):
-- analysis.html — Comprehensive performance analysis
-- planning.html — Detailed weekly training plan
-- metrics_result.md, activity_result.md, physiology_result.md, season_plan.md — Intermediate artifacts
-- summary.json — Metadata and cost tracking with fields:
-  - athlete, analysis_date, competitions
-  - total_cost_usd, total_tokens
-  - execution_id, trace_id, root_run_id
-  - files_generated
-
-## Environment
-
-Set at least one provider API key in your environment (e.g., `.env`):
-- OPENAI_API_KEY=...
-- ANTHROPIC_API_KEY=...
-- OPENROUTER_API_KEY=...
-- Optional: LANGSMITH_API_KEY=... for observability
-
-The CLI will set `AI_MODE` from your config’s `extraction.ai_mode` (see [`python.run_analysis_from_config()`](../cli/garmin_ai_coach_cli.py:110) where `AI_MODE` is exported at [`os.environ['AI_MODE'] = ai_mode`](../cli/garmin_ai_coach_cli.py:125)).
-
-Provider selection depends on AI mode mapping:
-- Default mapping in [`services/ai/ai_settings.py`](../services/ai/ai_settings.py:24) within [`python.AISettings()`](../services/ai/ai_settings.py:19):
-  - `standard` → `gpt-5` / `gpt-5-search` (OpenAI, with web search for experts/planners)
-  - `development` → `claude-4` (Anthropic)
-  - `cost_effective` → `claude-3-haiku` (Anthropic)
-  - `pro` → `gpt-5-search` / `gpt-5.2-pro-search` (OpenAI, with gpt-5.2-pro-search for experts and planners)
-    - ⚠️ **WARNING**: PRO mode can incur high costs (>$10 per run depending on data volume and configuration)
-- Model IDs and providers are declared in [`python.ModelSelector.CONFIGURATIONS`](../services/ai/model_config.py:22), and the provider API key is auto-selected in [`python.ModelSelector.get_llm()`](../services/ai/model_config.py:61).
-
-Practical guidance:
-- If you ONLY set `OPENAI_API_KEY`, set `extraction.ai_mode: "standard"` (maps to OpenAI by default), or edit `stage_models` in [`services/ai/ai_settings.py`](../services/ai/ai_settings.py:24) to assign an OpenAI model (e.g., `gpt-4o`, `gpt-5-mini`, `gpt-5.2-pro`) to your preferred mode.
-- If you ONLY set `ANTHROPIC_API_KEY`, use `extraction.ai_mode: "development"` or `"cost_effective"` (default Anthropic mapping), or update the mapping accordingly.
-- For OpenRouter/DeepSeek, map your chosen mode to a model key defined in [`python.ModelSelector.CONFIGURATIONS`](../services/ai/model_config.py:22).
+The Garmin password is resolved in this order: Supabase Vault (when
+`SUPABASE_USER_ID` is set), the system keychain, the config file, then an
+interactive prompt. Garmin has no public OAuth flow for this use case — see
+[SECURITY.md](../SECURITY.md) for what that implies.

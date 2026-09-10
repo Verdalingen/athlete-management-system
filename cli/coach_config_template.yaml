@@ -5,16 +5,8 @@
 athlete:
   name: "John Doe"
   email: "john.doe@example.com"  # Garmin Connect email
-
-# Analysis Context
-context:
-  analysis: |
-    Coming back from a minor injury. Focusing on base building and
-    avoiding high-intensity work for the next 2 weeks.
-
-  planning: |
-    Preparing for Olympic distance triathlon in 12 weeks.
-    Priority is building aerobic base and improving run endurance.
+                                 # Coaching context is NOT set here — it lives in Supabase
+                                 # (athlete_profile), via the web app's setup wizard.
 
 # Data Extraction Settings
 extraction:
