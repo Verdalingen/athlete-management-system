@@ -514,25 +514,67 @@ select
   'checkin'
 from generate_series(current_date - interval '20 days', current_date + interval '2 days', interval '1 day') as g(d);
 
+-- Portions are solved against each day's calorie target rather than repeating
+-- the same 11 rows verbatim, so intake varies day to day and can be read
+-- against the target line instead of sitting flat beneath it.
+--
+-- Each food carries a `flex` weight: protein anchors (chicken, salmon, skyr,
+-- the shake) hold a fixed portion at 0, while carb sources absorb the whole
+-- swing at 1. That is how periodised nutrition actually works — protein steady,
+-- carbohydrate following training load — and it keeps the macro rings honest:
+-- scaling every row uniformly hit the calorie target but pushed protein 60 g
+-- over it. Given base and flex-weighted calories, the per-day scale that lands
+-- on target is s = 1 + (target*jitter - base) / flexbase.
+--
+-- Jitter is deterministic (md5 of the date), so re-running yields identical
+-- data. The post-workout shake is dropped on rest days — there is no workout.
 insert into nutrition_diary (user_id, date, meal_type, food_name, brand, quantity_g,
                              calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg,
                              serving_qty, serving_label)
-select '00000000-0000-4000-8000-000000000001', d::date, m.meal_type, m.food_name, m.brand,
-       m.qty, m.kcal, m.p, m.c, m.f, m.fib, m.sug, m.sod, m.sqty, m.slabel
-from generate_series(current_date - interval '13 days', current_date, interval '1 day') as g(d)
-cross join (values
-  ('breakfast',    'Rolled oats',            null,          80,  304, 10.6, 51.8, 5.4, 8.0, 0.8,  5, null, null),
-  ('breakfast',    'Skyr, natural',          'Tine',       200,  126, 22.0,  8.0, 0.4, 0.0, 8.0, 60, null, null),
-  ('breakfast',    'Banana',                 null,         118,  105,  1.3, 27.0, 0.4, 3.1, 14.4, 1, 1, 'medium'),
-  ('lunch',        'Chicken breast, grilled',null,         180,  297, 55.8,  0.0, 6.5, 0.0, 0.0, 133, null, null),
-  ('lunch',        'Brown rice, cooked',     null,         220,  242,  5.6, 50.6, 1.9, 3.1, 0.5, 11, null, null),
-  ('lunch',        'Mixed salad + olive oil',null,         150,  138,  1.8,  6.2, 12.1, 2.4, 3.0, 22, null, null),
-  ('post_workout', 'Whey protein isolate',   'Proteinfabrikken', 35, 130, 28.0, 2.1, 0.9, 0.0, 1.2, 60, 1, 'scoop'),
-  ('dinner',       'Salmon fillet, baked',   null,         170,  354, 38.6,  0.0, 21.4, 0.0, 0.0, 98, null, null),
-  ('dinner',       'Potatoes, boiled',       null,         280,  241,  5.6, 54.3, 0.3, 5.0, 2.2, 17, null, null),
-  ('dinner',       'Broccoli, steamed',      null,         160,   55,  4.5,  7.9, 0.6, 4.2, 2.0, 51, null, null),
-  ('snacks',       'Almonds',                null,          30,  174,  6.4,  6.5, 15.0, 3.8, 1.2, 0, null, null)
-) as m(meal_type, food_name, brand, qty, kcal, p, c, f, fib, sug, sod, sqty, slabel);
+with foods (meal_type, food_name, brand, qty, kcal, p, c, f, fib, sug, sod, sqty, slabel, flex) as (
+  values
+    ('breakfast',    'Rolled oats',            null,          80,  304, 10.6, 51.8, 5.4, 8.0, 0.8,  5, null, null, 1.0),
+    ('breakfast',    'Skyr, natural',          'Tine',       200,  126, 22.0,  8.0, 0.4, 0.0, 8.0, 60, null, null, 0.0),
+    ('breakfast',    'Banana',                 null,         118,  105,  1.3, 27.0, 0.4, 3.1, 14.4, 1, 1, 'medium', 1.0),
+    ('lunch',        'Chicken breast, grilled',null,         180,  297, 55.8,  0.0, 6.5, 0.0, 0.0, 133, null, null, 0.0),
+    ('lunch',        'Brown rice, cooked',     null,         220,  242,  5.6, 50.6, 1.9, 3.1, 0.5, 11, null, null, 1.0),
+    ('lunch',        'Mixed salad + olive oil',null,         150,  138,  1.8,  6.2, 12.1, 2.4, 3.0, 22, null, null, 0.5),
+    ('post_workout', 'Whey protein isolate',   'Proteinfabrikken', 35, 130, 28.0, 2.1, 0.9, 0.0, 1.2, 60, 1, 'scoop', 0.0),
+    ('dinner',       'Salmon fillet, baked',   null,         170,  354, 38.6,  0.0, 21.4, 0.0, 0.0, 98, null, null, 0.0),
+    ('dinner',       'Potatoes, boiled',       null,         280,  241,  5.6, 54.3, 0.3, 5.0, 2.2, 17, null, null, 1.0),
+    ('dinner',       'Broccoli, steamed',      null,         160,   55,  4.5,  7.9, 0.6, 4.2, 2.0, 51, null, null, 0.4),
+    ('snacks',       'Almonds',                null,          30,  174,  6.4,  6.5, 15.0, 3.8, 1.2, 0, null, null, 0.8)
+),
+days as (
+  select d::date as date,
+         case extract(dow from d::date) when 4 then 3150 when 6 then 3200 when 0 then 2500 else 2850 end::numeric as target,
+         0.94 + (('x'||substr(md5(d::date::text||'appetite'),1,7))::bit(28)::int)/268435455.0 * 0.13 as jitter,
+         (extract(dow from d::date) = 0) as is_rest
+  from generate_series(current_date - interval '13 days', current_date, interval '1 day') as g(d)
+),
+solved as (
+  select days.*, b.base, b.flexbase,
+         1 + ((days.target * days.jitter) - b.base) / nullif(b.flexbase, 0) as s
+  from days
+  cross join lateral (
+    select sum(f.kcal)::numeric as base, sum(f.kcal * f.flex)::numeric as flexbase
+    from foods f
+    where not (days.is_rest and f.meal_type = 'post_workout')
+  ) b
+)
+select '00000000-0000-4000-8000-000000000001', sv.date, f.meal_type, f.food_name, f.brand,
+       round((f.qty  * (1 + (sv.s - 1) * f.flex))::numeric),
+       round((f.kcal * (1 + (sv.s - 1) * f.flex))::numeric),
+       round((f.p    * (1 + (sv.s - 1) * f.flex))::numeric, 1),
+       round((f.c    * (1 + (sv.s - 1) * f.flex))::numeric, 1),
+       round((f.f    * (1 + (sv.s - 1) * f.flex))::numeric, 1),
+       round((f.fib  * (1 + (sv.s - 1) * f.flex))::numeric, 1),
+       round((f.sug  * (1 + (sv.s - 1) * f.flex))::numeric, 1),
+       round((f.sod  * (1 + (sv.s - 1) * f.flex))::numeric),
+       f.sqty, f.slabel
+from solved sv
+cross join foods f
+where not (sv.is_rest and f.meal_type = 'post_workout');
 
 insert into body_weight_log (user_id, date, weight_kg, source)
 select '00000000-0000-4000-8000-000000000001', d::date,
@@ -583,6 +625,15 @@ begin
     date = current_date,
     garmin_workout_id = 812000000 + (('x'||substr(md5(current_date::text),1,6))::bit(24)::int)
   where user_id = demo and date = src;
+
+  -- The nutrition target's workout context is keyed off the weekday, so keep it
+  -- in step with the session that now actually sits on today.
+  update nutrition_daily_targets t set
+    workout_context = s.focus
+  from scheduled_days s
+  where t.user_id = demo and t.date = current_date
+    and s.user_id = demo and s.date = current_date
+    and s.focus is not null;
 end $$;
 
 -- ── 10. A finished background job, so the jobs log isn't empty ─────────────
