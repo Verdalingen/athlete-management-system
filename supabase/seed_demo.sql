@@ -49,11 +49,11 @@ insert into auth.users (
   '00000000-0000-4000-8000-000000000001',
   '00000000-0000-0000-0000-000000000000',
   'authenticated', 'authenticated',
-  'demo@garmin-ai-coach.invalid',
+  'demo@athlete-management-system.invalid',
   '',                       -- empty hash: no password can ever match
   now(), now() - interval '180 days', now(),
   '{"provider":"email","providers":["email"]}'::jsonb,
-  '{"full_name":"Alex Rivera"}'::jsonb,
+  '{"full_name":"Jane Doe"}'::jsonb,
   false, '', '', '', ''
 ) on conflict (id) do nothing;
 
@@ -90,7 +90,7 @@ insert into athlete_profile (
   'outdoor_pref', 'maintain', 'balanced',
   'Norway', true,
   'ATHLETE PROFILE — HYBRID (STRENGTH + ENDURANCE)
-Alex, 29. Targets a sub-40 10k alongside a 120 kg bench within 12 months.
+Jane, 29. Targets a sub-40 10k alongside a 120 kg bench within 12 months.
 Six sessions per week, roughly 7.5 hours. Bench 1RM 102.5 kg, 10k PB 45:10.
 Concurrent-training conflict is the central constraint: leg work has to be
 spaced away from quality running rather than simply reduced.',
