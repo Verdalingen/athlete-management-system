@@ -18,6 +18,15 @@ are one problem.
 
 > Not affiliated with Garmin. Not medical advice.
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" width="100%" alt="The dashboard: readiness pills (form, ACWR, HRV, sleep, body battery), today's strength session with its exercise table, the month calendar, and the week's macros" />
+</p>
+
+*The dashboard on a race-week Friday. Readiness derived from the morning's
+data, today's session with working weights, the month at a glance, and the
+week's intake. All figures here are the seeded demo athlete — see
+[Exploring it without a Garmin account](#exploring-it-without-a-garmin-account).*
+
 ---
 
 ## The loop
@@ -105,6 +114,24 @@ actually done and re-plans from the difference. The web app — plan calendar,
 nutrition tracking with barcode scanning, weekly check-in — is where that loop
 surfaces day to day, on a phone or a laptop.
 
+<p align="center">
+  <img src="docs/screenshots/performance_management.png" width="100%" alt="Performance Management chart: chronic and acute load over 91 days, with a form (TSB) bar chart beneath showing the build, deload and taper phases" />
+</p>
+
+*Three months of load, computed here rather than read from the vendor. Chronic
+load climbs through three build blocks; form swings negative in each and
+recovers on the deloads. The taper into race week is the drop at the right.*
+
+<p align="center">
+  <img src="docs/screenshots/dashboard_mobile.png" width="40%" alt="The dashboard at phone width: greeting, readiness pills, today's session table, bottom tab bar" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/nutrition_mobile.png" width="40%" alt="Nutrition at phone width: the week's daily rings against target, today's meals with per-item macros" />
+</p>
+
+*The same app at phone width — where most of the day-to-day use actually
+happens. Left: today. Right: the week's intake against target, and the
+breakfast that's been logged so far.*
+
 ---
 
 ## The round-trip
@@ -113,6 +140,14 @@ The part that isn't just another dashboard: the plan doesn't stop at a web page.
 Structured workouts are written to Garmin Connect and sync to the watch — named
 by the slot the planner assigned, with the exact exercise keys from Garmin's own
 catalogue, per-exercise set counts, rest steps, and lap-button advance.
+
+<p align="center">
+  <img src="docs/screenshots/session_modal_garmin.png" width="100%" alt="A session opened from the plan calendar: six exercises with sets, reps, rest and RIR, and a green Garmin badge confirming it has been pushed to the watch" />
+</p>
+
+*A session as the planner wrote it, opened from the calendar. The green
+**Garmin** badge means it has already been uploaded. Below: the same kind of
+session as it arrives on the phone.*
 
 <p align="center">
   <img src="docs/screenshots/garmin_workout_overview.jpg" width="46%" alt="A generated session in Garmin Connect: title, total time, and the muscle map Garmin derives from the exercise keys" />
@@ -233,7 +268,9 @@ cd web && DEMO_USER_ID=00000000-0000-4000-8000-000000000001 npm run dev
 
 `DEMO_USER_ID` changes which user's data the pages read. It is ignored outside a
 development build, and you still have to sign in — it overrides the data source,
-not authentication. Remove the demo athlete with
+not authentication. Every date in the seed is relative to the day you run it,
+so re-run it whenever the demo has drifted stale — it cleans up after itself.
+Remove the demo athlete entirely with
 [`supabase/seed_demo_teardown.sql`](supabase/seed_demo_teardown.sql).
 
 ---

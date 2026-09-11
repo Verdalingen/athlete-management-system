@@ -40,8 +40,6 @@ export async function getUserId(): Promise<string> {
   return user.id;
 }
 
-// First name for the dashboard greeting — falls back through OAuth metadata to the
-// email's local part, since there's no dedicated profile "name" field today.
 // Throws unless the caller has a valid Supabase session. Used by the DEMO_USER_ID
 // path so that overriding the data source never weakens the auth requirement.
 async function requireSession(): Promise<void> {
@@ -60,7 +58,22 @@ async function requireSession(): Promise<void> {
   if (!user) throw new Error("Not authenticated");
 }
 
+// First name for the dashboard greeting — falls back through OAuth metadata to the
+// email's local part, since there's no dedicated profile "name" field today.
+//
+// Follows the same DEMO_USER_ID override as getUserId. Without this the greeting
+// read the signed-in operator's own name while every figure beneath it belonged
+// to the demo athlete — which put a real name on screenshots of synthetic data.
 export async function getUserFirstName(): Promise<string> {
+  if (process.env.NODE_ENV === "development" && process.env.DEMO_USER_ID) {
+    await requireSession();
+    const admin = createServerClient();
+    const { data } = await admin.auth.admin.getUserById(process.env.DEMO_USER_ID);
+    const demoName: string | undefined =
+      data?.user?.user_metadata?.full_name ?? data?.user?.user_metadata?.name;
+    if (demoName) return demoName.split(" ")[0];
+    return "there";
+  }
   const cookieStore = await cookies();
   const supabase = createSSRClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
