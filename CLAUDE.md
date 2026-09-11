@@ -13,7 +13,6 @@ pixi run test           # pytest
 pixi run test-cov       # with coverage
 pixi run lint-ruff      # ruff check .
 pixi run type-check     # mypy .
-pixi run format         # black + isort
 pixi run coach-cli      # the coaching CLI
 ```
 
