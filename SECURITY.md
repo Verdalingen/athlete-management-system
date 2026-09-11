@@ -241,8 +241,8 @@ Calling `getUserId()` in these handlers would be cheap defence in depth.
 
 ### Data sent to third parties
 
-Health data leaves the system in LLM prompts (Anthropic, OpenAI, or OpenRouter,
-depending on configuration) and, when `LANGSMITH_API_KEY` is set, in traces sent
+Health data leaves the system in LLM prompts (Anthropic, or OpenAI in `pro`
+mode) and, when `LANGSMITH_API_KEY` is set, in traces sent
 to LangSmith. Nutrition lookups query Open Food Facts and the USDA FoodData
 Central API. Anyone self-hosting should decide deliberately whether those
 providers are acceptable recipients of their health data, and leave LangSmith

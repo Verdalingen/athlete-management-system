@@ -192,7 +192,7 @@ plan itself.
 | Layer | Choice |
 |---|---|
 | Pipeline | Python 3.13, LangGraph, Pydantic v2, managed by [Pixi](https://pixi.sh) |
-| Models | Anthropic, OpenAI, OpenRouter — role-based assignment per mode |
+| Models | Anthropic, OpenAI — role-based assignment per mode |
 | Data | Supabase (Postgres, Auth, Vault), 41 append-only migrations |
 | Web | Next.js 16, React 19, Tailwind 4, deployed on Vercel |
 | Quality | 339 tests, mypy strict (0 errors), ruff — all gated in CI |
@@ -289,9 +289,8 @@ nodes. See [`services/ai/ai_settings.py`](services/ai/ai_settings.py).
 | `pro` | Strongest models available. **Can exceed $10 per run** |
 
 Set it per run with `extraction.ai_mode` in the config, or globally with
-`AI_MODE` in `.env`. Anthropic is the primary provider; OpenAI and OpenRouter
-(DeepSeek, Gemini, Grok) are supported, and OpenRouter acts as the fallback when
-`ANTHROPIC_API_KEY` is absent.
+`AI_MODE` in `.env`. Every mode except `pro` runs on Anthropic and needs
+`ANTHROPIC_API_KEY`; `pro` runs on OpenAI and needs `OPENAI_API_KEY`.
 
 Optional: set `LANGSMITH_API_KEY` for tracing and per-node cost attribution.
 Note that this sends prompt contents — which include health data — to LangSmith.
