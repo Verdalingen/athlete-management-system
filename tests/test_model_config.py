@@ -22,7 +22,7 @@ def _capture_anthropic(monkeypatch):
 @pytest.mark.parametrize(
     ("role", "expected_model"),
     [
-        (AgentRole.METRICS_SUMMARIZER, "claude-haiku-4-5-20251001"),  # fast
+        (AgentRole.METRICS_SUMMARIZER, "claude-haiku-4-5"),  # fast
         (AgentRole.WEEKLY_PLANNER, "claude-sonnet-5"),  # reasoning
         (AgentRole.SEASON_PLANNER, "claude-opus-4-8"),  # deep
     ],

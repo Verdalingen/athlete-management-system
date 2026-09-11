@@ -21,7 +21,7 @@ class ModelSelector:
     # The models a tier may be set to. Add here to make a name valid for
     # MODEL_FAST / MODEL_REASONING / MODEL_DEEP or for TIER_MODEL.
     CONFIGURATIONS: dict[str, ModelConfiguration] = {
-        "claude-haiku": ModelConfiguration(name="claude-haiku-4-5-20251001"),
+        "claude-haiku": ModelConfiguration(name="claude-haiku-4-5"),
         "claude-sonnet": ModelConfiguration(name="claude-sonnet-5", params={"max_tokens": 64000}),
         "claude-opus": ModelConfiguration(name="claude-opus-4-8", params={"max_tokens": 32000}),
     }

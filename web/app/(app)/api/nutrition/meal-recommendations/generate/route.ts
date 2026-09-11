@@ -186,7 +186,7 @@ Respond ONLY with this JSON structure:
     // Stream: a full week of meals can approach/exceed 8k output tokens, which both
     // truncates non-streaming responses and risks an SDK HTTP timeout above ~16k.
     const stream = claude.messages.stream({
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-haiku-4-5",
       max_tokens: 32000,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
