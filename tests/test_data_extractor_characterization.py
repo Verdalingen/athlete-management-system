@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from services.garmin.data_extractor import DataExtractor, TriathlonCoachDataExtractor
+from services.garmin.data_extractor import DataExtractor, GarminDataExtractor
 from services.garmin.models import Activity, ActivitySummary, ExtractionConfig
 
 
@@ -66,14 +66,14 @@ class TestDataExtractorCharacterization:
         assert isinstance(ranges["activities"]["end"], date)
 
 
-class TestTriathlonCoachDataExtractorCharacterization:
+class TestGarminDataExtractorCharacterization:
 
     @patch("services.garmin.data_extractor.GarminConnectClient")
     def test_initialization_connects_to_garmin(self, mock_client):
         mock_instance = Mock()
         mock_client.return_value = mock_instance
 
-        TriathlonCoachDataExtractor("test@example.com", "password")
+        GarminDataExtractor("test@example.com", "password")
 
         mock_client.assert_called_once()
         mock_instance.connect.assert_called_once_with("test@example.com", "password")
@@ -82,7 +82,7 @@ class TestTriathlonCoachDataExtractorCharacterization:
     def test_extract_data_base_data_always_included(self, mock_client):
         mock_instance = Mock()
         mock_client.return_value = mock_instance
-        extractor = TriathlonCoachDataExtractor("test@example.com", "password")
+        extractor = GarminDataExtractor("test@example.com", "password")
 
         mock_instance.client.get_user_profile.return_value = {
             "userData": {"gender": "male", "weight": 70000},
@@ -101,7 +101,7 @@ class TestTriathlonCoachDataExtractorCharacterization:
     def test_get_daily_stats_returns_per_day_list(self, mock_client):
         mock_instance = Mock()
         mock_client.return_value = mock_instance
-        extractor = TriathlonCoachDataExtractor("test@example.com", "password")
+        extractor = GarminDataExtractor("test@example.com", "password")
 
         mock_instance.client.get_stats.return_value = {
             "calendarDate": "2025-01-01",
@@ -120,7 +120,7 @@ class TestTriathlonCoachDataExtractorCharacterization:
         assert stats[0].sleeping_hours == 8.0
 
     def test_activity_summary_extraction_structure(self):
-        result = TriathlonCoachDataExtractor.__new__(TriathlonCoachDataExtractor)._extract_activity_summary({
+        result = GarminDataExtractor.__new__(GarminDataExtractor)._extract_activity_summary({
             "distance": 10000.0,
             "duration": 3600,
             "averageSpeed": 2.78,
@@ -139,7 +139,7 @@ class TestTriathlonCoachDataExtractorCharacterization:
         assert result.max_power == 400
 
     def test_weather_data_extraction_none_input(self):
-        extractor = TriathlonCoachDataExtractor.__new__(TriathlonCoachDataExtractor)
+        extractor = GarminDataExtractor.__new__(GarminDataExtractor)
 
         result = extractor._extract_weather_data(None)
 
@@ -169,7 +169,7 @@ class TestDataExtractorIntegrationBehavior:
         mock_garmin_client.client.get_activity_details.return_value = {}
         mock_garmin_client.client.get_activity_weather.return_value = None
 
-        result = TriathlonCoachDataExtractor("test@example.com", "password")._process_multisport_activity({
+        result = GarminDataExtractor("test@example.com", "password")._process_multisport_activity({
             "activityId": 12345,
             "activityName": "Morning Triathlon",
             "isMultiSportParent": True,
@@ -188,7 +188,7 @@ class TestDataExtractorIntegrationBehavior:
 
     def test_cycling_power_data_extraction_priority(self, mock_garmin_client):
         # We need an instance with initialized client for _process_single_sport_activity
-        extractor = TriathlonCoachDataExtractor("test@example.com", "password")
+        extractor = GarminDataExtractor("test@example.com", "password")
 
         # Mock API calls made by _process_single_sport_activity
         mock_garmin_client.client.get_activity_details.return_value = {}

@@ -22,7 +22,7 @@ from services.ai.langgraph.workflows.planning_workflow import (
     run_replan,
 )
 from services.ai.utils.plan_storage import FilePlanStorage
-from services.garmin import ExtractionConfig, TriathlonCoachDataExtractor
+from services.garmin import ExtractionConfig, GarminDataExtractor
 from services.garmin.client import GarminConnectClient
 from services.garmin.credentials import resolve_garmin_credentials
 from services.garmin.history_sync import (
@@ -316,7 +316,7 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
 
     try:
         logger.info("Extracting Garmin Connect data...")
-        extractor = TriathlonCoachDataExtractor(email, password)
+        extractor = GarminDataExtractor(email, password)
 
         # Widen the lookback to cover any gap since the last successful sync — a fixed
         # window silently drops whatever Garmin activities fall between "N days ago" and
@@ -491,7 +491,7 @@ async def run_replan_from_config(
     # permanent data gap for whatever fell between "14 days ago" and the actual last sync.
     replan_lookback_days = get_sync_gap_days(14)
     logger.info("Extracting recent Garmin data (%d days)…", replan_lookback_days)
-    extractor = TriathlonCoachDataExtractor(email, password)
+    extractor = GarminDataExtractor(email, password)
     garmin_data = extractor.extract_data(
         ExtractionConfig(
             activities_range=replan_lookback_days,
@@ -1396,7 +1396,7 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
         include_long_term_trends=False,
     )
 
-    extractor = TriathlonCoachDataExtractor(email, password)
+    extractor = GarminDataExtractor(email, password)
     garmin_data = extractor.extract_data(extraction_config)
     gd = asdict(garmin_data)
 
@@ -1546,7 +1546,7 @@ def cmd_sync_history(config_path: Path) -> None:
     )
 
     logger.info("🔄 Starting full history sync (up to 365 days) — this may take a few minutes…")
-    extractor = TriathlonCoachDataExtractor(email, password)
+    extractor = GarminDataExtractor(email, password)
     garmin_data = extractor.extract_data(extraction_config)
     gd = asdict(garmin_data)
 

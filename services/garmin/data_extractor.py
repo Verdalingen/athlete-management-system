@@ -198,7 +198,7 @@ class DataExtractor:
         }
 
 
-class TriathlonCoachDataExtractor(DataExtractor):
+class GarminDataExtractor(DataExtractor):
     def __init__(self, email: str, password: str):
         self.garmin = GarminConnectClient()
         self.garmin.connect(email, password)
@@ -324,7 +324,7 @@ class TriathlonCoachDataExtractor(DataExtractor):
         if not isinstance(most_recent, Mapping):
             return None
 
-        cycling = TriathlonCoachDataExtractor._cycling_candidate_from_most_recent(most_recent)
+        cycling = GarminDataExtractor._cycling_candidate_from_most_recent(most_recent)
         if not cycling:
             return None
 

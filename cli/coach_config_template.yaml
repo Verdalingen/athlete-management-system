@@ -25,17 +25,17 @@ extraction:
 
 # Upcoming Competitions
 competitions:
-  - name: "Local Olympic Triathlon"
-    date: "2026-04-15"         # YYYY-MM-DD or free-text format (e.g. 'September 2026')
-    race_type: "Olympic"
+  - name: "Autumn 10 km"
+    date: "2026-11-14"         # YYYY-MM-DD or free-text format (e.g. 'November 2026')
+    race_type: "10k"
     priority: "A"              # A (highest), B, C priorities
-    target_time: "02:30:00"    # HH:MM:SS format
+    target_time: "00:43:30"    # HH:MM:SS format
 
-  - name: "Sprint Series Race 1"
-    date: "2026-03-20"
-    race_type: "Sprint"
+  - name: "Spring Half Marathon"
+    date: "2027-04-18"
+    race_type: "half_marathon"
     priority: "B"
-    target_time: "01:15:00"
+    target_time: "01:38:00"
 
 # Output Settings
 output:

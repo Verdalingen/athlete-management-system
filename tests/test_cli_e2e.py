@@ -16,7 +16,7 @@ from services.garmin.models import GarminData
 @patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
-@patch("services.garmin.TriathlonCoachDataExtractor")
+@patch("services.garmin.GarminDataExtractor")
 async def test_cli_e2e_smoke_with_mocks(
     mock_extractor_class,
     mock_workflow,
@@ -113,7 +113,7 @@ credentials:
 @patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
-@patch("services.garmin.TriathlonCoachDataExtractor")
+@patch("services.garmin.GarminDataExtractor")
 @patch("getpass.getpass", return_value="dummy")
 @patch("builtins.input", side_effect=["My goal is to complete a marathon"])
 async def test_cli_e2e_with_hitl_enabled(
