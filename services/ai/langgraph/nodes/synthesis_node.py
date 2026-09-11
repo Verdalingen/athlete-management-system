@@ -116,7 +116,7 @@ async def synthesis_node(state: TrainingAnalysisState) -> dict[str, list | str]:
         return {
             "synthesis_result": synthesis_result,
             "synthesis_complete": True,
-            "costs": [
+            "timings": [
                 {
                     "agent": "synthesis",
                     "execution_time": execution_time,

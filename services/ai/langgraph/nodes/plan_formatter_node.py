@@ -114,7 +114,7 @@ async def plan_formatter_node(state: TrainingAnalysisState) -> dict[str, list | 
 
         return {
             "planning_html": planning_html,
-            "costs": [
+            "timings": [
                 {
                     "agent": "plan_formatter",
                     "execution_time": execution_time,

@@ -63,13 +63,13 @@ class TestWorkflowIntegration:
     def test_state_preserves_data_through_workflow(self, minimal_valid_state):
         state = minimal_valid_state.copy()
 
-        state["costs"] = [{"agent": "test1", "cost": 100}]
-        new_costs = [{"agent": "test2", "cost": 200}]
+        state["timings"] = [{"agent": "test1", "cost": 100}]
+        new_timings = [{"agent": "test2", "cost": 200}]
 
-        combined_costs = state["costs"] + new_costs
-        assert len(combined_costs) == 2
-        assert combined_costs[0]["agent"] == "test1"
-        assert combined_costs[1]["agent"] == "test2"
+        combined_timings = state["timings"] + new_timings
+        assert len(combined_timings) == 2
+        assert combined_timings[0]["agent"] == "test1"
+        assert combined_timings[1]["agent"] == "test2"
 
         state["plots"] = [{"plot_id": "plot1"}]
         new_plots = [{"plot_id": "plot2"}]

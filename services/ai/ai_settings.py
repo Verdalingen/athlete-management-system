@@ -27,8 +27,8 @@ class AISettings:
 
     model_assignments: dict[AIMode, dict[AgentRole, str]] = field(
         default_factory=lambda: {
-            # Tiered Claude-only setup. Haiku for cheap nodes, Sonnet for reasoning.
-            # Requires ANTHROPIC_API_KEY; falls back to OpenRouter if not set.
+            # Tiered Claude setup. Haiku for cheap nodes, Sonnet for reasoning.
+            # Requires ANTHROPIC_API_KEY. The pro mode needs OPENAI_API_KEY instead.
             AIMode.DEVELOPMENT: {
                 AgentRole.SUMMARIZER: "claude-haiku",
                 AgentRole.FORMATTER: "claude-haiku",

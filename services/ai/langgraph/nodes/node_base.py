@@ -24,7 +24,7 @@ def configure_node_tools(
     return tools
 
 
-def create_cost_entry(agent_name: str, execution_time: float) -> dict[str, Any]:
+def create_timing_entry(agent_name: str, execution_time: float) -> dict[str, Any]:
 
     return {
         "agent": agent_name,

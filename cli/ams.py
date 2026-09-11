@@ -22,7 +22,7 @@ from services.ai.langgraph.workflows.planning_workflow import (
     run_replan,
 )
 from services.ai.utils.plan_storage import FilePlanStorage
-from services.garmin import ExtractionConfig, TriathlonCoachDataExtractor
+from services.garmin import ExtractionConfig, GarminDataExtractor
 from services.garmin.client import GarminConnectClient
 from services.garmin.credentials import resolve_garmin_credentials
 from services.garmin.history_sync import (
@@ -47,7 +47,6 @@ from services.garmin.strength_uploader import (
     upload_strength_session,
 )
 from services.garmin.training_paces import extract_predicted_5k_secs
-from services.outside.client import OutsideApiGraphQlClient
 from services.supabase.client import get_supabase, rows
 from services.supabase.plan_drift import analyze_plan_drift
 from services.supabase.plan_writer import (
@@ -174,29 +173,6 @@ class ConfigParser:
         return resolve_garmin_credentials(self.config)[1]
 
 
-def fetch_outside_competitions_from_config(config: dict[str, Any]) -> list[dict[str, Any]]:
-    client = OutsideApiGraphQlClient()
-
-    if isinstance(outside_cfg := config.get("outside"), dict) and any(
-        isinstance(value, list) for value in outside_cfg.values()
-    ):
-        return client.get_competitions(outside_cfg)
-
-    aggregate: list[dict[str, Any]] = []
-
-    if isinstance(legacy_bikereg := config.get("bikereg", []), list) and legacy_bikereg:
-        aggregate.extend(client.get_competitions(legacy_bikereg))
-
-    if legacy_all := {
-        key: entries
-        for key in ("runreg", "trireg", "skireg")
-        if isinstance(entries := config.get(key, []), list) and entries
-    }:
-        aggregate.extend(client.get_competitions(legacy_all))
-
-    return aggregate
-
-
 def _reconcile_strength_focus_labels(
     scheduled_days: list[dict[str, Any]] | None,
     strength_sessions: list[dict[str, Any]],
@@ -319,9 +295,6 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
     extraction_settings = config_parser.get_extraction_config()
 
     competitions = config_parser.get_competitions()
-    outside_competitions = fetch_outside_competitions_from_config(config_parser.config)
-    if outside_competitions:
-        competitions.extend(outside_competitions)
 
     output_dir = config_parser.get_output_directory()
 
@@ -343,7 +316,7 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
 
     try:
         logger.info("Extracting Garmin Connect data...")
-        extractor = TriathlonCoachDataExtractor(email, password)
+        extractor = GarminDataExtractor(email, password)
 
         # Widen the lookback to cover any gap since the last successful sync — a fixed
         # window silently drops whatever Garmin activities fall between "N days ago" and
@@ -411,36 +384,20 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         files_generated.extend(_save_expert_outputs(output_dir, result))
         files_generated.extend(_save_plan_outputs(output_dir, result))
 
-        cost_total = float(
-            result.get("cost_summary", {}).get("total_cost_usd", 0.0) or
-            result.get("execution_metadata", {}).get("total_cost_usd", 0.0) or
-            sum(cost.get("total_cost", 0) for cost in result.get("costs", []))
-        )
-        total_tokens = int(
-            result.get("cost_summary", {}).get("total_tokens", 0) or
-            result.get("execution_metadata", {}).get("total_tokens", 0)
-        )
-
         (output_dir / "summary.json").write_text(
             json.dumps({
                 "athlete": athlete_name,
                 "analysis_date": datetime.now().isoformat(),
                 "competitions": competitions,
-                "total_cost_usd": cost_total,
-                "total_tokens": total_tokens,
                 "execution_id": result.get("execution_id", ""),
-                "trace_id": result.get("execution_metadata", {}).get("trace_id", ""),
-                "root_run_id": result.get("execution_metadata", {}).get("root_run_id", ""),
+                "execution_time_seconds": result.get("execution_metadata", {}).get("execution_time_seconds"),
                 "files_generated": files_generated,
             }, indent=2, ensure_ascii=False),
             encoding="utf-8"
         )
 
         logger.info("✅ Analysis completed successfully!")
-        if outside_competitions:
-            logger.info("✅  Added %d Outside competitions from config", len(outside_competitions))
         logger.info("📁 Results saved to: %s", output_dir)
-        logger.info("💰 Total cost: $%.2f (%d tokens)", cost_total, total_tokens)
 
         workout_ids: dict[str, Any] = {}
         running_workout_ids: dict[str, Any] = {}
@@ -520,7 +477,7 @@ async def run_replan_from_config(
     # permanent data gap for whatever fell between "14 days ago" and the actual last sync.
     replan_lookback_days = get_sync_gap_days(14)
     logger.info("Extracting recent Garmin data (%d days)…", replan_lookback_days)
-    extractor = TriathlonCoachDataExtractor(email, password)
+    extractor = GarminDataExtractor(email, password)
     garmin_data = extractor.extract_data(
         ExtractionConfig(
             activities_range=replan_lookback_days,
@@ -1425,7 +1382,7 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
         include_long_term_trends=False,
     )
 
-    extractor = TriathlonCoachDataExtractor(email, password)
+    extractor = GarminDataExtractor(email, password)
     garmin_data = extractor.extract_data(extraction_config)
     gd = asdict(garmin_data)
 
@@ -1575,7 +1532,7 @@ def cmd_sync_history(config_path: Path) -> None:
     )
 
     logger.info("🔄 Starting full history sync (up to 365 days) — this may take a few minutes…")
-    extractor = TriathlonCoachDataExtractor(email, password)
+    extractor = GarminDataExtractor(email, password)
     garmin_data = extractor.extract_data(extraction_config)
     gd = asdict(garmin_data)
 
@@ -1594,7 +1551,7 @@ def main():
     group.add_argument("--config", type=Path, help="Path to configuration file (YAML or JSON)")
     group.add_argument("--replan", type=Path, metavar="CONFIG",
                        help="Tier-2 weekly re-plan: fetch 14 days of Garmin data and re-run "
-                            "only the weekly planner against the stored season plan (~$0.20-0.40)")
+                            "only the weekly planner against the stored season plan (a fraction of a full run)")
     group.add_argument("--queue", type=Path, metavar="CONFIG",
                        help="Process pending replan jobs queued via the web UI")
     group.add_argument("--sync-kpis", type=Path, metavar="CONFIG",

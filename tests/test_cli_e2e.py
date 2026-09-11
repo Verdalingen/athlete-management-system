@@ -16,10 +16,8 @@ from services.garmin.models import GarminData
 @patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
-@patch("services.garmin.TriathlonCoachDataExtractor")
-@patch("services.outside.client.OutsideApiGraphQlClient")
+@patch("services.garmin.GarminDataExtractor")
 async def test_cli_e2e_smoke_with_mocks(
-    mock_outside_client,
     mock_extractor_class,
     mock_workflow,
     mock_get_analysis_context,
@@ -51,18 +49,14 @@ async def test_cli_e2e_smoke_with_mocks(
         "physiology_outputs": None,
         "season_plan": {"output": "Season OK"},
         "weekly_plan": {"output": "Weekly OK"},
-        "cost_summary": {"total_cost_usd": 0.0, "total_tokens": 0},
         "execution_id": "test-exec",
-        "execution_metadata": {"trace_id": "trace-1", "root_run_id": "root-1"},
+        "execution_metadata": {"execution_time_seconds": 1.5},
     }
 
     # Configure extractor mock
     mock_instance = mock_extractor_class.return_value
     mock_instance.extract_data.return_value = GarminData()
 
-    # Configure outside client mock
-    mock_outside_instance = mock_outside_client.return_value
-    mock_outside_instance.get_competitions.return_value = []
 
     # Import after patches are in place
     from cli.ams import run_analysis_from_config
@@ -105,7 +99,7 @@ credentials:
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["athlete"] == "Test A"
-    assert summary["total_cost_usd"] == 0.0
+    assert summary["execution_time_seconds"] == 1.5
 
 
 @pytest.mark.asyncio
@@ -118,14 +112,12 @@ credentials:
 @patch("services.supabase.athlete_profile.build_planning_context", return_value="Planning context")
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
-@patch("services.garmin.TriathlonCoachDataExtractor")
-@patch("services.outside.client.OutsideApiGraphQlClient")
+@patch("services.garmin.GarminDataExtractor")
 @patch("getpass.getpass", return_value="dummy")
 @patch("builtins.input", side_effect=["My goal is to complete a marathon"])
 async def test_cli_e2e_with_hitl_enabled(
     mock_input,
     mock_getpass,
-    mock_outside_client,
     mock_extractor_class,
     mock_workflow,
     mock_get_analysis_context,
@@ -150,18 +142,14 @@ async def test_cli_e2e_with_hitl_enabled(
         "physiology_outputs": None,
         "season_plan": {"output": "Season OK"},
         "weekly_plan": {"output": "Weekly OK"},
-        "cost_summary": {"total_cost_usd": 0.05, "total_tokens": 1000},
         "execution_id": "test-exec-hitl",
-        "execution_metadata": {"trace_id": "trace-hitl", "root_run_id": "root-hitl"},
+        "execution_metadata": {"execution_time_seconds": 2.0},
     }
 
     # Configure extractor mock
     mock_instance = mock_extractor_class.return_value
     mock_instance.extract_data.return_value = GarminData()
 
-    # Configure outside client mock
-    mock_outside_instance = mock_outside_client.return_value
-    mock_outside_instance.get_competitions.return_value = []
 
     # Import after patches are in place
     from cli.ams import run_analysis_from_config
@@ -209,5 +197,4 @@ credentials:
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["athlete"] == "Test Athlete HITL"
-    assert "total_cost_usd" in summary
-    assert "total_tokens" in summary
+    assert "execution_time_seconds" in summary

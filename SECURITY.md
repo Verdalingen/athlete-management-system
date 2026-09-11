@@ -51,7 +51,7 @@ response within a couple of weeks.
 | Garmin Connect email and password | Supabase Vault (pgsodium), encrypted at rest | Reversibly encrypted — see [Garmin credential custody](#garmin-credential-custody) |
 | Garmin OAuth tokens | Local filesystem, `~/.garminconnect` by default | Minted from the password; overridable via `GARMINCONNECT_TOKENS` / `GARTH_HOME` |
 | LLM provider keys, Supabase service-role key | Environment variables (`.env`, Vercel project settings) | Never committed; `.env*` is gitignored |
-| Prompts and model outputs | LLM provider; LangSmith when tracing is enabled | Contains health data — see [Data sent to third parties](#data-sent-to-third-parties) |
+| Prompts and model outputs | LLM provider | Contains health data — see [Data sent to third parties](#data-sent-to-third-parties) |
 
 No payment data, no credentials belonging to anyone other than the operator, and
 no data about third parties are stored.
@@ -241,12 +241,10 @@ Calling `getUserId()` in these handlers would be cheap defence in depth.
 
 ### Data sent to third parties
 
-Health data leaves the system in LLM prompts (Anthropic, OpenAI, or OpenRouter,
-depending on configuration) and, when `LANGSMITH_API_KEY` is set, in traces sent
-to LangSmith. Nutrition lookups query Open Food Facts and the USDA FoodData
-Central API. Anyone self-hosting should decide deliberately whether those
-providers are acceptable recipients of their health data, and leave LangSmith
-tracing off unless they want prompt contents retained there.
+Health data leaves the system in LLM prompts (Anthropic, or OpenAI in `pro`
+mode). Nutrition lookups query Open Food Facts and the USDA FoodData Central
+API. Anyone self-hosting should decide deliberately whether those providers
+are acceptable recipients of their health data.
 
 ### No automated dependency or secret scanning
 

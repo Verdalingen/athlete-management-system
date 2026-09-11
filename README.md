@@ -102,7 +102,7 @@ monotony/strain — see [`training_metrics.py`](services/garmin/utils/training_m
 parallel, feed five expert nodes, then an orchestrator, season planner and
 weekly planner produce a 12–24 week season strategy and a concrete 4-week plan.
 Expert outputs are typed Pydantic payloads, not free text. Optional
-human-in-the-loop, LangSmith tracing and per-run cost attribution.
+human-in-the-loop.
 
 **Act.** Structured workouts are written to Garmin Connect so they appear
 on the watch — strength sessions with sets, reps and named exercises from
@@ -192,7 +192,7 @@ plan itself.
 | Layer | Choice |
 |---|---|
 | Pipeline | Python 3.13, LangGraph, Pydantic v2, managed by [Pixi](https://pixi.sh) |
-| Models | Anthropic, OpenAI, OpenRouter — role-based assignment per mode |
+| Models | Anthropic, OpenAI — role-based assignment per mode |
 | Data | Supabase (Postgres, Auth, Vault), 41 append-only migrations |
 | Web | Next.js 16, React 19, Tailwind 4, deployed on Vercel |
 | Quality | 339 tests, mypy strict (0 errors), ruff — all gated in CI |
@@ -289,12 +289,8 @@ nodes. See [`services/ai/ai_settings.py`](services/ai/ai_settings.py).
 | `pro` | Strongest models available. **Can exceed $10 per run** |
 
 Set it per run with `extraction.ai_mode` in the config, or globally with
-`AI_MODE` in `.env`. Anthropic is the primary provider; OpenAI and OpenRouter
-(DeepSeek, Gemini, Grok) are supported, and OpenRouter acts as the fallback when
-`ANTHROPIC_API_KEY` is absent.
-
-Optional: set `LANGSMITH_API_KEY` for tracing and per-node cost attribution.
-Note that this sends prompt contents — which include health data — to LangSmith.
+`AI_MODE` in `.env`. Every mode except `pro` runs on Anthropic and needs
+`ANTHROPIC_API_KEY`; `pro` runs on OpenAI and needs `OPENAI_API_KEY`.
 
 ---
 
@@ -305,7 +301,6 @@ Note that this sends prompt contents — which include health data — to LangSm
 | [`services/ai/langgraph/`](services/ai/langgraph/) | The coaching workflow — nodes, schemas, state |
 | [`services/garmin/`](services/garmin/) | Garmin extraction, metrics, workout upload |
 | [`services/supabase/`](services/supabase/) | All DB writes — plan writing, drift, bench wave |
-| [`services/outside/`](services/outside/) | Optional race import (BikeReg/RunReg/TriReg/SkiReg) |
 | [`cli/`](cli/) | Command-line entry point and job runner |
 | [`supabase/migrations/`](supabase/migrations/) | Numbered SQL migrations, append-only |
 | [`tests/`](tests/) | pytest suite |

@@ -40,7 +40,6 @@ from .models import (
     ExerciseSet,
     ExtractionConfig,
     GarminData,
-    HeartRateZone,
     PhysiologicalMarkers,
     RecoveryIndicators,
     TrainingStatus,
@@ -186,15 +185,6 @@ class DataExtractor:
             return None
         return _round(speed_ms, 2)
 
-    def get_latest_sleep_duration(self, date_obj: date) -> float | None:
-        try:
-            sleep_data = self.garmin.client.get_sleep_data(date_obj.isoformat()) or {}
-            daily_sleep = _dg(sleep_data, "dailySleepDTO", {}) or {}
-            return self.safe_divide_and_round(daily_sleep.get("sleepTimeSeconds"), 3600)
-        except Exception:
-            logger.exception("Error getting sleep duration for %s", date_obj)
-            return None
-
     @staticmethod
     def get_date_ranges(config: ExtractionConfig) -> dict[str, dict[str, date]]:
         end_date = date.today()
@@ -208,7 +198,7 @@ class DataExtractor:
         }
 
 
-class TriathlonCoachDataExtractor(DataExtractor):
+class GarminDataExtractor(DataExtractor):
     def __init__(self, email: str, password: str):
         self.garmin = GarminConnectClient()
         self.garmin.connect(email, password)
@@ -334,7 +324,7 @@ class TriathlonCoachDataExtractor(DataExtractor):
         if not isinstance(most_recent, Mapping):
             return None
 
-        cycling = TriathlonCoachDataExtractor._cycling_candidate_from_most_recent(most_recent)
+        cycling = GarminDataExtractor._cycling_candidate_from_most_recent(most_recent)
         if not cycling:
             return None
 
@@ -798,7 +788,6 @@ class TriathlonCoachDataExtractor(DataExtractor):
                 start_time=start_time,
                 summary=summary,
                 weather=self._extract_weather_data(weather_data),
-                hr_zones=[],
                 # NOTE: Keeping child activities inside laps to preserve external behavior.
                 laps=child_activities,
             )
@@ -964,28 +953,6 @@ class TriathlonCoachDataExtractor(DataExtractor):
             wind_speed=_to_float(weather.get("windSpeed")),
             weather_type=weather_type,
         )
-
-    def _extract_hr_zone_data(self, hr_zones: list[Any] | None) -> list[HeartRateZone]:
-        if not hr_zones or not isinstance(hr_zones, list):
-            logger.debug("No heart rate zones data available or invalid format")
-            return []
-        processed: list[HeartRateZone] = []
-        for zone in hr_zones:
-            try:
-                if not isinstance(zone, dict):
-                    continue
-                processed.append(
-                    HeartRateZone(
-                        zone_number=_to_int(zone.get("zoneNumber")),
-                        secs_in_zone=_to_int(zone.get("secsInZone")),
-                        zone_low_boundary=_to_int(zone.get("zoneLowBoundary")),
-                    )
-                )
-            except Exception:
-                logger.exception("Error processing heart rate zone item")
-        return processed
-
-    # --------- Metrics / Histories ---------
 
     def get_physiological_markers(self, start_date: date, end_date: date) -> PhysiologicalMarkers:
         rhr_data = self._call_api(

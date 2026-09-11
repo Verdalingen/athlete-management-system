@@ -7,7 +7,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from services.garmin.data_extractor import TriathlonCoachDataExtractor
+from services.garmin.data_extractor import GarminDataExtractor
 from services.garmin.models import ExtractionConfig
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def main():
     password = os.getenv("GARMIN_PASSWORD")
     if not email or not password:
         raise ValueError("Set GARMIN_EMAIL and GARMIN_PASSWORD in environment or .env file")
-    extractor = TriathlonCoachDataExtractor(email=email, password=password)
+    extractor = GarminDataExtractor(email=email, password=password)
 
     logger.info("Extracting data from Garmin Connect...")
     data = extractor.extract_data(config)

@@ -12,7 +12,7 @@ from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backo
 
 from .node_base import (
     configure_node_tools,
-    create_cost_entry,
+    create_timing_entry,
     execute_node_with_error_handling,
     log_node_completion,
 )
@@ -214,7 +214,7 @@ async def season_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
 
         return {
             "season_plan": agent_output.model_dump(),
-            "costs": [create_cost_entry("season_planner", execution_time)],
+            "timings": [create_timing_entry("season_planner", execution_time)],
         }
 
     return await execute_node_with_error_handling(

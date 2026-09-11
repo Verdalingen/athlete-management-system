@@ -101,7 +101,7 @@ def create_data_summarizer_node(
 
             return {
                 state_output_key: summary,
-                "costs": [
+                "timings": [
                     {
                         "agent": state_output_key.replace("_summary", "_summarizer"),
                         "execution_time": execution_time,
