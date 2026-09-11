@@ -1565,7 +1565,7 @@ def main():
     group.add_argument("--config", type=Path, help="Path to configuration file (YAML or JSON)")
     group.add_argument("--replan", type=Path, metavar="CONFIG",
                        help="Tier-2 weekly re-plan: fetch 14 days of Garmin data and re-run "
-                            "only the weekly planner against the stored season plan (~$0.20-0.40)")
+                            "only the weekly planner against the stored season plan (a fraction of a full run)")
     group.add_argument("--queue", type=Path, metavar="CONFIG",
                        help="Process pending replan jobs queued via the web UI")
     group.add_argument("--sync-kpis", type=Path, metavar="CONFIG",

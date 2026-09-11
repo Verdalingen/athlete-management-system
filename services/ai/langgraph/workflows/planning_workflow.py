@@ -234,7 +234,7 @@ async def run_replan(
 ) -> dict[str, Any]:
     """Tier-2 re-plan: run only the weekly planner against the stored season plan.
 
-    Skips all expert analysis nodes — costs ~$0.20-0.40 vs $1-3 for a full pipeline run.
+    Skips all expert analysis nodes, so it runs at a small fraction of a full pipeline's cost.
     Recent Garmin activity data is injected as plain text into planning_context so the
     planner knows what was actually completed vs missed before generating the next 4 weeks.
     """

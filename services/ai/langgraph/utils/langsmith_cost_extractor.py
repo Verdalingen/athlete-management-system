@@ -1,11 +1,9 @@
 import logging
 import os
-import time
 from dataclasses import dataclass
 from decimal import Decimal
 
 from langsmith import Client
-from requests import HTTPError
 
 logger = logging.getLogger(__name__)
 
@@ -45,33 +43,6 @@ class LangSmithCostExtractor:
                 logger.info("LangSmith cost extractor initialized")
             except Exception as exc:
                 logger.warning("Failed to initialize LangSmith client: %s", exc)
-
-    def safe_read_run(
-        self, run_id: str, retries: int = 3, backoff: float = 0.5, load_children: bool = True
-    ):
-        if not self.client:
-            return None
-
-        for i in range(retries):
-            try:
-                return self.client.read_run(run_id, load_child_runs=load_children)
-            except HTTPError as e:
-                logger.warning(
-                    "HTTP error reading run %s, attempt %s/%s: %s",
-                    run_id,
-                    i + 1,
-                    retries,
-                    e,
-                )
-                if i == retries - 1:
-                    raise
-                time.sleep(backoff * (2**i))
-            except Exception:
-                logger.exception("Unexpected error reading run %s", run_id)
-                if i == retries - 1:
-                    raise
-                time.sleep(backoff)
-        return None
 
     def extract_workflow_costs_by_trace(
         self, trace_id: str, execution_time: float = 0.0

@@ -114,13 +114,6 @@ class WeatherData:
 
 
 @dataclass
-class HeartRateZone:
-    zone_number: int | None = None
-    secs_in_zone: int | None = None
-    zone_low_boundary: int | None = None
-
-
-@dataclass
 class ExerciseSet:
     set_type: str | None = None           # "ACTIVE" or "REST"
     exercise_category: str | None = None  # e.g. "BENCH_PRESS", "PULL_UP"
@@ -142,7 +135,6 @@ class Activity:
     start_time: str | None = None
     summary: ActivitySummary | None = None
     weather: WeatherData | None = None
-    hr_zones: list[HeartRateZone] | None = None
     laps: list[dict[str, Any]] | None = None  # Complex structure, keeping as Dict for now
     exercise_sets: list[ExerciseSet] | None = None  # Populated for strength activities
 
