@@ -62,7 +62,7 @@ class MasterOrchestrator:
             "display_name": "Season Planning"
         },
         "weekly_planning": {
-            "agents": [AgentRole.WORKOUT.value],
+            "agents": [AgentRole.WEEKLY_PLANNER.value],
             "result_keys": ["weekly_plan"],
             "next_node": "plan_formatter",
             "display_name": "Weekly Planning"
@@ -108,7 +108,7 @@ class MasterOrchestrator:
         agents_to_reinvoke = []
         for key in agent_qa_updates.keys():
             agent_role = key.replace("_messages", "")
-            if agent_role == AgentRole.WORKOUT.value:
+            if agent_role == AgentRole.WEEKLY_PLANNER.value:
                 agents_to_reinvoke.append("weekly_planner")
             else:
                 agents_to_reinvoke.append(agent_role)
@@ -182,7 +182,7 @@ class MasterOrchestrator:
             question = qa_item["question"]["message"]
             answer = answer_item["answer"]
 
-            if agent_name == AgentRole.WORKOUT.value:
+            if agent_name == AgentRole.WEEKLY_PLANNER.value:
                 field_name = "weekly_planner_messages"
             else:
                 field_name = f"{agent_name}_messages"

@@ -64,7 +64,7 @@ web app's setup wizard and read live on every run.
 Keys:
 
 - `athlete` — `name`, `email` (the Garmin Connect address)
-- `extraction` — `activities_days`, `metrics_days`, `ai_mode`, `enable_plotting`,
+- `extraction` — `activities_days`, `metrics_days`, `enable_plotting`,
   `hitl_enabled`, `skip_synthesis`, and the long-term trend window
 - `competitions` — list of `{name, date, race_type, priority (A/B/C), target_time}`
 - `output` — `directory`
@@ -80,7 +80,6 @@ athlete:
 extraction:
   activities_days: 28
   metrics_days: 56
-  ai_mode: "standard"
   enable_plotting: false
   hitl_enabled: true
 
@@ -98,9 +97,9 @@ credentials:
   password: ""
 ```
 
-`ai_mode` is one of `development`, `standard`, `cost_effective`, `pro`, and
-overrides `AI_MODE` from `.env` for that run. **`pro` can exceed $10 per run**
-depending on how much data is extracted.
+Which model each node runs on is not a per-run setting — see
+[`services/ai/ai_settings.py`](../services/ai/ai_settings.py) and the
+`MODEL_*` variables in `.env.example`.
 
 ## Credentials
 

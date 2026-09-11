@@ -76,7 +76,6 @@ context:
 extraction:
   activities_days: 7
   metrics_days: 14
-  ai_mode: "development"
   hitl_enabled: false
 
 output:
@@ -169,7 +168,6 @@ context:
 extraction:
   activities_days: 7
   metrics_days: 14
-  ai_mode: "development"
   hitl_enabled: true
 
 output:

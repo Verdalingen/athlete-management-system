@@ -1,21 +1,11 @@
-import os
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any
-
-
-class TimeRange(Enum):
-    # Values are determined by AI_MODE environment variable
-    RECENT = 7 if os.getenv("AI_MODE") == "development" else 21
-    EXTENDED = 14 if os.getenv("AI_MODE") == "development" else 56
-    LONG_TERM_RANGE = 360
-    LONG_TERM_INTERVAL = 7
 
 
 @dataclass
 class ExtractionConfig:
-    activities_range: int = TimeRange.RECENT.value
-    metrics_range: int = TimeRange.EXTENDED.value
+    activities_range: int = 21
+    metrics_range: int = 56
     include_detailed_activities: bool = True
     # With include_detailed_activities, fetch only the activity-list endpoint and
     # skip per-activity detail calls (splits, sets, weather) — much cheaper.
@@ -23,8 +13,8 @@ class ExtractionConfig:
     include_metrics: bool = True
     include_mindfulness: bool = True
     include_long_term_trends: bool = True
-    long_term_range: int = TimeRange.LONG_TERM_RANGE.value
-    long_term_interval: int = TimeRange.LONG_TERM_INTERVAL.value
+    long_term_range: int = 360
+    long_term_interval: int = 7
 
 
 @dataclass

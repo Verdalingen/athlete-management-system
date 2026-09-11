@@ -2,112 +2,81 @@ import types
 
 import pytest
 
-from core.config import AIMode, Config
+from core.config import Config, _tier_models_from_env
 from services.ai import model_config
-from services.ai.ai_settings import AgentRole, AISettings
-from services.ai.model_config import OPENAI_BASE_URL, ModelSelector
+from services.ai.ai_settings import ROLE_TIER, TIER_MODEL, AgentRole, Tier
+from services.ai.model_config import ModelSelector
 
 
-class _StubSettings:
-    def __init__(self, model_name: str):
-        self.model_name = model_name
-
-    def get_model_for_role(self, _: AgentRole) -> str:
-        return self.model_name
-
-
-def _capture_clients(monkeypatch):
+def _capture_anthropic(monkeypatch):
     captured: dict = {}
 
     def fake_chat_anthropic(**kwargs):
         captured.update(kwargs)
-        captured["client"] = "ChatAnthropic"
-        return types.SimpleNamespace(**kwargs)
-
-    def fake_chat_openai(**kwargs):
-        captured.update(kwargs)
-        captured["client"] = "ChatOpenAI"
         return types.SimpleNamespace(**kwargs)
 
     monkeypatch.setattr(model_config, "ChatAnthropic", fake_chat_anthropic)
-    monkeypatch.setattr(model_config, "ChatOpenAI", fake_chat_openai)
     return captured
 
 
 @pytest.mark.parametrize(
-    ("model_name", "expected_client", "expected_model"),
+    ("role", "expected_model"),
     [
-        ("claude-sonnet", "ChatAnthropic", "claude-sonnet-5"),
-        ("claude-haiku", "ChatAnthropic", "claude-haiku-4-5-20251001"),
-        ("gpt-5", "ChatOpenAI", "gpt-5.2"),
+        (AgentRole.METRICS_SUMMARIZER, "claude-haiku-4-5"),  # fast
+        (AgentRole.WEEKLY_PLANNER, "claude-sonnet-5"),  # reasoning
+        (AgentRole.SEASON_PLANNER, "claude-opus-4-8"),  # deep
     ],
 )
-def test_routes_to_provider_client(monkeypatch, model_name, expected_client, expected_model):
-    config = Config(
-        anthropic_api_key="sk-ant-api03-test",
-        openai_api_key="sk-test",
-        ai_mode=AIMode.STANDARD,
-    )
+def test_role_resolves_through_its_tier(monkeypatch, role, expected_model):
+    config = Config(anthropic_api_key="sk-ant-api03-test")
     monkeypatch.setattr(model_config, "get_config", lambda: config)
-    monkeypatch.setattr(model_config, "ai_settings", _StubSettings(model_name))
-    captured = _capture_clients(monkeypatch)
+    captured = _capture_anthropic(monkeypatch)
 
-    ModelSelector.get_llm(AgentRole.SUMMARIZER)
+    ModelSelector.get_llm(role)
 
-    assert captured["client"] == expected_client
     assert captured["model"] == expected_model
-    if expected_client == "ChatOpenAI":
-        assert captured["api_key"] == "sk-test"
-        assert captured["base_url"] == OPENAI_BASE_URL
-    else:
-        assert captured["api_key"] == "sk-ant-api03-test"
-        assert "base_url" not in captured
+    assert captured["api_key"] == "sk-ant-api03-test"
 
 
-def test_applies_per_model_params(monkeypatch):
-    config = Config(openai_api_key="sk-test", ai_mode=AIMode.STANDARD)
+def test_env_override_changes_a_tier_without_touching_others(monkeypatch):
+    monkeypatch.setenv("MODEL_DEEP", "claude-sonnet")
+    monkeypatch.delenv("MODEL_FAST", raising=False)
+    monkeypatch.delenv("MODEL_REASONING", raising=False)
+
+    tiers = _tier_models_from_env()
+
+    assert tiers[Tier.DEEP] == "claude-sonnet"
+    assert tiers[Tier.FAST] == TIER_MODEL[Tier.FAST]
+    assert tiers[Tier.REASONING] == TIER_MODEL[Tier.REASONING]
+
+
+def test_per_model_params_applied(monkeypatch):
+    config = Config(anthropic_api_key="sk-ant-api03-test")
     monkeypatch.setattr(model_config, "get_config", lambda: config)
-    monkeypatch.setattr(model_config, "ai_settings", _StubSettings("gpt-5-search"))
-    captured = _capture_clients(monkeypatch)
+    captured = _capture_anthropic(monkeypatch)
 
-    ModelSelector.get_llm(AgentRole.SYNTHESIS)
+    ModelSelector.get_llm(AgentRole.SEASON_PLANNER)
 
-    assert captured["use_responses_api"] is True
-    assert captured["reasoning"] == {"effort": "xhigh"}
-    assert captured["model_kwargs"]["tools"] == [{"type": "web_search"}]
-    assert "log" not in captured
+    assert captured["max_tokens"] == 32000
 
 
-def test_missing_provider_key_raises(monkeypatch):
-    config = Config(ai_mode=AIMode.STANDARD)
-    monkeypatch.setattr(model_config, "get_config", lambda: config)
-    monkeypatch.setattr(model_config, "ai_settings", _StubSettings("claude-sonnet"))
+def test_missing_key_raises(monkeypatch):
+    monkeypatch.setattr(model_config, "get_config", lambda: Config())
 
     with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
-        ModelSelector.get_llm(AgentRole.SUMMARIZER)
+        ModelSelector.get_llm(AgentRole.SYNTHESIS)
 
 
-def test_unknown_model_raises(monkeypatch):
-    config = Config(anthropic_api_key="sk-ant-api03-test", ai_mode=AIMode.STANDARD)
+def test_unknown_override_fails_with_the_valid_names(monkeypatch):
+    config = Config(anthropic_api_key="sk-ant-api03-test", tier_models={**TIER_MODEL, Tier.FAST: "gpt-9"})
     monkeypatch.setattr(model_config, "get_config", lambda: config)
-    monkeypatch.setattr(model_config, "ai_settings", _StubSettings("not-a-model"))
 
-    with pytest.raises(RuntimeError, match="Unknown model"):
-        ModelSelector.get_llm(AgentRole.SUMMARIZER)
-
-
-def test_every_assigned_model_exists_in_catalogue():
-    # Guards the invariant the catalogue comment states: nothing in
-    # ai_settings may reference a model that ModelSelector cannot build.
-    assignments = AISettings(mode=AIMode.STANDARD).model_assignments
-    assigned = {name for by_role in assignments.values() for name in by_role.values()}
-    missing = assigned - set(ModelSelector.CONFIGURATIONS)
-    assert not missing, f"assigned but not in catalogue: {sorted(missing)}"
+    with pytest.raises(RuntimeError, match=r"Unknown model 'gpt-9'.*claude-haiku"):
+        ModelSelector.get_llm(AgentRole.METRICS_SUMMARIZER)
 
 
-def test_every_catalogue_model_is_assigned_somewhere():
-    # And the converse: an entry nothing assigns is dead weight.
-    assignments = AISettings(mode=AIMode.STANDARD).model_assignments
-    assigned = {name for by_role in assignments.values() for name in by_role.values()}
-    unused = set(ModelSelector.CONFIGURATIONS) - assigned
-    assert not unused, f"in catalogue but never assigned: {sorted(unused)}"
+def test_every_role_has_a_tier_and_every_tier_a_valid_default():
+    assert set(ROLE_TIER) == set(AgentRole), "a role with no tier would fail at first use"
+    assert set(TIER_MODEL) == set(Tier)
+    unknown = set(TIER_MODEL.values()) - set(ModelSelector.CONFIGURATIONS)
+    assert not unknown, f"tier defaults not in catalogue: {sorted(unknown)}"

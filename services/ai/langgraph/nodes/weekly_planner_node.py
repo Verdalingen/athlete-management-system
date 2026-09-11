@@ -870,7 +870,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
     }
     base_messages = [{"role": "system", "content": system_prompt}, user_message]
 
-    base_llm = ModelSelector.get_llm(AgentRole.WORKOUT)
+    base_llm = ModelSelector.get_llm(AgentRole.WEEKLY_PLANNER)
     llm_with_tools = base_llm.bind_tools(tools) if tools else base_llm
     llm_with_structure = llm_with_tools.with_structured_output(WeeklyPlanOutput)
 

@@ -192,7 +192,7 @@ plan itself.
 | Layer | Choice |
 |---|---|
 | Pipeline | Python 3.13, LangGraph, Pydantic v2, managed by [Pixi](https://pixi.sh) |
-| Models | Anthropic, OpenAI — role-based assignment per mode |
+| Models | Anthropic — per-node tier assignment (fast / reasoning / deep) |
 | Data | Supabase (Postgres, Auth, Vault), 41 append-only migrations |
 | Web | Next.js 16, React 19, Tailwind 4, deployed on Vercel |
 | Quality | 339 tests, mypy strict (0 errors), ruff — all gated in CI |
@@ -275,22 +275,24 @@ Remove the demo athlete entirely with
 
 ---
 
-## Providers and model selection
+## Model selection
 
-Models are assigned **per role, per mode** rather than globally — cheap models
-for summarising and HTML formatting, stronger ones for the expert and planner
-nodes. See [`services/ai/ai_settings.py`](services/ai/ai_settings.py).
+Each LLM-calling node is assigned a **tier** — the decision that matters per
+node is how much judgement it needs, not which vendor:
 
-| Mode | Intent |
-|---|---|
-| `development` | Cheapest tier that still produces a full run |
-| `cost_effective` | Reduced cost for routine weekly re-plans |
-| `standard` | The default — what I actually run |
-| `pro` | Strongest models available. **Can exceed $10 per run** |
+| Tier | Nodes | Default |
+|---|---|---|
+| `fast` | The five summarisers and two formatters — restructure data, no judgement | Claude Haiku |
+| `reasoning` | The five experts, weekly and nutrition planners, race strategy, synthesis | Claude Sonnet |
+| `deep` | The season planner — longest horizon, most consequential call | Claude Opus |
 
-Set it per run with `extraction.ai_mode` in the config, or globally with
-`AI_MODE` in `.env`. Every mode except `pro` runs on Anthropic and needs
-`ANTHROPIC_API_KEY`; `pro` runs on OpenAI and needs `OPENAI_API_KEY`.
+The per-node assignment is [`ROLE_TIER` in `ai_settings.py`](services/ai/ai_settings.py)
+and is meant to be edited. A tier's model can be changed without touching
+Python — `MODEL_DEEP=claude-sonnet` in `.env`, for example. Anthropic is the
+only provider; `ANTHROPIC_API_KEY` is required.
+
+Cheap runs are not a model setting: `--replan` skips the expert nodes, which
+is where the cost is.
 
 ---
 

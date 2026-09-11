@@ -63,7 +63,7 @@ async def formatter_node(state: TrainingAnalysisState) -> dict[str, list | str]:
             if plotting_enabled:
                 user_prompt += FORMATTER_PLOT_INSTRUCTIONS
 
-            response = await ModelSelector.get_llm(AgentRole.FORMATTER).ainvoke([
+            response = await ModelSelector.get_llm(AgentRole.ANALYSIS_FORMATTER).ainvoke([
                 {"role": "system", "content": FORMATTER_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ])
