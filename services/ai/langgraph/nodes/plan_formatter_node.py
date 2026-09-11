@@ -86,7 +86,7 @@ async def plan_formatter_node(state: TrainingAnalysisState) -> dict[str, list | 
             return value or ""
 
         async def call_plan_formatting():
-            response = await ModelSelector.get_llm(AgentRole.FORMATTER).ainvoke([
+            response = await ModelSelector.get_llm(AgentRole.PLAN_FORMATTER).ainvoke([
                 {"role": "system", "content": PLAN_FORMATTER_SYSTEM_PROMPT},
                 {"role": "user", "content": PLAN_FORMATTER_USER_PROMPT.format(
                     season_plan=get_content("season_plan"),

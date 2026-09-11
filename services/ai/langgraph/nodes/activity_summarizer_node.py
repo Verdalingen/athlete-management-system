@@ -64,7 +64,7 @@ def extract_activity_data(state: TrainingAnalysisState) -> dict:
 
 activity_summarizer_node = create_data_summarizer_node(
     node_name="Activity Summarizer",
-    agent_role=AgentRole.SUMMARIZER,
+    agent_role=AgentRole.ACTIVITY_SUMMARIZER,
     data_extractor=extract_activity_data,
     state_output_key="activity_summary",
     agent_type="activity_summarizer",

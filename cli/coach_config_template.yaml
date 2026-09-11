@@ -12,7 +12,6 @@ athlete:
 extraction:
   activities_days: 28      # How many days of activities to extract
   metrics_days: 56         # How many days of metrics to extract
-  ai_mode: "standard"      # Overrides .env AI_MODE for coach-cli runs; one of: "development", "standard", "cost_effective", "pro"
                            # ⚠️  WARNING: "pro" mode can incur high costs (>$10 per run depending on data volume)
   enable_plotting: false   # Enable AI-generated plots (default: false to save costs). Set to true for visual insights.
   hitl_enabled: true       # Enable Human-in-the-Loop interactions - agents can ask questions during analysis (default: true)

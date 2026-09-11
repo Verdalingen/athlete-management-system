@@ -15,8 +15,6 @@ from typing import Any
 
 import yaml
 
-from core.config import reload_config
-from services.ai.ai_settings import ai_settings
 from services.ai.langgraph.workflows.planning_workflow import (
     run_complete_analysis_and_planning,
     run_replan,
@@ -146,7 +144,6 @@ class ConfigParser:
         return {
             "activities_days": extraction.get("activities_days", 7),
             "metrics_days": extraction.get("metrics_days", 14),
-            "ai_mode": extraction.get("ai_mode", "development"),
             "enable_plotting": extraction.get("enable_plotting", False),
             "hitl_enabled": extraction.get("hitl_enabled", True),
             "skip_synthesis": extraction.get("skip_synthesis", False),
@@ -303,15 +300,6 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
 
     password = config_parser.get_password()
 
-    os.environ["AI_MODE"] = extraction_settings.get("ai_mode", "development")
-
-    # Reload config and settings to pick up the new AI_MODE
-    reload_config()
-    ai_settings.reload()
-
-    logger.info("AI Mode: %s", os.environ["AI_MODE"])
-
-
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -464,9 +452,6 @@ async def run_replan_from_config(
     logger.info("Loaded stored season plan (%d chars)", len(season_plan))
 
     password = config_parser.get_password()
-    os.environ["AI_MODE"] = extraction_settings.get("ai_mode", "development")
-    reload_config()
-    ai_settings.reload()
 
     if user_comment:
         logger.info("User note: %s", user_comment[:120])

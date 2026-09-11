@@ -241,8 +241,7 @@ Calling `getUserId()` in these handlers would be cheap defence in depth.
 
 ### Data sent to third parties
 
-Health data leaves the system in LLM prompts (Anthropic, or OpenAI in `pro`
-mode). Nutrition lookups query Open Food Facts and the USDA FoodData Central
+Health data leaves the system in LLM prompts to Anthropic. Nutrition lookups query Open Food Facts and the USDA FoodData Central
 API. Anyone self-hosting should decide deliberately whether those providers
 are acceptable recipients of their health data.
 
