@@ -47,7 +47,6 @@ from services.garmin.strength_uploader import (
     upload_strength_session,
 )
 from services.garmin.training_paces import extract_predicted_5k_secs
-from services.outside.client import OutsideApiGraphQlClient
 from services.supabase.client import get_supabase, rows
 from services.supabase.plan_drift import analyze_plan_drift
 from services.supabase.plan_writer import (
@@ -174,29 +173,6 @@ class ConfigParser:
         return resolve_garmin_credentials(self.config)[1]
 
 
-def fetch_outside_competitions_from_config(config: dict[str, Any]) -> list[dict[str, Any]]:
-    client = OutsideApiGraphQlClient()
-
-    if isinstance(outside_cfg := config.get("outside"), dict) and any(
-        isinstance(value, list) for value in outside_cfg.values()
-    ):
-        return client.get_competitions(outside_cfg)
-
-    aggregate: list[dict[str, Any]] = []
-
-    if isinstance(legacy_bikereg := config.get("bikereg", []), list) and legacy_bikereg:
-        aggregate.extend(client.get_competitions(legacy_bikereg))
-
-    if legacy_all := {
-        key: entries
-        for key in ("runreg", "trireg", "skireg")
-        if isinstance(entries := config.get(key, []), list) and entries
-    }:
-        aggregate.extend(client.get_competitions(legacy_all))
-
-    return aggregate
-
-
 def _reconcile_strength_focus_labels(
     scheduled_days: list[dict[str, Any]] | None,
     strength_sessions: list[dict[str, Any]],
@@ -319,9 +295,6 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
     extraction_settings = config_parser.get_extraction_config()
 
     competitions = config_parser.get_competitions()
-    outside_competitions = fetch_outside_competitions_from_config(config_parser.config)
-    if outside_competitions:
-        competitions.extend(outside_competitions)
 
     output_dir = config_parser.get_output_directory()
 
@@ -437,8 +410,6 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         )
 
         logger.info("✅ Analysis completed successfully!")
-        if outside_competitions:
-            logger.info("✅  Added %d Outside competitions from config", len(outside_competitions))
         logger.info("📁 Results saved to: %s", output_dir)
         logger.info("💰 Total cost: $%.2f (%d tokens)", cost_total, total_tokens)
 

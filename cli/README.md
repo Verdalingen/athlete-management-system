@@ -67,7 +67,6 @@ Keys:
 - `extraction` — `activities_days`, `metrics_days`, `ai_mode`, `enable_plotting`,
   `hitl_enabled`, `skip_synthesis`, and the long-term trend window
 - `competitions` — list of `{name, date, race_type, priority (A/B/C), target_time}`
-- `outside` — optional race import by BikeReg/RunReg/TriReg/SkiReg id or url
 - `output` — `directory`
 - `credentials` — `password`, optional; empty means Vault, then keychain, then prompt
 

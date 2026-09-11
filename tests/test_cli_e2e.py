@@ -17,9 +17,7 @@ from services.garmin.models import GarminData
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
 @patch("services.garmin.TriathlonCoachDataExtractor")
-@patch("services.outside.client.OutsideApiGraphQlClient")
 async def test_cli_e2e_smoke_with_mocks(
-    mock_outside_client,
     mock_extractor_class,
     mock_workflow,
     mock_get_analysis_context,
@@ -60,9 +58,6 @@ async def test_cli_e2e_smoke_with_mocks(
     mock_instance = mock_extractor_class.return_value
     mock_instance.extract_data.return_value = GarminData()
 
-    # Configure outside client mock
-    mock_outside_instance = mock_outside_client.return_value
-    mock_outside_instance.get_competitions.return_value = []
 
     # Import after patches are in place
     from cli.ams import run_analysis_from_config
@@ -119,13 +114,11 @@ credentials:
 @patch("services.supabase.athlete_profile.get_analysis_context", return_value="Analysis context")
 @patch("services.ai.langgraph.workflows.planning_workflow.run_complete_analysis_and_planning", new_callable=AsyncMock)
 @patch("services.garmin.TriathlonCoachDataExtractor")
-@patch("services.outside.client.OutsideApiGraphQlClient")
 @patch("getpass.getpass", return_value="dummy")
 @patch("builtins.input", side_effect=["My goal is to complete a marathon"])
 async def test_cli_e2e_with_hitl_enabled(
     mock_input,
     mock_getpass,
-    mock_outside_client,
     mock_extractor_class,
     mock_workflow,
     mock_get_analysis_context,
@@ -159,9 +152,6 @@ async def test_cli_e2e_with_hitl_enabled(
     mock_instance = mock_extractor_class.return_value
     mock_instance.extract_data.return_value = GarminData()
 
-    # Configure outside client mock
-    mock_outside_instance = mock_outside_client.return_value
-    mock_outside_instance.get_competitions.return_value = []
 
     # Import after patches are in place
     from cli.ams import run_analysis_from_config

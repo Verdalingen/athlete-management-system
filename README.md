@@ -305,7 +305,6 @@ Note that this sends prompt contents — which include health data — to LangSm
 | [`services/ai/langgraph/`](services/ai/langgraph/) | The coaching workflow — nodes, schemas, state |
 | [`services/garmin/`](services/garmin/) | Garmin extraction, metrics, workout upload |
 | [`services/supabase/`](services/supabase/) | All DB writes — plan writing, drift, bench wave |
-| [`services/outside/`](services/outside/) | Optional race import (BikeReg/RunReg/TriReg/SkiReg) |
 | [`cli/`](cli/) | Command-line entry point and job runner |
 | [`supabase/migrations/`](supabase/migrations/) | Numbered SQL migrations, append-only |
 | [`tests/`](tests/) | pytest suite |
