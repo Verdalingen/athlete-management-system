@@ -30,7 +30,7 @@ async def data_integration_node(state: TrainingAnalysisState) -> dict[str, Any]:
 
         return {
             "season_plan_complete": True,
-            "costs": [
+            "timings": [
                 {
                     "agent": "data_integration",
                     "execution_time": execution_time,

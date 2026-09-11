@@ -7,7 +7,7 @@ from services.ai.langgraph.state.training_analysis_state import TrainingAnalysis
 from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 
-from .node_base import create_cost_entry, execute_node_with_error_handling, log_node_completion
+from .node_base import create_timing_entry, execute_node_with_error_handling, log_node_completion
 from .prompt_components import get_workflow_context
 from .tool_calling_helper import extract_text_content
 
@@ -147,7 +147,7 @@ async def race_strategy_node(state: TrainingAnalysisState) -> dict[str, list | s
         log_node_completion("Race strategy", execution_time, 0)
         return {
             "race_strategy": race_strategy,
-            "costs": [create_cost_entry("race_strategy", execution_time)],
+            "timings": [create_timing_entry("race_strategy", execution_time)],
         }
 
     return await execute_node_with_error_handling(

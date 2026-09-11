@@ -18,7 +18,7 @@ from services.supabase.plan_writer import get_next_strength_slot
 
 from .node_base import (
     configure_node_tools,
-    create_cost_entry,
+    create_timing_entry,
     execute_node_with_error_handling,
     log_node_completion,
 )
@@ -944,7 +944,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
             "running_sessions": running_sessions,
             "coach_feedback": coach_feedback,
             "schedule_updated": agent_output.schedule_updated,
-            "costs": [create_cost_entry("weekly_planner", execution_time)],
+            "timings": [create_timing_entry("weekly_planner", execution_time)],
         }
 
     return await execute_node_with_error_handling(

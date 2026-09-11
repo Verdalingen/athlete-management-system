@@ -5,7 +5,6 @@ from typing import Any, cast
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from services.ai.langgraph.config.langsmith_config import LangSmithConfig
 from services.ai.langgraph.nodes.activity_expert_node import activity_expert_node
 from services.ai.langgraph.nodes.activity_summarizer_node import activity_summarizer_node
 from services.ai.langgraph.nodes.data_integration_node import data_integration_node
@@ -27,13 +26,11 @@ from services.ai.langgraph.nodes.season_planner_node import season_planner_node
 from services.ai.langgraph.nodes.synthesis_node import synthesis_node
 from services.ai.langgraph.nodes.weekly_planner_node import weekly_planner_node
 from services.ai.langgraph.state.training_analysis_state import TrainingAnalysisState, create_initial_state
-from services.ai.langgraph.utils.workflow_cost_tracker import ProgressIntegratedCostTracker
 
 logger = logging.getLogger(__name__)
 
 
 def create_integrated_analysis_and_planning_workflow():
-    LangSmithConfig.setup_langsmith()
 
     workflow = StateGraph(TrainingAnalysisState)
 
@@ -120,16 +117,13 @@ async def run_complete_analysis_and_planning(
     competitions: list | None = None,
     current_date: dict | None = None,
     week_dates: list | None = None,
-    progress_manager=None,
     plotting_enabled: bool = False,
     hitl_enabled: bool = True,
     skip_synthesis: bool = False,
 ) -> dict:
     execution_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_complete"
-    cost_tracker = ProgressIntegratedCostTracker(f"ams_{user_id}", progress_manager)
 
-
-    final_state, execution = await cost_tracker.run_workflow_with_progress(
+    final_state, elapsed = await _run_graph(
         create_integrated_analysis_and_planning_workflow(),
         cast("dict[str, Any]", create_initial_state(
             user_id=user_id,
@@ -146,31 +140,41 @@ async def run_complete_analysis_and_planning(
             hitl_enabled=hitl_enabled,
             skip_synthesis=skip_synthesis,
         )),
-        execution_id,
-        user_id,
+        thread_id=execution_id,
     )
 
-    if execution.cost_summary:
-        final_state["cost_summary"] = cost_tracker.get_legacy_cost_summary(execution)
-        final_state["execution_metadata"] = {
-            "trace_id": execution.trace_id,
-            "root_run_id": execution.root_run_id,
-            "execution_time_seconds": execution.execution_time_seconds,
-            "total_cost_usd": execution.cost_summary.total_cost_usd,
-            "total_tokens": execution.cost_summary.total_tokens,
-        }
-        logger.info(
-            "Workflow complete for user %s: $%.4f (%d tokens)",
-            user_id,
-            execution.cost_summary.total_cost_usd,
-            execution.cost_summary.total_tokens,
-        )
-    else:
-        logger.warning("No cost data available for user %s workflow", user_id)
-        final_state["cost_summary"] = {"total_cost_usd": 0.0, "total_tokens": 0}
-        final_state["execution_metadata"] = {}
-
+    final_state["execution_metadata"] = {"execution_time_seconds": elapsed}
+    logger.info("Workflow complete for user %s in %.1fs", user_id, elapsed)
     return final_state
+
+
+async def _run_graph(
+    app: Any, initial_state: dict[str, Any], thread_id: str
+) -> tuple[dict[str, Any], float]:
+    """Stream the graph to completion and return its final state and wall time.
+
+    stream_mode="values" yields the full state after every step, so the last
+    chunk is the finished state. The thread_id is what lets the MemorySaver
+    checkpointer resume a human-in-the-loop pause.
+    """
+    started = datetime.now()
+    final_state = dict(initial_state)
+    prev_lengths: dict[str, int | None] = {"analysis_html": None, "planning_html": None}
+
+    async for chunk in app.astream(
+        initial_state, config={"configurable": {"thread_id": thread_id}}, stream_mode="values"
+    ):
+        if not chunk:
+            continue
+        final_state = chunk
+        for key in ("analysis_html", "planning_html"):
+            if chunk.get(key):
+                length = len(str(chunk[key]))
+                if prev_lengths[key] != length:
+                    logger.info("%s updated: %d chars", key, length)
+                    prev_lengths[key] = length
+
+    return final_state, (datetime.now() - started).total_seconds()
 
 
 # ---------------------------------------------------------------------------

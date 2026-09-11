@@ -102,7 +102,7 @@ monotony/strain — see [`training_metrics.py`](services/garmin/utils/training_m
 parallel, feed five expert nodes, then an orchestrator, season planner and
 weekly planner produce a 12–24 week season strategy and a concrete 4-week plan.
 Expert outputs are typed Pydantic payloads, not free text. Optional
-human-in-the-loop, LangSmith tracing and per-run cost attribution.
+human-in-the-loop.
 
 **Act.** Structured workouts are written to Garmin Connect so they appear
 on the watch — strength sessions with sets, reps and named exercises from
@@ -291,9 +291,6 @@ nodes. See [`services/ai/ai_settings.py`](services/ai/ai_settings.py).
 Set it per run with `extraction.ai_mode` in the config, or globally with
 `AI_MODE` in `.env`. Every mode except `pro` runs on Anthropic and needs
 `ANTHROPIC_API_KEY`; `pro` runs on OpenAI and needs `OPENAI_API_KEY`.
-
-Optional: set `LANGSMITH_API_KEY` for tracing and per-node cost attribution.
-Note that this sends prompt contents — which include health data — to LangSmith.
 
 ---
 

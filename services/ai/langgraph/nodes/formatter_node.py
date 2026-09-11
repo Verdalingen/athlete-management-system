@@ -88,7 +88,7 @@ async def formatter_node(state: TrainingAnalysisState) -> dict[str, list | str]:
 
         return {
             "analysis_html": analysis_html,
-            "costs": [
+            "timings": [
                 {
                     "agent": "formatter",
                     "execution_time": execution_time,

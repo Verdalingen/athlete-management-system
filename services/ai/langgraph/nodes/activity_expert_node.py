@@ -12,8 +12,8 @@ from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backo
 
 from .node_base import (
     configure_node_tools,
-    create_cost_entry,
     create_plot_entries,
+    create_timing_entry,
     execute_node_with_error_handling,
     log_node_completion,
 )
@@ -153,7 +153,7 @@ async def activity_expert_node(state: TrainingAnalysisState) -> dict[str, list |
             "activity_outputs": agent_output,
             "plots": plots,
             "plot_storage_data": plot_storage_data,
-            "costs": [create_cost_entry("activity_expert", execution_time)],
+            "timings": [create_timing_entry("activity_expert", execution_time)],
             "available_plots": available_plots,
         }
 

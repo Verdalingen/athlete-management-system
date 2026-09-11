@@ -71,7 +71,7 @@ async def test_metrics_expert_node_basic(mock_retry, mock_plot_storage, mock_get
 
     assert "metrics_outputs" in result
     assert "plots" in result
-    assert "costs" in result
+    assert "timings" in result
     assert result["metrics_outputs"] == "Test analysis result"
 
     mock_llm.bind_tools.assert_called_once()

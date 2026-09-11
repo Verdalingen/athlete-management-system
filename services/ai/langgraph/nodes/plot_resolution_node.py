@@ -97,7 +97,7 @@ async def plot_resolution_node(state: TrainingAnalysisState) -> dict[str, Any]:
                 "missing_plots": validation_result["missing_plots"],
                 "available_plots_summary": resolver.get_plot_summary(),
             },
-            "costs": [
+            "timings": [
                 {
                     "agent": "plot_resolution",
                     "execution_time": 0.1,

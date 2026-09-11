@@ -61,7 +61,7 @@ class TrainingAnalysisState(MessagesState):
 
     plots: Annotated[list[dict], lambda x, y: x + y]
     plot_storage_data: Annotated[dict[str, dict], lambda x, y: {**x, **y}]
-    costs: Annotated[list[dict], lambda x, y: x + y]
+    timings: Annotated[list[dict], lambda x, y: x + y]
     errors: Annotated[list[str], lambda x, y: x + y]
     tool_usage: Annotated[dict[str, int], lambda x, y: {**x, **y}]
 
@@ -141,7 +141,7 @@ def create_initial_state(
         plot_resolution_stats=None,
         plots=[],
         plot_storage_data={},
-        costs=[],
+        timings=[],
         errors=[],
         tool_usage={},
         available_plots=[],

@@ -37,9 +37,9 @@ async def test_metrics_summarizer_node_basic():
     assert "metrics_summary" in result
     assert isinstance(result["metrics_summary"], str)
     assert len(result["metrics_summary"]) > 0
-    assert "costs" in result
-    assert len(result["costs"]) == 1
-    assert result["costs"][0]["agent"] == "metrics_summarizer"
+    assert "timings" in result
+    assert len(result["timings"]) == 1
+    assert result["timings"][0]["agent"] == "metrics_summarizer"
 
 
 @pytest.mark.asyncio
@@ -74,9 +74,9 @@ async def test_physiology_summarizer_node_basic():
     assert "physiology_summary" in result
     assert isinstance(result["physiology_summary"], str)
     assert len(result["physiology_summary"]) > 0
-    assert "costs" in result
-    assert len(result["costs"]) == 1
-    assert result["costs"][0]["agent"] == "physiology_summarizer"
+    assert "timings" in result
+    assert len(result["timings"]) == 1
+    assert result["timings"][0]["agent"] == "physiology_summarizer"
 
 
 @pytest.mark.asyncio

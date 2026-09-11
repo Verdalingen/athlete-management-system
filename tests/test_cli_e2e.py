@@ -49,9 +49,8 @@ async def test_cli_e2e_smoke_with_mocks(
         "physiology_outputs": None,
         "season_plan": {"output": "Season OK"},
         "weekly_plan": {"output": "Weekly OK"},
-        "cost_summary": {"total_cost_usd": 0.0, "total_tokens": 0},
         "execution_id": "test-exec",
-        "execution_metadata": {"trace_id": "trace-1", "root_run_id": "root-1"},
+        "execution_metadata": {"execution_time_seconds": 1.5},
     }
 
     # Configure extractor mock
@@ -100,7 +99,7 @@ credentials:
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["athlete"] == "Test A"
-    assert summary["total_cost_usd"] == 0.0
+    assert summary["execution_time_seconds"] == 1.5
 
 
 @pytest.mark.asyncio
@@ -143,9 +142,8 @@ async def test_cli_e2e_with_hitl_enabled(
         "physiology_outputs": None,
         "season_plan": {"output": "Season OK"},
         "weekly_plan": {"output": "Weekly OK"},
-        "cost_summary": {"total_cost_usd": 0.05, "total_tokens": 1000},
         "execution_id": "test-exec-hitl",
-        "execution_metadata": {"trace_id": "trace-hitl", "root_run_id": "root-hitl"},
+        "execution_metadata": {"execution_time_seconds": 2.0},
     }
 
     # Configure extractor mock
@@ -199,5 +197,4 @@ credentials:
 
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["athlete"] == "Test Athlete HITL"
-    assert "total_cost_usd" in summary
-    assert "total_tokens" in summary
+    assert "execution_time_seconds" in summary

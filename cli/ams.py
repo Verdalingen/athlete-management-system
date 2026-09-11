@@ -384,26 +384,13 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         files_generated.extend(_save_expert_outputs(output_dir, result))
         files_generated.extend(_save_plan_outputs(output_dir, result))
 
-        cost_total = float(
-            result.get("cost_summary", {}).get("total_cost_usd", 0.0) or
-            result.get("execution_metadata", {}).get("total_cost_usd", 0.0) or
-            sum(cost.get("total_cost", 0) for cost in result.get("costs", []))
-        )
-        total_tokens = int(
-            result.get("cost_summary", {}).get("total_tokens", 0) or
-            result.get("execution_metadata", {}).get("total_tokens", 0)
-        )
-
         (output_dir / "summary.json").write_text(
             json.dumps({
                 "athlete": athlete_name,
                 "analysis_date": datetime.now().isoformat(),
                 "competitions": competitions,
-                "total_cost_usd": cost_total,
-                "total_tokens": total_tokens,
                 "execution_id": result.get("execution_id", ""),
-                "trace_id": result.get("execution_metadata", {}).get("trace_id", ""),
-                "root_run_id": result.get("execution_metadata", {}).get("root_run_id", ""),
+                "execution_time_seconds": result.get("execution_metadata", {}).get("execution_time_seconds"),
                 "files_generated": files_generated,
             }, indent=2, ensure_ascii=False),
             encoding="utf-8"
@@ -411,7 +398,6 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
 
         logger.info("✅ Analysis completed successfully!")
         logger.info("📁 Results saved to: %s", output_dir)
-        logger.info("💰 Total cost: $%.2f (%d tokens)", cost_total, total_tokens)
 
         workout_ids: dict[str, Any] = {}
         running_workout_ids: dict[str, Any] = {}

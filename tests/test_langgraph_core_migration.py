@@ -54,7 +54,7 @@ def test_state_schema_completeness():
         "synthesis_result",
         "analysis_html",
         "plots",
-        "costs",
+        "timings",
         "errors",
     ]
 
@@ -76,7 +76,7 @@ async def test_node_basic_functionality(mock_get_llm, basic_test_state):
     result = await activity_summarizer_node(basic_test_state)
 
     assert isinstance(result, dict)
-    assert "costs" in result or "errors" in result
+    assert "timings" in result or "errors" in result
 
     if "errors" not in result:
         mock_llm.ainvoke.assert_called_once()
