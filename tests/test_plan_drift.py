@@ -17,7 +17,7 @@ def planned(*items: tuple[str, str]) -> list[dict]:
 
 
 def completed(**by_date: str | list) -> dict[str, Counter[str]]:
-    """completed(d2026_01_05="run") -> {"2026-01-05": Counter({"run": 1})}"""
+    """Build a completed-sessions map, e.g. `d2026_01_05="run"` -> {"2026-01-05": Counter({"run": 1})}."""
     out = {}
     for key, kinds in by_date.items():
         iso = key[1:].replace("_", "-")
@@ -26,8 +26,9 @@ def completed(**by_date: str | list) -> dict[str, Counter[str]]:
 
 
 def completed_counts(**by_date: dict[str, int]) -> dict[str, Counter[str]]:
-    """completed_counts(d2026_01_05={"run": 2}) -> {"2026-01-05": Counter({"run": 2})} — for
-    tests that need real occurrence counts, not just presence.
+    """Build a completed-sessions map with explicit counts, e.g. `d2026_01_05={"run": 2}` ->
+    {"2026-01-05": Counter({"run": 2})} — for tests that need real occurrence counts, not just
+    presence.
     """
     return {key[1:].replace("_", "-"): Counter(counts) for key, counts in by_date.items()}
 

@@ -1133,7 +1133,7 @@ async def _execute_checkin(
             else [*translation_messages, {"role": "user", "content": feedback}]
         )
 
-        async def call_translation() -> CheckinTranslationOutput:
+        async def call_translation(messages: list = messages) -> CheckinTranslationOutput:
             return await translation_llm.ainvoke(messages)
 
         translation_output = await retry_with_backoff(

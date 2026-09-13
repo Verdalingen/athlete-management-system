@@ -343,7 +343,7 @@ def _solve_multi_session_per_day(
             model.add_exactly_one(list(cell_vars[cell].values()))
 
     def cell_type_indicator(cell: tuple[date, str], key: str):
-        d, slot = cell
+        d, _slot = cell
         if d in fixed_whole_day:
             return 1 if fixed_whole_day[d] == key else 0
         if cell in fixed_slots:
@@ -354,7 +354,7 @@ def _solve_multi_session_per_day(
         keys = [k for k in type_keys if category_of[k] == category]
         if not keys:
             return 0
-        d, slot = cell
+        d, _slot = cell
         if d in fixed_whole_day:
             return 1 if fixed_whole_day[d] in keys else 0
         if cell in fixed_slots:
@@ -423,8 +423,7 @@ def _solve_multi_session_per_day(
             if d in fixed_whole_day:
                 all_cells.append((d, "day"))
             else:
-                for s in SLOTS:
-                    all_cells.append((d, s))
+                all_cells.extend((d, s) for s in SLOTS)
 
         for sc in spec.spacing_constraints:
             for earlier_cat, later_cat in _spacing_orderings(sc.direction, sc.from_category, sc.to_category):
