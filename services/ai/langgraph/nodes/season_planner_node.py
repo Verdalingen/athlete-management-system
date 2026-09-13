@@ -16,7 +16,7 @@ from .node_base import (
     execute_node_with_error_handling,
     log_node_completion,
 )
-from .prompt_components import get_hitl_instructions, get_workflow_context
+from .prompt_components import get_hitl_instructions, get_language_instructions, get_workflow_context
 from .tool_calling_helper import handle_tool_calling_in_node
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,8 @@ async def season_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
     system_prompt = (
         SEASON_PLANNER_SYSTEM_PROMPT +
         get_workflow_context("season_planner") +
-        (get_hitl_instructions("season_planner") if hitl_enabled else "")
+        (get_hitl_instructions("season_planner") if hitl_enabled else "") +
+        get_language_instructions(state.get("language"))
     )
 
     qa_messages_raw = state.get("season_planner_messages", [])

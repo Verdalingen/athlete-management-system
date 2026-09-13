@@ -8,7 +8,7 @@ from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 
 from .node_base import create_timing_entry, execute_node_with_error_handling, log_node_completion
-from .prompt_components import get_workflow_context
+from .prompt_components import get_language_instructions, get_workflow_context
 from .tool_calling_helper import extract_text_content
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,11 @@ async def race_strategy_node(state: TrainingAnalysisState) -> dict[str, list | s
         payload = getattr(out, field)
         return f"Signals: {payload.signals}\nEvidence: {payload.evidence}"
 
-    system_prompt = get_workflow_context("race_strategy") + RACE_STRATEGY_SYSTEM_PROMPT
+    system_prompt = (
+        get_workflow_context("race_strategy")
+        + RACE_STRATEGY_SYSTEM_PROMPT
+        + get_language_instructions(state.get("language"))
+    )
     user_content = RACE_STRATEGY_USER_PROMPT.format(
         competition=json.dumps(competition, indent=2),
         metrics_signals=_signals(state.get("metrics_outputs"), "for_weekly_planner"),

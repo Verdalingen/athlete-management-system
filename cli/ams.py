@@ -139,6 +139,19 @@ class ConfigParser:
 
         return get_recurring_session_requests(user_id)
 
+    def get_language(self) -> str:
+        """The athlete's selected language ('en'/'no'), read live from Supabase — see
+        services.supabase.athlete_profile.get_athlete_language(). Defaults to 'en' when no
+        SUPABASE_USER_ID is set (local, non-SaaS runs).
+        """
+        user_id = os.environ.get("SUPABASE_USER_ID")
+        if not user_id:
+            return "en"
+
+        from services.supabase.athlete_profile import get_athlete_language
+
+        return get_athlete_language(user_id)
+
     def get_extraction_config(self) -> dict[str, Any]:
         extraction = self.config.get("extraction", {})
         return {
@@ -351,6 +364,7 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
             plotting_enabled=plotting_enabled,
             hitl_enabled=hitl_enabled,
             skip_synthesis=skip_synthesis,
+            language=config_parser.get_language(),
         )
 
         # The weekly planner only decides {date, slot} for strength sessions now — expand into full
@@ -533,6 +547,7 @@ async def run_replan_from_config(
         competitions=competitions,
         current_date=current_date,
         week_dates=week_dates,
+        language=config_parser.get_language(),
     )
 
     # The weekly planner only decides {date, slot} for strength sessions now — expand into full

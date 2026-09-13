@@ -7,6 +7,7 @@ from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 
 from .html_design_system import CSS_CLASS_REFERENCE, planning_shell, strip_code_fences
+from .prompt_components import get_language_instructions
 from .tool_calling_helper import extract_text_content
 
 logger = logging.getLogger(__name__)
@@ -87,7 +88,7 @@ async def plan_formatter_node(state: TrainingAnalysisState) -> dict[str, list | 
 
         async def call_plan_formatting():
             response = await ModelSelector.get_llm(AgentRole.PLAN_FORMATTER).ainvoke([
-                {"role": "system", "content": PLAN_FORMATTER_SYSTEM_PROMPT},
+                {"role": "system", "content": PLAN_FORMATTER_SYSTEM_PROMPT + get_language_instructions(state.get("language"))},
                 {"role": "user", "content": PLAN_FORMATTER_USER_PROMPT.format(
                     season_plan=get_content("season_plan"),
                     weekly_plan=get_content("weekly_plan"),

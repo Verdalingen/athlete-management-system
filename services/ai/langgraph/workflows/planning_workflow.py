@@ -120,6 +120,7 @@ async def run_complete_analysis_and_planning(
     plotting_enabled: bool = False,
     hitl_enabled: bool = True,
     skip_synthesis: bool = False,
+    language: str = "en",
 ) -> dict:
     execution_id = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_complete"
 
@@ -129,6 +130,7 @@ async def run_complete_analysis_and_planning(
             user_id=user_id,
             athlete_name=athlete_name,
             garmin_data=garmin_data,
+            language=language,
             analysis_context=analysis_context,
             planning_context=planning_context,
             recurring_session_requests=recurring_session_requests,
@@ -235,6 +237,7 @@ async def run_replan(
     competitions: list[dict[str, Any]] | None = None,
     current_date: dict[str, str] | None = None,
     week_dates: list[dict[str, str]] | None = None,
+    language: str = "en",
 ) -> dict[str, Any]:
     """Tier-2 re-plan: run only the weekly planner against the stored season plan.
 
@@ -249,6 +252,7 @@ async def run_replan(
         user_id=user_id,
         athlete_name=athlete_name,
         garmin_data=garmin_data,
+        language=language,
         planning_context=combined_context,
         recurring_session_requests=recurring_session_requests,
         competitions=competitions or [],

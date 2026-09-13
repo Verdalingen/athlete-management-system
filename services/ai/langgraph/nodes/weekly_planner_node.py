@@ -22,7 +22,7 @@ from .node_base import (
     execute_node_with_error_handling,
     log_node_completion,
 )
-from .prompt_components import get_hitl_instructions, get_workflow_context
+from .prompt_components import get_hitl_instructions, get_language_instructions, get_workflow_context
 from .tool_calling_helper import handle_tool_calling_in_node
 
 
@@ -847,6 +847,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
         + (WEEKLY_PLANNER_CHECKIN_INSTRUCTIONS if checkin_mode else "")
         + (get_hitl_instructions("weekly_planner") if hitl_enabled else "")
         + WEEKLY_PLANNER_FINAL_CHECKLIST.format(num_days=num_days)
+        + get_language_instructions(state.get("language"))
     )
 
     qa_messages = normalize_langchain_messages(state.get("weekly_planner_messages", []))
