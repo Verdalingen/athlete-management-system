@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getUserId } from "@/lib/supabase-server";
 import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
 import { dictionaries } from "@/lib/i18n/dictionaries";
+import { languagePromptInstruction } from "@/lib/i18n/language";
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -90,7 +91,8 @@ function serializeError(err: unknown) {
 export async function POST(req: NextRequest) {
   try {
     const uid = await getUserId();
-    const t = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.importUrl;
+    const language = await getAuthenticatedLanguage(uid);
+    const t = dictionaries[language].nutrition.api.importUrl;
 
     const { url } = await req.json().catch(() => ({})) as { url?: string };
     if (!url?.trim()) return NextResponse.json({ error: "url required" }, { status: 400 });
@@ -135,7 +137,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: t.noIngredients }, { status: 400 });
     }
 
-    const systemPrompt = `You are a nutrition data assistant. Given a raw recipe's ingredient list and method, you (1) estimate structured macros per ingredient, and (2) rewrite the method as concise numbered steps in your own words — never copy the source sentences verbatim. Respond with valid JSON only, no markdown.`;
+    const systemPrompt = `You are a nutrition data assistant. Given a raw recipe's ingredient list and method, you (1) estimate structured macros per ingredient, and (2) rewrite the method as concise numbered steps in your own words — never copy the source sentences verbatim. Respond with valid JSON only, no markdown.${languagePromptInstruction(language)}`;
 
     const userPrompt = `## Raw ingredients
 ${rawIngredients.map(i => `- ${i}`).join("\n")}

@@ -4,6 +4,7 @@ import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO } from "@/lib/dates";
 import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
 import { dictionaries } from "@/lib/i18n/dictionaries";
+import { languagePromptInstruction } from "@/lib/i18n/language";
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -29,7 +30,8 @@ function addDays(iso: string, n: number): string {
 export async function POST(req: NextRequest) {
   try {
     const uid = await getUserId();
-    const apiT = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.mealPlan;
+    const language = await getAuthenticatedLanguage(uid);
+    const apiT = dictionaries[language].nutrition.api.mealPlan;
     const sb = createServerClient();
     const body = await req.json().catch(() => ({}));
     const startDate: string = body.date ?? todayISO();
@@ -132,7 +134,7 @@ export async function POST(req: NextRequest) {
     }).join("\n\n");
 
     // ── Claude prompt ─────────────────────────────────────────────────────
-    const systemPrompt = `You are a world-class sports dietitian planning a week of specific, realistic meals for an endurance/strength athlete, so they can plan grocery shopping in advance. You always respond with valid JSON and nothing else — no markdown, no explanation outside the JSON.`;
+    const systemPrompt = `You are a world-class sports dietitian planning a week of specific, realistic meals for an endurance/strength athlete, so they can plan grocery shopping in advance. You always respond with valid JSON and nothing else — no markdown, no explanation outside the JSON.${languagePromptInstruction(language)}`;
 
     const userPrompt = `Recommend one specific meal per required meal slot for each of the following ${days} day(s).
 

@@ -210,6 +210,7 @@ def _reconcile_strength_focus_labels(
 def _apply_running_descriptions(
     scheduled_days: list[dict[str, Any]] | None,
     running_sessions: list[dict[str, Any]],
+    language: str = "en",
 ) -> None:
     """Overwrite scheduled_days[i]["description"] for run dates with a description rendered
     deterministically from that date's structured segments (running_uploader.render_running_
@@ -226,7 +227,7 @@ def _apply_running_descriptions(
         segments = segments_by_date.get(day.get("date"))
         if segments is not None:
             normalize_recovery_segments(segments)
-            day["description"] = render_running_description(segments)
+            day["description"] = render_running_description(segments, language=language)
 
 
 def _save_html_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
@@ -377,7 +378,7 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         # Running sessions come back as structured segments (running_sessions) — render each
         # date's description from its segments before anything downstream reads scheduled_days.
         if result.get("running_sessions"):
-            _apply_running_descriptions(result.get("scheduled_days"), result["running_sessions"])
+            _apply_running_descriptions(result.get("scheduled_days"), result["running_sessions"], language=config_parser.get_language())
 
         logger.info("Saving results...")
 
@@ -446,6 +447,7 @@ async def run_replan_from_config(
     Returns coach_feedback text (or None) so the caller can save it to the job row.
     """
     config_parser = ConfigParser(config_path)
+    language = config_parser.get_language()
     athlete_name, email = config_parser.get_athlete_info()
     _, planning_context = config_parser.get_contexts()
     recurring_session_requests = config_parser.get_recurring_session_requests()
@@ -505,15 +507,11 @@ async def run_replan_from_config(
         shifted = shift_plan(from_date=date.today().isoformat(), days=shift_days)
         for warning in shifted.get("warnings", []):
             logger.warning("⚠️  %s", warning)
-        feedback = (
-            f"Every planned session was completed, just {shift_days} day(s) later than scheduled — "
-            f"so the whole plan moved with you, keeping the same order and spacing. "
-            f"{shifted['shifted']} day(s) moved; no training was lost."
+        feedback = _feedback(
+            language, "shift_moved", days=str(shift_days), shifted=str(shifted["shifted"]),
         )
         if shifted.get("dropped"):
-            feedback += (
-                f" {len(shifted['dropped'])} day(s) were compressed so your race dates stay fixed."
-            )
+            feedback += _feedback(language, "shift_compressed_suffix", count=str(len(shifted["dropped"])))
         return feedback
 
     if drift.get("summary"):
@@ -560,7 +558,7 @@ async def run_replan_from_config(
     # Running sessions come back as structured segments (running_sessions) — render each date's
     # description from its segments before anything downstream reads scheduled_days.
     if result.get("running_sessions"):
-        _apply_running_descriptions(result.get("scheduled_days"), result["running_sessions"])
+        _apply_running_descriptions(result.get("scheduled_days"), result["running_sessions"], language=language)
 
     coach_feedback: str | None = result.get("coach_feedback")
     schedule_updated: bool = result.get("schedule_updated", True)
@@ -1319,6 +1317,39 @@ def _format_timedelta(td: timedelta) -> str:
     return f"{minutes}m"
 
 
+# A handful of short, deterministic (non-LLM) status strings surfaced verbatim as a
+# replan_job's coach_feedback — e.g. RefreshDataButton.tsx's "Already synced recently"
+# tooltip and ReplanPanel.tsx's "Coach Feedback" panel. These bypass the LangGraph
+# pipeline entirely (no LLM call), so get_language_instructions() never sees them and
+# they need their own translation here, keyed the same way as web/lib/i18n's dictionaries.
+_FEEDBACK_STRINGS: dict[str, dict[str, str]] = {
+    "en": {
+        "already_up_to_date": "Already up to date — last synced {elapsed} ago (next refresh eligible in {remaining}).",
+        "synced_at": "Synced at {time}.",
+        "shift_moved": (
+            "Every planned session was completed, just {days} day(s) later than scheduled — "
+            "so the whole plan moved with you, keeping the same order and spacing. "
+            "{shifted} day(s) moved; no training was lost."
+        ),
+        "shift_compressed_suffix": " {count} day(s) were compressed so your race dates stay fixed.",
+    },
+    "no": {
+        "already_up_to_date": "Allerede oppdatert — sist synkronisert for {elapsed} siden (neste oppdatering mulig om {remaining}).",
+        "synced_at": "Synkronisert kl. {time}.",
+        "shift_moved": (
+            "Alle planlagte økter ble gjennomført, bare {days} dag(er) senere enn planlagt — "
+            "så hele planen flyttet seg med deg, med samme rekkefølge og avstand. "
+            "{shifted} dag(er) ble flyttet; ingen trening gikk tapt."
+        ),
+        "shift_compressed_suffix": " {count} dag(er) ble komprimert slik at konkurransedatoene dine ligger fast.",
+    },
+}
+
+
+def _feedback(language: str, key: str, **kwargs: str) -> str:
+    return _FEEDBACK_STRINGS.get(language, _FEEDBACK_STRINGS["en"])[key].format(**kwargs)
+
+
 def cmd_sync_kpis(config_path: Path) -> str | None:
     """Lightweight KPI sync — no AI, no plan generation.
 
@@ -1332,6 +1363,8 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
     caller doesn't need it (LaunchAgent invocation via --sync-kpis).
     """
     now = datetime.now()
+    config_parser = ConfigParser(config_path)
+    language = config_parser.get_language()
 
     raw = _read_sync_stamp()
     if raw is not None:
@@ -1355,12 +1388,11 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
                     _format_timedelta(remaining),
                     _format_timedelta(KPI_SYNC_MIN_INTERVAL),
                 )
-                return (
-                    f"Already up to date — last synced {_format_timedelta(elapsed)} ago "
-                    f"(next refresh eligible in {_format_timedelta(remaining)})."
+                return _feedback(
+                    language, "already_up_to_date",
+                    elapsed=_format_timedelta(elapsed), remaining=_format_timedelta(remaining),
                 )
 
-    config_parser = ConfigParser(config_path)
     _, email = config_parser.get_athlete_info()
     password = config_parser.get_password()
 
@@ -1422,7 +1454,7 @@ def cmd_sync_kpis(config_path: Path) -> str | None:
 
     _SYNC_STAMP.write_text(now.isoformat())
     logger.info("✅ KPI sync complete at %s.", now.isoformat(timespec="seconds"))
-    return f"Synced at {now.strftime('%H:%M')}."
+    return _feedback(language, "synced_at", time=now.strftime("%H:%M"))
 
 
 def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = None) -> str:

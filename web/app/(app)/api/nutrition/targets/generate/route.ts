@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
 import { dictionaries } from "@/lib/i18n/dictionaries";
+import { languagePromptInstruction } from "@/lib/i18n/language";
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -11,7 +12,8 @@ const DAY_TYPES = ["default", "hard", "easy", "rest"] as const;
 export async function POST() {
   try {
     const uid = await getUserId();
-    const apiT = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.targetsGenerate;
+    const language = await getAuthenticatedLanguage(uid);
+    const apiT = dictionaries[language].nutrition.api.targetsGenerate;
     const sb = createServerClient();
 
     // ── Gather context in parallel ────────────────────────────────────────
@@ -67,7 +69,7 @@ export async function POST() {
       : "No targets set yet.";
 
     // ── Claude prompt ─────────────────────────────────────────────────────
-    const systemPrompt = `You are a sports dietitian and endurance coach. Your job is to set daily macro targets for an athlete based on their training load and goals. You always respond with valid JSON and nothing else — no markdown, no explanation outside the JSON.`;
+    const systemPrompt = `You are a sports dietitian and endurance coach. Your job is to set daily macro targets for an athlete based on their training load and goals. You always respond with valid JSON and nothing else — no markdown, no explanation outside the JSON.${languagePromptInstruction(language)}`;
 
     const userPrompt = `Set personalised nutrition targets for each training day type for this athlete.
 

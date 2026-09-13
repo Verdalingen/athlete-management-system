@@ -112,9 +112,12 @@ def get_language_instructions(language: str | None) -> str:
     return f"""
 ## Output Language
 Write all athlete-facing natural-language text — analysis, feedback, plan descriptions, coach
-notes, HTML report prose — in {name}. Keep structured field names, enum values (e.g. session
-types, zone letters), units, dates, and any JSON/code keys exactly as specified elsewhere in
-this prompt; only the natural-language prose changes language."""
+notes, HTML report prose — in {name}. This applies to session/focus names too (e.g. "Recovery
+Run", "Easy Aerobic", "Tempo Run") — translate their meaning into {name} rather than copying
+any English example label shown elsewhere in this prompt verbatim; those examples illustrate
+the *kind* of label to produce, not literal text to output. Keep structured field names, enum
+values (e.g. session types, zone letters), units, dates, and any JSON/code keys exactly as
+specified elsewhere in this prompt; only the natural-language prose changes language."""
 
 
 def get_hitl_instructions(agent_name: str) -> str:

@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getUserId } from "@/lib/supabase-server";
 import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
 import { dictionaries } from "@/lib/i18n/dictionaries";
+import { languagePromptInstruction } from "@/lib/i18n/language";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
@@ -130,7 +131,8 @@ const MAX_BYTES = 5 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   try {
     const uid = await getUserId();
-    const t = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.vision;
+    const language = await getAuthenticatedLanguage(uid);
+    const t = dictionaries[language].nutrition.api.vision;
 
     const form = await req.formData();
     const file = form.get("image") as File | null;
@@ -151,7 +153,7 @@ export async function POST(req: NextRequest) {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          { type: "text", text: VISION_PROMPT },
+          { type: "text", text: VISION_PROMPT + languagePromptInstruction(language) },
         ],
       }],
     });

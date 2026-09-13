@@ -306,10 +306,15 @@ def _format_pace_suffix(seg: dict) -> str:
     return f" @{lo}-{hi}/km"
 
 
-_TYPE_LABEL = {"warmup": "warm-up", "cooldown": "cool-down", "steady": "continuous"}
+_TYPE_LABEL = {
+    "en": {"warmup": "warm-up", "cooldown": "cool-down", "steady": "continuous"},
+    "no": {"warmup": "oppvarming", "cooldown": "nedtrapping", "steady": "kontinuerlig"},
+}
+_JOG_NOTE = {"en": "jog", "no": "jogg"}
+_RECOVERY_SUFFIX = {"en": "r", "no": "hvile"}
 
 
-def render_running_description(segments: list[dict]) -> str:
+def render_running_description(segments: list[dict], language: str = "en") -> str:
     """Deterministically render a running session's structured segments into the same compact
     notation the coach used to author by hand (e.g. "15min Z2 warm-up + 5x(1km Z5
     @3:50-4:00/km, 2:30min jog r) + 10min Z2 cool-down"), so existing display code
@@ -319,6 +324,10 @@ def render_running_description(segments: list[dict]) -> str:
     """
     if not segments:
         return ""
+
+    type_label = _TYPE_LABEL.get(language, _TYPE_LABEL["en"])
+    jog_note = _JOG_NOTE.get(language, _JOG_NOTE["en"])
+    recovery_suffix = _RECOVERY_SUFFIX.get(language, _RECOVERY_SUFFIX["en"])
 
     parts: list[str] = []
     i = 0
@@ -341,13 +350,13 @@ def render_running_description(segments: list[dict]) -> str:
                 zone = f" {main['zone']}" if main.get("zone") else ""
                 inner = [f"{_format_duration_or_distance(main)}{zone}{_format_pace_suffix(main)}"]
                 for r in rest:
-                    note = r.get("note") or "jog"
-                    inner.append(f"{_format_duration_or_distance(r)} {note} r")
+                    note = r.get("note") or jog_note
+                    inner.append(f"{_format_duration_or_distance(r)} {note} {recovery_suffix}")
                 parts.append(f"{rc}x({', '.join(inner)})")
             i = j
         else:
             zone = f" {seg['zone']}" if seg.get("zone") else ""
-            label = _TYPE_LABEL.get(seg.get("segment_type") or "", "")
+            label = type_label.get(seg.get("segment_type") or "", "")
             label_suffix = f" {label}" if label else ""
             note = f" {seg['note']}" if seg.get("note") and not label else ""
             parts.append(f"{_format_duration_or_distance(seg)}{zone}{label_suffix}{note}{_format_pace_suffix(seg)}")
