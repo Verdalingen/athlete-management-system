@@ -1,39 +1,31 @@
 "use client";
 
+import { useT } from "@/lib/i18n/LanguageContext";
+
 type ReplanModalType = "replan" | "seasonal";
 
 interface ModalConfig {
-  title: string;
   cost: string;
   accentColor: string;
   borderColor: string;
-  description: string;
-  commentPlaceholder: string;
-  confirmLabel: string;
   confirmClass: string;
 }
 
 // Shared by CheckInCTA ("replan") and DashboardActions ("seasonal") so the confirm
 // dialog stays visually and behaviorally identical no matter which trigger opened it.
+// Text content (title/description/placeholder/confirm label) lives in the
+// dashboard.replanModal dictionary namespace instead, keyed the same way.
 export const REPLAN_MODAL_CONFIG: Record<ReplanModalType, ModalConfig> = {
   replan: {
-    title: "Check-In",
     cost: "~$0.20",
     accentColor: "var(--cyan)",
     borderColor: "rgba(45,226,230,.35)",
-    description: "Reads 14 days of Garmin data and uses AI to re-plan the next 6 weeks, adapting to what was actually completed while staying true to the season plan.",
-    commentPlaceholder: "Optional note — how has training been? Fatigue, missed sessions, upcoming constraints…",
-    confirmLabel: "Queue Check-In",
     confirmClass: "btn-primary",
   },
   seasonal: {
-    title: "New Season",
     cost: "~$1–3",
     accentColor: "var(--red)",
     borderColor: "rgba(var(--red-rgb),.35)",
-    description: "Runs the full AI pipeline — expert analysis, new HTML reports, and a completely new season plan for the next training block.",
-    commentPlaceholder: "Optional note — goals or focus areas for the new season…",
-    confirmLabel: "Start New Season",
     confirmClass: "btn-danger",
   },
 };
@@ -48,7 +40,9 @@ export function ReplanConfirmModal({
   onConfirm: () => void;
   isPending: boolean;
 }) {
+  const t = useT();
   const modal = REPLAN_MODAL_CONFIG[type];
+  const text = t.dashboard.replanModal[type];
 
   return (
     <div
@@ -69,18 +63,18 @@ export function ReplanConfirmModal({
         }}
       >
         <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: modal.accentColor }}>
-          {modal.title}
+          {text.title}
         </div>
 
         <p style={{ fontSize: 14, lineHeight: 1.65, color: "var(--muted)", margin: 0 }}>
-          {modal.description}
+          {text.description}
         </p>
 
         <textarea
           autoFocus
           value={comment}
           onChange={e => onCommentChange(e.target.value)}
-          placeholder={modal.commentPlaceholder}
+          placeholder={text.commentPlaceholder}
           rows={3}
           style={{
             width: "100%", boxSizing: "border-box",
@@ -92,13 +86,13 @@ export function ReplanConfirmModal({
         />
 
         <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>
-          After queuing, run <code style={{ background: "rgba(var(--overlay-rgb),.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> to process.
+          {t.dashboard.replanModal.queuePrefix} <code style={{ background: "rgba(var(--overlay-rgb),.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> {t.dashboard.replanModal.queueSuffix}
         </p>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
-          <button className="btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn-secondary" onClick={onClose}>{t.common.actions.cancel}</button>
           <button className={modal.confirmClass} onClick={onConfirm} disabled={isPending}>
-            {isPending ? "Queuing…" : modal.confirmLabel}
+            {isPending ? t.dashboard.replanModal.queuing : text.confirmLabel}
             <span style={{ fontSize: 11, opacity: .65, marginLeft: 8 }}>{modal.cost}</span>
           </button>
         </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatWeekday, formatShort } from "@/lib/dates";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
 
 const BAR_WIDTH = 40;
 const SEGMENT_GAP = 3;
@@ -47,6 +48,8 @@ export interface DayMacros {
  * on this dashboard. Colors reuse the exact tokens NutritionClient.tsx
  * already uses for protein/carbs/fat, so the two pages agree. */
 export function WeeklyMacrosCard({ data, today }: { data: DayMacros[]; today: string }) {
+  const t = useT().dashboard.weeklyMacros;
+  const [language] = useLanguage();
   const [selectedDate, setSelectedDate] = useState(today);
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const activeDate = hoveredDate ?? selectedDate;
@@ -59,20 +62,20 @@ export function WeeklyMacrosCard({ data, today }: { data: DayMacros[]; today: st
     <div className="card" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 20, flexWrap: "wrap", flexShrink: 0 }}>
         <div>
-          <div className="card-title" style={{ margin: "0 0 6px" }}>Macros</div>
+          <div className="card-title" style={{ margin: "0 0 6px" }}>{t.title}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
             <span style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 700 }}>{Math.round(active.calories)}</span>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dim)" }}>kcal</span>
           </div>
           <div style={{ fontSize: 11, color: "var(--dim)" }}>
-            {activeDate === today ? "Today" : `${formatWeekday(activeDate)} · ${formatShort(activeDate)}`}
+            {activeDate === today ? t.today : `${formatWeekday(activeDate, language)} · ${formatShort(activeDate, language)}`}
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <MacroBadge label="Protein" grams={active.protein_g} color={MACRO_COLOR.protein} colorRgb={MACRO_COLOR_RGB.protein} />
-          <MacroBadge label="Carbs" grams={active.carbs_g} color={MACRO_COLOR.carbs} colorRgb={MACRO_COLOR_RGB.carbs} />
-          <MacroBadge label="Fat" grams={active.fat_g} color={MACRO_COLOR.fat} colorRgb={MACRO_COLOR_RGB.fat} />
+          <MacroBadge label={t.protein} grams={active.protein_g} color={MACRO_COLOR.protein} colorRgb={MACRO_COLOR_RGB.protein} />
+          <MacroBadge label={t.carbs} grams={active.carbs_g} color={MACRO_COLOR.carbs} colorRgb={MACRO_COLOR_RGB.carbs} />
+          <MacroBadge label={t.fat} grams={active.fat_g} color={MACRO_COLOR.fat} colorRgb={MACRO_COLOR_RGB.fat} />
         </div>
       </div>
 
@@ -95,7 +98,7 @@ export function WeeklyMacrosCard({ data, today }: { data: DayMacros[]; today: st
               onClick={() => setSelectedDate(d.date)}
               onMouseEnter={() => setHoveredDate(d.date)}
               onMouseLeave={() => setHoveredDate(null)}
-              title={`${formatWeekday(d.date)} · ${Math.round(d.calories)} kcal\nProtein ${Math.round(d.protein_g)}g · Carbs ${Math.round(d.carbs_g)}g · Fat ${Math.round(d.fat_g)}g`}
+              title={`${formatWeekday(d.date, language)} · ${Math.round(d.calories)} kcal\n${t.protein} ${Math.round(d.protein_g)}g · ${t.carbs} ${Math.round(d.carbs_g)}g · ${t.fat} ${Math.round(d.fat_g)}g`}
               style={{
                 display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center",
                 height: "100%", width: "100%", gap: 6,
@@ -121,7 +124,7 @@ export function WeeklyMacrosCard({ data, today }: { data: DayMacros[]; today: st
                 <div style={{ flex: `${fatCal} 0 0`, minHeight: 6, width: "100%", borderRadius: CORNER_RADIUS, background: isActive ? MACRO_COLOR.fat : MUTED_FLAT }} />
               </div>
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".3px", textTransform: "uppercase", color: isActive ? "var(--accent)" : "var(--dim)", flexShrink: 0 }}>
-                {formatWeekday(d.date).slice(0, 3)}
+                {formatWeekday(d.date, language).slice(0, 3)}
               </div>
             </button>
           );
@@ -129,7 +132,7 @@ export function WeeklyMacrosCard({ data, today }: { data: DayMacros[]; today: st
       </div>
       {!hasWeekData && (
         <div style={{ fontSize: 11, color: "var(--dim)", textAlign: "center", marginTop: 12, flexShrink: 0 }}>
-          No meals logged yet this week.
+          {t.noMealsLogged}
         </div>
       )}
     </div>

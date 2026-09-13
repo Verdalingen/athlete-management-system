@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { todayISO } from "@/lib/dates";
+import { useT, useLanguage } from "@/lib/i18n/LanguageContext";
+import { localeTag } from "@/lib/i18n/language";
 
 type Expenditure = { total_calories: number | null };
 
@@ -11,6 +13,8 @@ type Props = { date: string; caloriesEaten: number };
  * alongside the protein/micro scores. Renders nothing for the current day: burn is still
  * accumulating, so a net figure would be misleading until the day is actually over. */
 export function DayEnergyBalance({ date, caloriesEaten }: Props) {
+  const t = useT().nutrition.dayEnergyBalance;
+  const [language] = useLanguage();
   const [burned, setBurned] = useState<number | null>(null);
   const isConcluded = date !== todayISO();
 
@@ -34,15 +38,15 @@ export function DayEnergyBalance({ date, caloriesEaten }: Props) {
   const net = caloriesEaten - burned;
   const isSurplus = net > 0;
   const netLabel = Math.abs(net) >= 1
-    ? `${isSurplus ? "+" : "-"}${Math.round(Math.abs(net)).toLocaleString("en-US")}`
+    ? `${isSurplus ? "+" : "-"}${Math.round(Math.abs(net)).toLocaleString(localeTag(language))}`
     : "0";
 
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <div>
-        <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>Burned</div>
+        <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>{t.burned}</div>
         <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)" }}>
-          {burned.toLocaleString("en-US")} <span style={{ fontSize: 10, fontWeight: 500, color: "var(--dim)" }}>kcal</span>
+          {burned.toLocaleString(localeTag(language))} <span style={{ fontSize: 10, fontWeight: 500, color: "var(--dim)" }}>kcal</span>
         </div>
       </div>
       <span style={{

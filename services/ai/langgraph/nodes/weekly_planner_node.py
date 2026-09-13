@@ -22,7 +22,7 @@ from .node_base import (
     execute_node_with_error_handling,
     log_node_completion,
 )
-from .prompt_components import get_hitl_instructions, get_workflow_context
+from .prompt_components import get_hitl_instructions, get_language_instructions, get_workflow_context
 from .tool_calling_helper import handle_tool_calling_in_node
 
 
@@ -481,11 +481,28 @@ _ROTATION = ["A", "B", "C"]
 
 
 
+_INSERTED_SESSION_LABELS = {
+    "en": {
+        "strength_focus": "Strength",
+        "strength_description": "Strength session (from saved template)",
+        "easy_focus": "Easy Aerobic",
+        "easy_description": "45min Z2 easy aerobic",
+    },
+    "no": {
+        "strength_focus": "Styrke",
+        "strength_description": "Styrkeøkt (fra lagret mal)",
+        "easy_focus": "Rolig aerob",
+        "easy_description": "45 min Z2 rolig aerob",
+    },
+}
+
+
 def _fix_weekly_volume(
     scheduled_days: list[dict[str, Any]] | None,
     strength_sessions: list[dict[str, Any]] | None,
     running_sessions: list[dict[str, Any]] | None,
     recurring_session_requests: list[dict[str, Any]] | None,
+    language: str = "en",
 ) -> list[str]:
     """Enforce the athlete's weekly session volume by inserting what the planner left out.
 
@@ -652,16 +669,17 @@ def _fix_weekly_volume(
                     )
                     break
 
+                labels = _INSERTED_SESSION_LABELS.get(language, _INSERTED_SESSION_LABELS["en"])
                 day = by_date[slot_iso]
                 day["is_rest"] = False
                 day["session_type"] = session_type
                 if session_type == "strength":
-                    day["focus"] = "Strength"
-                    day["description"] = "Strength session (from saved template)"
+                    day["focus"] = labels["strength_focus"]
+                    day["description"] = labels["strength_description"]
                     strength_sessions.append({"date": slot_iso, "slot": "A"})
                 else:
-                    day["focus"] = "Easy Aerobic"
-                    day["description"] = "45min Z2 easy aerobic"
+                    day["focus"] = labels["easy_focus"]
+                    day["description"] = labels["easy_description"]
                     running_sessions.append({
                         "date": slot_iso,
                         "segments": [{
@@ -847,6 +865,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
         + (WEEKLY_PLANNER_CHECKIN_INSTRUCTIONS if checkin_mode else "")
         + (get_hitl_instructions("weekly_planner") if hitl_enabled else "")
         + WEEKLY_PLANNER_FINAL_CHECKLIST.format(num_days=num_days)
+        + get_language_instructions(state.get("language"))
     )
 
     qa_messages = normalize_langchain_messages(state.get("weekly_planner_messages", []))
@@ -917,6 +936,7 @@ async def weekly_planner_node(state: TrainingAnalysisState) -> dict[str, list | 
         volume_warnings = _fix_weekly_volume(
             scheduled_days, strength_sessions, running_sessions,
             state.get("recurring_session_requests"),
+            language=state.get("language", "en"),
         )
         legs_warnings = _fix_legs_before_hard_runs(scheduled_days, strength_sessions, strength_template_rows)
         recurring_warnings = _check_recurring_requests_honored(

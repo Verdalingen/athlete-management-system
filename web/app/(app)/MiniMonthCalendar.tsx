@@ -4,8 +4,9 @@ import { useState } from "react";
 import type { StrengthSession } from "@/lib/types";
 import type { WeightRecommendation } from "@/lib/strength";
 import { SessionDetailModal, type DayData } from "./SessionDetailModal";
-import { SESSION_LABEL, SESSION_COLOR } from "@/lib/session-theme";
-import { MONTH_NAMES, DAY_HEADERS, buildMonthCells } from "@/lib/calendar";
+import { sessionLabel, SESSION_COLOR } from "@/lib/session-theme";
+import { monthNames, dayHeaders, buildMonthCells } from "@/lib/calendar";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
 
 const CIRCLE = 34;
 
@@ -23,6 +24,10 @@ export function MiniMonthCalendar({
   bench1RMKg?: number | null;
   weightRecommendations?: Record<string, WeightRecommendation>;
 }) {
+  const t = useT().dashboard.miniCalendar;
+  const [language] = useLanguage();
+  const MONTH_NAMES = monthNames(language);
+  const DAY_HEADERS = dayHeaders(language);
   const todayDate = new Date(today + "T00:00:00");
   const [viewYear, setViewYear] = useState(todayDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(todayDate.getMonth());
@@ -53,7 +58,7 @@ export function MiniMonthCalendar({
         <button
           type="button"
           onClick={() => changeMonth(-1)}
-          aria-label="Previous month"
+          aria-label={t.previousMonth}
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, display: "flex" }}
         >
           <i className="ti ti-chevron-left" style={{ fontSize: 18 }} aria-hidden="true" />
@@ -62,7 +67,7 @@ export function MiniMonthCalendar({
         <button
           type="button"
           onClick={() => changeMonth(1)}
-          aria-label="Next month"
+          aria-label={t.nextMonth}
           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, display: "flex" }}
         >
           <i className="ti ti-chevron-right" style={{ fontSize: 18 }} aria-hidden="true" />
@@ -115,13 +120,13 @@ export function MiniMonthCalendar({
           {presentTypes.map(type => (
             <div key={type} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--muted)" }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: SESSION_COLOR[type] ?? "var(--dim)" }} />
-              {SESSION_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1))}
+              {sessionLabel(type, language)}
             </div>
           ))}
           {Object.values(dayMap).some(d => d.completedActivities?.length) && (
             <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--muted)" }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
-              Completed
+              {t.completed}
             </div>
           )}
         </div>

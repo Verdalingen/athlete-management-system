@@ -4,10 +4,11 @@ import { useState } from "react";
 import type { StrengthSession } from "@/lib/types";
 import type { WeightRecommendation } from "@/lib/strength";
 import { SessionDetailModal, type DayData } from "../SessionDetailModal";
-import { SESSION_LABEL, SESSION_COLOR } from "@/lib/session-theme";
-import { MONTH_NAMES, DAY_HEADERS, buildMonthCells, monthsInRange, type CalDay } from "@/lib/calendar";
+import { sessionLabel, SESSION_COLOR } from "@/lib/session-theme";
+import { monthNames, dayHeaders, buildMonthCells, monthsInRange, type CalDay } from "@/lib/calendar";
 import { estimateDurationMinutes } from "@/lib/duration";
 import { formatDuration } from "@/lib/dates";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
 
 // buildMonthCells always returns a Monday-start grid padded to a multiple of
 // 7, so every consecutive 7-cell chunk is exactly one calendar week (Mon-Sun)
@@ -55,6 +56,10 @@ export function PlanCalendar({
   weightRecommendations?: Record<string, WeightRecommendation>;
 }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const t = useT().plan.seasonCalendar.legend;
+  const [language] = useLanguage();
+  const MONTH_NAMES = monthNames(language);
+  const DAY_HEADERS = dayHeaders(language);
 
   const months   = monthsInRange(startDate, endDate);
   const selected = selectedDate ? dayMap[selectedDate] ?? null : null;
@@ -125,7 +130,7 @@ export function PlanCalendar({
                           {types.map(type => (
                             <span key={type} className="cal-week-summary-item">
                               <span className="cal-week-summary-dot" style={{ background: SESSION_COLOR[type] ?? "var(--dim)" }} />
-                              {SESSION_LABEL[type] ?? type} {formatDuration(totals[type] * 60)}
+                              {sessionLabel(type, language)} {formatDuration(totals[type] * 60)}
                             </span>
                           ))}
                         </div>
@@ -149,19 +154,19 @@ export function PlanCalendar({
               {presentTypes.map(type => (
                 <div key={type} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: SESSION_COLOR[type] ?? "var(--dim)" }} />
-                  {SESSION_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1))}
+                  {sessionLabel(type, language)}
                 </div>
               ))}
               {hasKey && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
                   <div style={{ width: 8, height: 8, borderRadius: 2, border: "1px solid rgba(var(--amber-rgb),.50)", background: "rgba(var(--amber-rgb),.07)" }} />
-                  Key session
+                  {t.keySession}
                 </div>
               )}
               {Object.values(dayMap).some(d => d.completedActivities?.length) && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
                   <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
-                  Completed
+                  {t.completed}
                 </div>
               )}
             </div>

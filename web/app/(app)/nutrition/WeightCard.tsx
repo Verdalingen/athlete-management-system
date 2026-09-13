@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useT, useLanguage } from "@/lib/i18n/LanguageContext";
+import { localeTag } from "@/lib/i18n/language";
+import type { Dictionary } from "@/lib/i18n/types";
 
 type WeightEntry = { id: string; date: string; weight_kg: number; source: "manual" | "garmin"; notes?: string | null };
 
 type Props = { date: string };
 
-const RANGES = [
-  { days: 14, label: "14d", trendLabel: "2 wk" },
-  { days: 30, label: "30d", trendLabel: "30d" },
-  { days: 90, label: "90d", trendLabel: "90d" },
-] as const;
+function ranges(t: Dictionary["nutrition"]["weightCard"]) {
+  return [
+    { days: 14 as const, label: t.ranges.fourteen, trendLabel: t.trendRange.fourteen },
+    { days: 30 as const, label: t.ranges.thirty, trendLabel: t.trendRange.thirty },
+    { days: 90 as const, label: t.ranges.ninety, trendLabel: t.trendRange.ninety },
+  ];
+}
 
-function fmtDate(iso: string): string {
-  return new Date(iso + "T12:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+function fmtDate(iso: string, language: "en" | "no"): string {
+  return new Date(iso + "T12:00:00").toLocaleDateString(localeTag(language), { day: "numeric", month: "short" });
 }
 
 /** Weight trend mini-chart — hoverable so you can read out any previous
@@ -22,7 +27,7 @@ function fmtDate(iso: string): string {
  * not just the span between the first and last logged entry — otherwise a
  * "90d" view with only two sparse weigh-ins would stretch that 2-day gap
  * edge-to-edge and look identical to a 2-day view. */
-function WeightChart({ entries, rangeDays }: { entries: WeightEntry[]; rangeDays: number }) {
+function WeightChart({ entries, rangeDays, language }: { entries: WeightEntry[]; rangeDays: number; language: "en" | "no" }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   if (entries.length < 2) return null;
 
@@ -99,7 +104,7 @@ function WeightChart({ entries, rangeDays }: { entries: WeightEntry[]; rangeDays
             background: "var(--ink)", color: "#fff", fontSize: 10, fontWeight: 700,
             padding: "3px 7px", borderRadius: 5, whiteSpace: "nowrap", pointerEvents: "none",
           }}>
-            {fmtDate(hov.date)} · {hov.weight_kg.toFixed(1)}kg
+            {fmtDate(hov.date, language)} · {hov.weight_kg.toFixed(1)}kg
           </div>
         );
       })()}
@@ -108,7 +113,11 @@ function WeightChart({ entries, rangeDays }: { entries: WeightEntry[]; rangeDays
 }
 
 export function WeightCard({ date }: Props) {
-  const [rangeDays, setRangeDays] = useState<typeof RANGES[number]["days"]>(14);
+  const nt = useT().nutrition;
+  const t = nt.weightCard;
+  const [language] = useLanguage();
+  const RANGES = ranges(t);
+  const [rangeDays, setRangeDays] = useState<14 | 30 | 90>(14);
   const [entries, setEntries] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -188,7 +197,7 @@ export function WeightCard({ date }: Props) {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div className="card-title" style={{ margin: 0 }}>Body Weight</div>
+        <div className="card-title" style={{ margin: 0 }}>{t.title}</div>
         {trendLabel && (
           <span style={{
             fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 8,
@@ -202,7 +211,7 @@ export function WeightCard({ date }: Props) {
       </div>
 
       {loading ? (
-        <div style={{ fontSize: 12, color: "var(--dim)", paddingBottom: 4 }}>Loading…</div>
+        <div style={{ fontSize: 12, color: "var(--dim)", paddingBottom: 4 }}>{nt.actions.loading}</div>
       ) : (
         <>
           {/* Current entry or input */}
@@ -217,7 +226,7 @@ export function WeightCard({ date }: Props) {
                   fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 6,
                   color: "var(--cyan)", background: "rgba(45,226,230,.1)",
                   border: "1px solid rgba(45,226,230,.25)", lineHeight: 1.4,
-                }} title="Synced from Garmin Connect">
+                }} title={t.garminTooltip}>
                   Garmin
                 </span>
               )}
@@ -226,7 +235,7 @@ export function WeightCard({ date }: Props) {
                   onClick={() => { setInputVal(String(todayEntry.weight_kg)); setEditing(true); }}
                   style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 11 }}
                 >
-                  Edit
+                  {nt.actions.edit}
                 </button>
                 <button
                   onClick={remove}
@@ -246,7 +255,7 @@ export function WeightCard({ date }: Props) {
                 min="20"
                 max="499"
                 className="input"
-                placeholder={prevEntry ? `prev ${prevEntry.weight_kg}` : "kg"}
+                placeholder={prevEntry ? t.prevPlaceholder.replace("{value}", String(prevEntry.weight_kg)) : "kg"}
                 value={inputVal}
                 onChange={e => setInputVal(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") { setEditing(false); setInputVal(""); } }}
@@ -258,7 +267,7 @@ export function WeightCard({ date }: Props) {
                 onClick={save}
                 disabled={saving || !inputVal}
               >
-                {saving ? "…" : "Log"}
+                {saving ? "…" : t.logBtn}
               </button>
               {editing && (
                 <button
@@ -293,17 +302,17 @@ export function WeightCard({ date }: Props) {
           {/* Trend chart */}
           {entries.length >= 2 && (
             <div style={{ marginTop: 4 }}>
-              <WeightChart entries={entries} rangeDays={rangeDays} />
+              <WeightChart entries={entries} rangeDays={rangeDays} language={language} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "var(--dim)", marginTop: 2 }}>
-                <span>{fmtDate(rangeStartDate)}</span>
-                <span>{fmtDate(todayDate)}</span>
+                <span>{fmtDate(rangeStartDate, language)}</span>
+                <span>{fmtDate(todayDate, language)}</span>
               </div>
             </div>
           )}
 
           {entries.length === 0 && !editing && (
             <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-              Log your weight daily to track body composition trends.
+              {t.emptyState}
             </div>
           )}
         </>

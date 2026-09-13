@@ -1,3 +1,7 @@
+"use client";
+
+import { useT } from "@/lib/i18n/LanguageContext";
+
 export interface SicknessSignal {
   label: string;
   value: number | null;
@@ -14,23 +18,24 @@ export interface SicknessSignal {
  * `<details>` for the expand/collapse — the summary line alone is already
  * the "at a glance" view Adrian asked for, no JS needed to show it. */
 export function SicknessWatchCard({ signals }: { signals: SicknessSignal[] }) {
+  const t = useT().dashboard.sicknessWatch;
   const known = signals.filter(s => s.value != null && s.baselineMean != null);
   const flaggedCount = known.filter(s => s.flagged).length;
 
   const hasEnoughData = known.length >= 2;
   const status = !hasEnoughData
-    ? { label: "Not enough history yet", color: "var(--dim)", icon: "ti-help-circle" }
+    ? { label: t.notEnoughHistory, color: "var(--dim)", icon: "ti-help-circle" }
     : flaggedCount >= 2
-    ? { label: `${flaggedCount} signals off baseline — possible early illness`, color: "var(--red)", icon: "ti-alert-triangle" }
+    ? { label: t.multipleFlagged.replace("{count}", String(flaggedCount)), color: "var(--red)", icon: "ti-alert-triangle" }
     : flaggedCount === 1
-    ? { label: "1 signal off baseline — worth watching", color: "var(--amber)", icon: "ti-alert-circle" }
-    : { label: "All signals normal", color: "var(--green)", icon: "ti-shield-check" };
+    ? { label: t.oneFlagged, color: "var(--amber)", icon: "ti-alert-circle" }
+    : { label: t.allNormal, color: "var(--green)", icon: "ti-shield-check" };
 
   return (
     <div className="card">
       <details>
         <summary style={{ listStyle: "none", cursor: "pointer", userSelect: "none", outline: "none", display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="card-title" style={{ margin: 0, flexShrink: 0 }}>Sickness Watch</div>
+          <div className="card-title" style={{ margin: 0, flexShrink: 0 }}>{t.title}</div>
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto",
             padding: "4px 10px", borderRadius: 20,
@@ -58,15 +63,15 @@ export function SicknessWatchCard({ signals }: { signals: SicknessSignal[] }) {
                   <div className="kpi-note">
                     <span className={`badge ${s.flagged ? "badge-red" : "badge-green"}`}>
                       <i className={`ti ${arrow}`} style={{ marginRight: 4, fontSize: 10 }} aria-hidden="true" />
-                      {s.flagged ? "Off baseline" : "Normal"}
+                      {s.flagged ? t.offBaseline : t.normal}
                     </span>
                     <span style={{ fontSize: 10, color: "var(--dim)", marginLeft: 6 }}>
-                      baseline {s.baselineMean!.toFixed(0)} {s.unit}
+                      {t.baseline.replace("{value}", s.baselineMean!.toFixed(0)).replace("{unit}", s.unit)}
                     </span>
                   </div>
                 ) : (
                   <div style={{ fontSize: 10, color: "var(--dim)", marginTop: 6 }}>
-                    {s.value == null ? "No data yet today" : "Building baseline — need 7+ days"}
+                    {s.value == null ? t.noDataToday : t.buildingBaseline}
                   </div>
                 )}
               </div>

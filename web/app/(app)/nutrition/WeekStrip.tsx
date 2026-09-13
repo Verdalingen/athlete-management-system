@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 type DayData = {
   date: string; calories: number; protein_g: number; carbs_g: number; fat_g: number;
@@ -39,6 +40,7 @@ function fmtCal(cal: number): string {
 }
 
 export function WeekStrip({ selectedDate, onDateSelect }: Props) {
+  const t = useT().nutrition.weekStrip;
   const [dayMap, setDayMap] = useState<Record<string, DayData>>({});
 
   useEffect(() => {
@@ -171,10 +173,10 @@ export function WeekStrip({ selectedDate, onDateSelect }: Props) {
 
       {/* Legend */}
       <div style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8, paddingTop: 7, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
-        <LegendDot color="var(--green)" label="On target" />
-        <LegendDot color="var(--amber)" label="Under target" />
-        <LegendDot color="var(--red)" label="Off target (badge = % over)" />
-        <LegendDot color="var(--accent)" label="Protein" />
+        <LegendDot color="var(--green)" label={t.legend.onTarget} />
+        <LegendDot color="var(--amber)" label={t.legend.underTarget} />
+        <LegendDot color="var(--red)" label={t.legend.offTarget} />
+        <LegendDot color="var(--accent)" label={t.legend.protein} />
       </div>
     </div>
   );

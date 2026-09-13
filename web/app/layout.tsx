@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { getCookieLanguage } from "@/lib/i18n/getServerLanguage";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -16,9 +17,13 @@ export const metadata: Metadata = {
   description: "AI-powered training dashboard",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Best-effort for <html lang> — the authoritative, per-account value lives in
+  // user_settings.language and is read by app/(app)/layout.tsx for signed-in pages. This cookie
+  // read covers pre-auth pages (login) too, and saveLanguage() keeps it in sync either way.
+  const language = await getCookieLanguage();
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable}`} suppressHydrationWarning>
+    <html lang={language === "no" ? "nb" : "en"} className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable}`} suppressHydrationWarning>
       <head>
         <link
           rel="stylesheet"

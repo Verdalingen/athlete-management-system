@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { getUserId } from "@/lib/supabase-server";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
+import { languagePromptInstruction } from "@/lib/i18n/language";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const USDA_BASE = "https://api.nal.usda.gov/fdc/v1";
@@ -126,12 +130,16 @@ const MAX_BYTES = 5 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
+    const uid = await getUserId();
+    const language = await getAuthenticatedLanguage(uid);
+    const t = dictionaries[language].nutrition.api.vision;
+
     const form = await req.formData();
     const file = form.get("image") as File | null;
 
-    if (!file) return NextResponse.json({ error: "No image provided" }, { status: 400 });
-    if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
-    if (file.size > MAX_BYTES) return NextResponse.json({ error: "Image too large (max 5 MB)" }, { status: 400 });
+    if (!file) return NextResponse.json({ error: t.noImage }, { status: 400 });
+    if (!ALLOWED_TYPES.has(file.type)) return NextResponse.json({ error: t.unsupportedType }, { status: 400 });
+    if (file.size > MAX_BYTES) return NextResponse.json({ error: t.tooLarge }, { status: 400 });
 
     const buffer = await file.arrayBuffer();
     const base64 = Buffer.from(buffer).toString("base64");
@@ -145,7 +153,7 @@ export async function POST(req: NextRequest) {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-          { type: "text", text: VISION_PROMPT },
+          { type: "text", text: VISION_PROMPT + languagePromptInstruction(language) },
         ],
       }],
     });
@@ -174,11 +182,15 @@ export async function POST(req: NextRequest) {
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return NextResponse.json({ error: "Failed to parse AI response", raw }, { status: 502 });
+      return NextResponse.json({ error: t.parseFailed, raw }, { status: 502 });
     }
 
     if (parsed.error) {
-      return NextResponse.json({ error: parsed.error, items: [] });
+      // "Not a food image" is a fixed literal the prompt instructs the model to echo back
+      // verbatim (see VISION_PROMPT) rather than free-form LLM prose, so it's translated
+      // here like any other static error string instead of being left as AI-authored text.
+      const translatedError = parsed.error === "Not a food image" ? t.notFoodImage : parsed.error;
+      return NextResponse.json({ error: translatedError, items: [] });
     }
 
     // ── Phase 2: USDA lookup to replace AI macro estimates ────────────────

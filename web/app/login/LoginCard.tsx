@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { signIn, signUp } from "./actions";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
 
 function getSupabase() {
   return createBrowserClient(
@@ -43,6 +44,9 @@ export function LoginCard({
   error?: string;
   message?: string;
 }) {
+  const dict = useT();
+  const t = dict.auth;
+  const [language, setLanguage] = useLanguage();
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [localError, setLocalError] = useState<string | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -82,6 +86,26 @@ export function LoginCard({
     }}>
       <div style={{ width: "100%", maxWidth: 400 }}>
 
+        {/* Language switch */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+          <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+            {(["en", "no"] as const).map(l => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLanguage(l)}
+                style={{
+                  fontSize: 12, fontWeight: 700, padding: "6px 12px", border: "none", cursor: "pointer",
+                  background: language === l ? "rgba(124,92,255,.15)" : "none",
+                  color: language === l ? "var(--accent)" : "var(--dim)",
+                }}
+              >
+                {l === "en" ? dict.profile.language.english : dict.profile.language.norwegian}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Brand */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{
@@ -93,10 +117,10 @@ export function LoginCard({
             <i className="ti ti-device-watch-stats" style={{ fontSize: 26, color: "var(--accent)" }} />
           </div>
           <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-.3px", marginBottom: 4 }}>
-            Athlete Management System
+            {dict.common.appName}
           </div>
           <div style={{ fontSize: 13, color: "var(--dim)" }}>
-            Your personal training intelligence
+            {t.tagline}
           </div>
         </div>
 
@@ -122,7 +146,7 @@ export function LoginCard({
                   marginBottom: -1, transition: "color .15s, border-color .15s",
                 }}
               >
-                {m === "signin" ? "Sign in" : "Create account"}
+                {m === "signin" ? t.signIn : t.createAccount}
               </button>
             ))}
           </div>
@@ -162,24 +186,24 @@ export function LoginCard({
             onMouseOut={e => (e.currentTarget.style.background = "#fff")}
           >
             <GoogleIcon />
-            {googleLoading ? "Redirecting…" : "Continue with Google"}
+            {googleLoading ? t.redirecting : t.continueWithGoogle}
           </button>
 
           {/* Divider */}
           <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            <span style={{ fontSize: 12, color: "var(--dim)", letterSpacing: ".3px" }}>or</span>
+            <span style={{ fontSize: 12, color: "var(--dim)", letterSpacing: ".3px" }}>{t.or}</span>
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
 
           {/* Email + password form */}
           <form action={mode === "signin" ? signIn : signUp} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
-              <label style={LABEL_STYLE}>Email</label>
+              <label style={LABEL_STYLE}>{t.email}</label>
               <input name="email" type="email" required autoComplete="email" style={INPUT_STYLE} />
             </div>
             <div>
-              <label style={LABEL_STYLE}>Password</label>
+              <label style={LABEL_STYLE}>{t.password}</label>
               <input
                 name="password" type="password" required
                 autoComplete={mode === "signin" ? "current-password" : "new-password"}
@@ -191,7 +215,7 @@ export function LoginCard({
               className="btn-primary"
               style={{ marginTop: 4, padding: "11px 0", width: "100%", fontSize: 14, fontWeight: 700, justifyContent: "center" }}
             >
-              {mode === "signin" ? "Sign in" : "Create account"}
+              {mode === "signin" ? t.signIn : t.createAccount}
             </button>
           </form>
 
@@ -199,18 +223,18 @@ export function LoginCard({
           <div style={{ textAlign: "center", marginTop: 20, fontSize: 13, color: "var(--muted)" }}>
             {mode === "signin" ? (
               <>
-                Don&apos;t have an account?{" "}
+                {t.noAccount}{" "}
                 <button type="button" onClick={() => switchMode("signup")}
                   style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 600, fontSize: 13, padding: 0 }}>
-                  Create one
+                  {t.createOne}
                 </button>
               </>
             ) : (
               <>
-                Already have an account?{" "}
+                {t.haveAccount}{" "}
                 <button type="button" onClick={() => switchMode("signin")}
                   style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 600, fontSize: 13, padding: 0 }}>
-                  Sign in
+                  {t.signIn}
                 </button>
               </>
             )}
@@ -219,7 +243,7 @@ export function LoginCard({
 
         {/* Footer note */}
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: "var(--dim)", lineHeight: 1.6 }}>
-          By continuing, you agree to our terms of service and privacy policy.
+          {t.termsNotice}
         </div>
       </div>
     </div>

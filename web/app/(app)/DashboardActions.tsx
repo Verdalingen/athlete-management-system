@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import { ReplanConfirmModal } from "./ReplanConfirmModal";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 interface Props {
   seasonEnded: boolean;
@@ -15,6 +16,7 @@ interface Props {
 // handles the season-end case, which has no equivalent always-visible stat
 // to fold into and stays a standalone prompt.
 export function DashboardActions({ seasonEnded, planEndDate }: Props) {
+  const t = useT().dashboard;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -28,7 +30,7 @@ export function DashboardActions({ seasonEnded, planEndDate }: Props) {
         await queueReplan("seasonal", comment);
         router.refresh();
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to queue job");
+        setError(e instanceof Error ? e.message : t.errors.queueFailed);
       }
     });
   }
@@ -55,10 +57,10 @@ export function DashboardActions({ seasonEnded, planEndDate }: Props) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1.2px", textTransform: "uppercase", color: "var(--accent)", marginBottom: 4 }}>
-                Season Complete
+                {t.dashboardActions.seasonComplete}
               </div>
               <div style={{ fontSize: 14, color: "var(--muted)" }}>
-                Your plan ended on {planEndDate}. Ready to plan the next training block?
+                {t.dashboardActions.planEnded.replace("{date}", planEndDate)}
               </div>
             </div>
             <button
@@ -67,7 +69,7 @@ export function DashboardActions({ seasonEnded, planEndDate }: Props) {
               onClick={() => { setComment(""); setError(null); setOpen(true); }}
             >
               <i className="ti ti-sparkles" style={{ fontSize: 15, marginRight: 6 }} />
-              Start New Season
+              {t.dashboardActions.startNewSeason}
             </button>
           </div>
         </div>

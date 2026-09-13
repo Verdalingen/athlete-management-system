@@ -19,6 +19,7 @@ from .node_base import (
 )
 from .prompt_components import (
     get_hitl_instructions,
+    get_language_instructions,
     get_plotting_instructions,
     get_workflow_context,
 )
@@ -108,6 +109,7 @@ async def activity_expert_node(state: TrainingAnalysisState) -> dict[str, list |
         + (get_plotting_instructions("activity") if plotting_enabled else "")
         + (get_hitl_instructions("activity") if hitl_enabled else "")
         + ACTIVITY_FINAL_CHECKLIST
+        + get_language_instructions(state.get("language"))
     )
 
     base_llm = ModelSelector.get_llm(AgentRole.ACTIVITY_EXPERT)

@@ -7,7 +7,7 @@ from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 
 from .node_base import create_timing_entry, execute_node_with_error_handling, log_node_completion
-from .prompt_components import get_workflow_context
+from .prompt_components import get_language_instructions, get_workflow_context
 from .tool_calling_helper import extract_text_content
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,11 @@ async def nutrition_planner_node(state: TrainingAnalysisState) -> dict[str, list
     else:
         nutrition_signals = "Nutrition expert has not run or produced no output."
 
-    system_prompt = get_workflow_context("nutrition_planner") + NUTRITION_PLANNER_SYSTEM_PROMPT
+    system_prompt = (
+        get_workflow_context("nutrition_planner")
+        + NUTRITION_PLANNER_SYSTEM_PROMPT
+        + get_language_instructions(state.get("language"))
+    )
     user_content = NUTRITION_PLANNER_USER_PROMPT.format(
         weekly_plan=weekly_plan,
         nutrition_signals=nutrition_signals,

@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerClient, getUserId } from "@/lib/supabase-server";
+import { getCookieLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 export type ReplanJobType = "daily" | "replan" | "seasonal" | "sync_kpis";
 export type ReplanJobStatus = "pending" | "running" | "done" | "error";
@@ -19,8 +21,15 @@ export interface ReplanJob {
 
 export async function queueReplan(type: ReplanJobType, comment?: string): Promise<void> {
   const sb = createServerClient();
-  const userId = await getUserId();
-  if (!userId) throw new Error("Not authenticated");
+  let userId: string;
+  try {
+    userId = await getUserId();
+  } catch {
+    // No session yet (or it expired mid-request) — there's no authenticated user row to read
+    // a saved language from, so fall back to the pre-auth cookie the same way login does.
+    const language = await getCookieLanguage();
+    throw new Error(dictionaries[language].plan.replan.notAuthenticated);
+  }
 
   const { error } = await sb.from("replan_jobs").insert({
     user_id: userId,

@@ -7,6 +7,7 @@ from services.ai.model_config import ModelSelector
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 
 from .html_design_system import CSS_CLASS_REFERENCE, analysis_shell, strip_code_fences
+from .prompt_components import get_language_instructions
 from .tool_calling_helper import extract_text_content
 
 logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ async def formatter_node(state: TrainingAnalysisState) -> dict[str, list | str]:
                 user_prompt += FORMATTER_PLOT_INSTRUCTIONS
 
             response = await ModelSelector.get_llm(AgentRole.ANALYSIS_FORMATTER).ainvoke([
-                {"role": "system", "content": FORMATTER_SYSTEM_PROMPT},
+                {"role": "system", "content": FORMATTER_SYSTEM_PROMPT + get_language_instructions(state.get("language"))},
                 {"role": "user", "content": user_prompt},
             ])
             return extract_text_content(response)

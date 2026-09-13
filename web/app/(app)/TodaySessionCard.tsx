@@ -7,6 +7,7 @@ import { formatReps, isBarbellBench, estimateBenchWeight, type WeightRecommendat
 import { SESSION_BADGE } from "@/lib/session-theme";
 import { WorkoutStructure } from "@/lib/workout-structure";
 import { SessionDetailModal, type DayData } from "./SessionDetailModal";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 /** Fixed height regardless of session content — a 7-exercise strength day and
  * a rest day render at the same size. Frees the hero row's overall height
@@ -38,6 +39,7 @@ export function TodaySessionCard({
   bench1RMKg?: number | null;
   weightRecommendations?: Record<string, WeightRecommendation>;
 }) {
+  const t = useT().dashboard;
   const [expanded, setExpanded] = useState(false);
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -73,11 +75,11 @@ export function TodaySessionCard({
         <div style={{ overflow: "hidden" }}>
           {!today_day.is_rest && (
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: today_day.is_key ? "var(--accent)" : "var(--dim)", marginBottom: 6 }}>
-              {today_day.session_type}{today_day.is_key ? " · Key session" : ""}
+              {today_day.session_type}{today_day.is_key ? ` · ${t.todaySession.keySession}` : ""}
             </div>
           )}
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, lineHeight: 1.1, marginBottom: 10, letterSpacing: "-.5px" }}>
-            {today_day.focus ?? (today_day.is_rest ? "Rest Day" : today_day.session_type)}
+            {today_day.focus ?? (today_day.is_rest ? t.todaySession.restDayTitle : today_day.session_type)}
           </h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {!today_day.is_rest && (
@@ -92,7 +94,7 @@ export function TodaySessionCard({
 
           {today_day.is_rest && (
             <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 14, lineHeight: 1.6 }}>
-              No session planned today. Recover, eat well, sleep.
+              {t.todaySession.restDayDescription}
             </p>
           )}
 
@@ -113,10 +115,10 @@ export function TodaySessionCard({
             <table className="exercise-table">
               <thead>
                 <tr>
-                  <th>Exercise</th>
-                  <th className="et-col-setsreps">Sets × Reps</th>
-                  <th className="et-col-rest">Rest</th>
-                  <th className="et-col-intensity">Intensity</th>
+                  <th>{t.sessionDetail.exercise}</th>
+                  <th className="et-col-setsreps">{t.sessionDetail.setsReps}</th>
+                  <th className="et-col-rest">{t.sessionDetail.rest}</th>
+                  <th className="et-col-intensity">{t.sessionDetail.intensity}</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,7 +156,7 @@ export function TodaySessionCard({
                         {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
                       </td>
                       <td className="et-col-intensity" style={{ fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
-                        {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
+                        {ex.rir === 0 ? t.sessionDetail.failure : ex.rir != null ? t.sessionDetail.rir.replace("{value}", String(ex.rir)) : "–"}
                       </td>
                     </tr>
                   );
@@ -189,7 +191,7 @@ export function TodaySessionCard({
               color: "var(--accent)", fontWeight: 700, fontSize: 12,
             }}
           >
-            View full session
+            {t.todaySession.viewFullSession}
             <i className="ti ti-chevron-right" style={{ marginLeft: 4, fontSize: 11 }} aria-hidden="true" />
           </button>
         )}

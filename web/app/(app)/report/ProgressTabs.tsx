@@ -3,6 +3,8 @@
 import React, { useState, useRef } from "react";
 import type { CompletedActivity } from "@/lib/types";
 import { ActivityHeatmap } from "../ActivityHeatmap";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
+import { localeTag, type Language } from "@/lib/i18n/language";
 
 export interface TrendPoint {
   date: string;
@@ -26,6 +28,11 @@ export interface ZoneLine {
 
 export interface TrendSeries {
   label: string;
+  // Stable, language-independent identifier used to match a series across renders/
+  // language switches (e.g. to pick CTL/ATL/TSB out for the PMC chart). Optional so
+  // callers outside this page (e.g. the dashboard's own TrendSeries literals) that
+  // don't set it keep working — they just don't participate in that matching.
+  key?: string;
   unit?: string;
   color: string;
   data: TrendPoint[];
@@ -67,10 +74,16 @@ function getZoneColor(value: number, bands?: ZoneBand[], fallback = "var(--dim)"
   return sev ? SEV[sev] : fallback;
 }
 
-function fmtDate(iso: string, long = false): string {
-  return new Date(iso).toLocaleDateString("en-GB", long
+function fmtDate(iso: string, language: Language, long = false): string {
+  return new Date(iso).toLocaleDateString(localeTag(language), long
     ? { day: "numeric", month: "long", year: "numeric" }
     : { day: "numeric", month: "short" });
+}
+
+/** Stable identifier for a series — falls back to its (possibly untranslated) label
+ * for series that don't set `key`, e.g. ones built outside this page. */
+function seriesKey(s: TrendSeries): string {
+  return s.key ?? s.label;
 }
 
 function extractMain(html: string): string {
@@ -177,6 +190,8 @@ export function PMCChart({
   ctlData: TrendPoint[]; atlData: TrendPoint[]; tsbData: TrendPoint[];
   events: RaceEvent[];
 }) {
+  const t = useT().report;
+  const [language] = useLanguage();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [timeframe, setTimeframe] = useState<"1M" | "3M" | "6M" | "1Y">("3M");
 
@@ -234,12 +249,13 @@ export function PMCChart({
   const yTC = (v: number) => Math.max(BOT_PAD.top, Math.min(BOT_PAD.top + botPlotH, yT(v)));
   const tsbZeroY = yTC(0);
 
+  const tsbZones = t.trends.series.tsb.zones;
   const tsbBands: ZoneBand[] = [
-    { min: -Infinity, max: -30, fill: "rgba(239,68,68,0.16)",   severity: "danger",  chartLabel: "Overreaching", label: "Overreaching (<-30)" },
-    { min: -30,       max: -10, fill: "rgba(245,158,11,0.13)",  severity: "warning", chartLabel: "Training load", label: "Training load (-30–-10)" },
-    { min: -10,       max:   5, fill: "rgba(34,197,94,0.14)",   severity: "optimal", chartLabel: "Race-ready", label: "Race-ready (-10 to +5)" },
-    { min:   5,       max:  25, fill: "rgba(148,163,184,0.09)", severity: "neutral", chartLabel: "Fresh", label: "Fresh (+5 to +25)" },
-    { min:  25, max: Infinity,  fill: "rgba(245,158,11,0.11)",  severity: "warning", chartLabel: "Overtapered", label: "Overtapered (>+25)" },
+    { min: -Infinity, max: -30, fill: "rgba(239,68,68,0.16)",   severity: "danger",  chartLabel: tsbZones.overreaching.chart, label: tsbZones.overreaching.label },
+    { min: -30,       max: -10, fill: "rgba(245,158,11,0.13)",  severity: "warning", chartLabel: tsbZones.trainingLoad.chart, label: tsbZones.trainingLoad.label },
+    { min: -10,       max:   5, fill: "rgba(34,197,94,0.14)",   severity: "optimal", chartLabel: tsbZones.raceReady.chart,    label: tsbZones.raceReady.label },
+    { min:   5,       max:  25, fill: "rgba(148,163,184,0.09)", severity: "neutral", chartLabel: tsbZones.fresh.chart,        label: tsbZones.fresh.label },
+    { min:  25, max: Infinity,  fill: "rgba(245,158,11,0.11)",  severity: "warning", chartLabel: tsbZones.overtapered.chart,  label: tsbZones.overtapered.label },
   ];
 
   const ctlPts = ctl.flatMap((d, i) => d.value != null ? [{ idx: i, value: d.value }] : []);
@@ -282,7 +298,7 @@ export function PMCChart({
     while (cur <= end) {
       const ms = cur.getTime();
       if (ms > t0 && ms < tEnd)
-        xMonthTicks.push({ x: xFromMs(ms), label: cur.toLocaleDateString("en-GB", fmt) });
+        xMonthTicks.push({ x: xFromMs(ms), label: cur.toLocaleDateString(localeTag(language), fmt) });
       cur.setMonth(cur.getMonth() + 1);
     }
   }
@@ -310,26 +326,26 @@ export function PMCChart({
     <div className="card" style={{ padding: "20px 24px", marginBottom: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 2 }}>Performance Management</div>
+          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 2 }}>{t.pmc.title}</div>
           <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 6 }}>
-            CTL = chronic fitness load · ATL = acute fatigue load · TSB = form (CTL − ATL)
+            {t.pmc.legendDefinitions}
           </div>
           {hov ? (
             <div style={{ display: "flex", gap: 16, alignItems: "baseline", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12, color: "var(--dim)" }}>{fmtDate(hov.date, true)}</span>
+              <span style={{ fontSize: 12, color: "var(--dim)" }}>{fmtDate(hov.date, language, true)}</span>
               {hov.ctl != null && <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: "var(--accent)" }}>CTL {hov.ctl.toFixed(1)}</span>}
               {hov.atl != null && <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: "var(--red)" }}>ATL {hov.atl.toFixed(1)}</span>}
               {hov.tsb != null && (
                 <span style={{ fontSize: 13, fontFamily: "var(--mono)", color: hovTsbSev ? SEV[hovTsbSev] : "var(--dim)", fontWeight: 700 }}>
                   TSB {hov.tsb > 0 ? "+" : ""}{hov.tsb.toFixed(1)}
                   {hovTsbSev && <span style={{ fontSize: 10, marginLeft: 5, fontFamily: "sans-serif" }}>
-                    ({hovTsbSev === "optimal" ? "race-ready" : hovTsbSev === "warning" ? "caution" : "risk"})
+                    ({hovTsbSev === "optimal" ? t.trends.pmcStatus.raceReady : hovTsbSev === "warning" ? t.trends.pmcStatus.caution : t.trends.pmcStatus.risk})
                   </span>}
                 </span>
               )}
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "var(--dim)" }}>Hover to inspect · {visibleDates.length} days</div>
+            <div style={{ fontSize: 12, color: "var(--dim)" }}>{t.trends.hoverToInspect} · {t.trends.daysCount.replace("{count}", String(visibleDates.length))}</div>
           )}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, flexShrink: 0 }}>
@@ -366,7 +382,7 @@ export function PMCChart({
       {/* Top chart: CTL + ATL */}
       <div style={{ marginBottom: 4 }}>
         <div style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600, marginBottom: 4, paddingLeft: TOP_PAD.left }}>
-          Fitness &amp; Fatigue
+          {t.pmc.fitnessAndFatigue}
         </div>
         <svg viewBox={`0 0 ${W} ${TOP_H}`} style={{ width: "100%", display: "block", cursor: "crosshair" }}
           preserveAspectRatio="xMidYMid meet"
@@ -422,7 +438,7 @@ export function PMCChart({
       {/* Bottom chart: TSB bars */}
       <div>
         <div style={{ fontSize: 11, color: "var(--dim)", fontWeight: 600, marginBottom: 4, paddingLeft: BOT_PAD.left }}>
-          Form (TSB)
+          {t.trends.series.tsb.label}
         </div>
         <svg viewBox={`0 0 ${W} ${BOT_H}`} style={{ width: "100%", display: "block", cursor: "crosshair" }}
           preserveAspectRatio="xMidYMid meet"
@@ -498,12 +514,13 @@ export function PMCChart({
 // ── Compact sparkline card ────────────────────────────────────────────────────
 
 function CompactChart({ series, selected, onClick }: { series: TrendSeries; selected: boolean; onClick: () => void }) {
+  const t = useT().report;
   const points = series.data.filter((d): d is { date: string; value: number } => d.value !== null);
   const dec = series.decimals ?? 1;
   const W = 300, H = 52, PAD = 4;
   // Unique per series so multiple CompactChart instances on the same page
   // (one per metric card) don't collide on SVG gradient ids.
-  const gradId = `cc-grad-${series.label.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  const gradId = `cc-grad-${seriesKey(series).replace(/[^a-zA-Z0-9]+/g, "-")}`;
   const latest = points.at(-1), prev = points.length > 7 ? points.at(-8) : points[0];
   const delta = latest && prev ? latest.value - prev.value : null;
   const severity = getZoneSeverity(latest?.value ?? null, series.zoneBands);
@@ -554,21 +571,21 @@ function CompactChart({ series, selected, onClick }: { series: TrendSeries; sele
         </svg>
       ) : (
         <div style={{ height: H, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 12, color: "var(--dim)" }}>Not enough data</span>
+          <span style={{ fontSize: 12, color: "var(--dim)" }}>{t.trends.notEnoughData}</span>
         </div>
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 11, color: "var(--dim)" }}>{points.length} days</span>
+        <span style={{ fontSize: 11, color: "var(--dim)" }}>{t.trends.daysCount.replace("{count}", String(points.length))}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {delta !== null && (
             <span style={{ fontSize: 12, fontWeight: 600, color: deltaColor }}>
-              {delta > 0 ? "+" : ""}{delta.toFixed(dec)}{series.unit ? ` ${series.unit}` : ""} / 7d
+              {delta > 0 ? "+" : ""}{delta.toFixed(dec)}{series.unit ? ` ${series.unit}` : ""} {t.trends.perWeek}
             </span>
           )}
           {severity && (
             <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: statusColor ?? "var(--dim)" }}>
-              {severity === "optimal" ? "On target" : severity === "warning" ? "Caution" : severity === "danger" ? "Risk" : ""}
+              {severity === "optimal" ? t.trends.status.onTarget : severity === "warning" ? t.trends.status.caution : severity === "danger" ? t.trends.status.risk : ""}
             </span>
           )}
         </div>
@@ -582,6 +599,8 @@ function CompactChart({ series, selected, onClick }: { series: TrendSeries; sele
 export function ExpandedChart({ series, events, onClose, showAnomalies = true, caption }: {
   series: TrendSeries; events: RaceEvent[]; onClose?: () => void; showAnomalies?: boolean; caption?: string;
 }) {
+  const t = useT().report;
+  const [language] = useLanguage();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const points = series.data.filter((d): d is { date: string; value: number } => d.value !== null);
@@ -589,7 +608,7 @@ export function ExpandedChart({ series, events, onClose, showAnomalies = true, c
   const isBar = series.chartType === "bar";
   if (points.length < 2) return null;
 
-  const gradId = `ec-grad-${series.label.replace(/[^a-zA-Z0-9]+/g, "-")}`;
+  const gradId = `ec-grad-${seriesKey(series).replace(/[^a-zA-Z0-9]+/g, "-")}`;
 
   const W = 900, H = 240;
   const PAD = { top: 28, right: 56, bottom: 40, left: 56 };
@@ -685,25 +704,25 @@ export function ExpandedChart({ series, events, onClose, showAnomalies = true, c
               </span>
               {hoverSev && (
                 <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", color: SEV[hoverSev], background: `${SEV[hoverSev]}18`, padding: "2px 8px", borderRadius: 4 }}>
-                  {hoverSev === "optimal" ? "Optimal" : hoverSev === "warning" ? "Caution" : hoverSev === "danger" ? "Risk" : ""}
+                  {hoverSev === "optimal" ? t.trends.status.optimal : hoverSev === "warning" ? t.trends.status.caution : hoverSev === "danger" ? t.trends.status.risk : ""}
                 </span>
               )}
-              <span style={{ fontSize: 13, color: "var(--dim)" }}>{fmtDate(hoverPt.date, true)}</span>
+              <span style={{ fontSize: 13, color: "var(--dim)" }}>{fmtDate(hoverPt.date, language, true)}</span>
             </div>
           ) : (
             <div style={{ fontSize: 13, color: "var(--dim)" }}>
               <span style={{ color: latestSev ? SEV[latestSev] : series.color }}>
                 {points.at(-1)?.value.toFixed(dec)}{series.unit ? ` ${series.unit}` : ""}
               </span>
-              {" "}· hover to inspect · {points.length} days
-              {anomalyIdxs.length > 0 && <span style={{ color: "var(--red)", marginLeft: 8 }}>· {anomalyIdxs.length} anomalies flagged</span>}
+              {" "}· {t.trends.hoverToInspectInline} · {t.trends.daysCount.replace("{count}", String(points.length))}
+              {anomalyIdxs.length > 0 && <span style={{ color: "var(--red)", marginLeft: 8 }}>· {t.trends.anomaliesFlagged.replace("{count}", String(anomalyIdxs.length))}</span>}
             </div>
           )}
           {caption && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{caption}</div>}
         </div>
         {onClose && (
           <button onClick={onClose} style={{ background: "none", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", cursor: "pointer", padding: "4px 12px", fontSize: 12, color: "var(--muted)" }}>
-            Close ✕
+            {t.trends.close} ✕
           </button>
         )}
       </div>
@@ -764,7 +783,7 @@ export function ExpandedChart({ series, events, onClose, showAnomalies = true, c
 
         {/* X-axis */}
         {xTickIdxs.map(i => (
-          <text key={i} x={xS(i)} y={H - 10} textAnchor="middle" fontSize={11} fill="var(--muted)">{fmtDate(points[i].date)}</text>
+          <text key={i} x={xS(i)} y={H - 10} textAnchor="middle" fontSize={11} fill="var(--muted)">{fmtDate(points[i].date, language)}</text>
         ))}
 
         {/* BAR CHART rendering */}
@@ -797,7 +816,7 @@ export function ExpandedChart({ series, events, onClose, showAnomalies = true, c
               <circle cx={ax} cy={ay} r={6} fill="rgba(var(--red-rgb),.15)" stroke="var(--red)" strokeWidth={1.5} />
               <line x1={ax} y1={ay - 8} x2={ax} y2={ay - 18} stroke="var(--red)" strokeWidth={1.5} />
               <rect x={ax - 17} y={ay - 30} width={34} height={13} fill="var(--red)" rx={2} />
-              <text x={ax} y={ay - 21} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="white">anomaly</text>
+              <text x={ax} y={ay - 21} textAnchor="middle" fontSize={8.5} fontWeight={700} fill="white">{t.trends.anomalyLabel}</text>
             </g>
           );
         })}
@@ -845,16 +864,16 @@ export type WeeklyKpiDelta = Record<string, {
   current: number; prior: number; delta: number; higher_is_better: boolean | null;
 }>;
 
-const KPI_DELTA_LABELS: Record<string, { label: string; unit: string }> = {
-  ctl: { label: "Fitness (CTL)", unit: "" },
-  atl: { label: "Fatigue (ATL)", unit: "" },
-  tsb: { label: "Form (TSB)", unit: "" },
-  hrv_overnight: { label: "HRV", unit: " ms" },
-  rhr: { label: "Resting HR", unit: " bpm" },
-  sleep_hours: { label: "Sleep", unit: " h" },
-};
-
 function WeeklyKpiDeltas({ delta }: { delta: WeeklyKpiDelta }) {
+  const t = useT().report;
+  const KPI_DELTA_LABELS: Record<string, { label: string; unit: string }> = {
+    ctl: { label: t.trends.series.ctl.label, unit: "" },
+    atl: { label: t.trends.series.atl.label, unit: "" },
+    tsb: { label: t.trends.series.tsb.label, unit: "" },
+    hrv_overnight: { label: t.week.kpiDelta.hrv, unit: " ms" },
+    rhr: { label: t.week.kpiDelta.rhr, unit: " bpm" },
+    sleep_hours: { label: t.week.kpiDelta.sleepHours, unit: ` ${t.trends.units.hours}` },
+  };
   const entries = Object.entries(delta).filter(([k]) => k in KPI_DELTA_LABELS);
   if (entries.length === 0) return null;
   return (
@@ -873,7 +892,7 @@ function WeeklyKpiDeltas({ delta }: { delta: WeeklyKpiDelta }) {
             <div className="kpi-value">{d.current.toFixed(1)}<span className="kpi-unit">{unit}</span></div>
             <div className="kpi-note" style={{ color, display: "flex", alignItems: "center", gap: 4 }}>
               <i className={`ti ${arrow}`} style={{ fontSize: 11 }} aria-hidden="true" />
-              {d.delta > 0 ? "+" : ""}{d.delta.toFixed(1)} vs last week
+              {d.delta > 0 ? "+" : ""}{d.delta.toFixed(1)} {t.week.vsLastWeek}
             </div>
           </div>
         );
@@ -908,48 +927,52 @@ export default function ProgressTabs({
   events: RaceEvent[];
   completedActivities: CompletedActivity[];
 }) {
+  const t = useT().report;
+  const [language] = useLanguage();
   const hasAnalysis = !!(analysisHtml || planningHtml);
   const [tab, setTab] = useState<ReportTab>("trends");
-  const [expandedLabel, setExpandedLabel] = useState<string | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   // Close modal on Escape
   React.useEffect(() => {
-    if (!expandedLabel) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setExpandedLabel(null); };
+    if (!expandedKey) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setExpandedKey(null); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [expandedLabel]);
+  }, [expandedKey]);
 
   const activeSeries = trendSeries.filter(s => s.data.filter(d => d.value !== null).length >= 3);
-  const expandedSeries = activeSeries.find(s => s.label === expandedLabel) ?? null;
+  const expandedSeries = activeSeries.find(s => seriesKey(s) === expandedKey) ?? null;
 
-  const pmcLabels = new Set(["Fitness (CTL)", "Fatigue (ATL)", "Form (TSB)"]);
-  const ctlSeries  = activeSeries.find(s => s.label === "Fitness (CTL)");
-  const atlSeries  = activeSeries.find(s => s.label === "Fatigue (ATL)");
-  const tsbSeries  = activeSeries.find(s => s.label === "Form (TSB)");
+  const pmcKeys = new Set(["ctl", "atl", "tsb"]);
+  const ctlSeries  = activeSeries.find(s => seriesKey(s) === "ctl");
+  const atlSeries  = activeSeries.find(s => seriesKey(s) === "atl");
+  const tsbSeries  = activeSeries.find(s => seriesKey(s) === "tsb");
   const hasPMC     = !!(ctlSeries && atlSeries && tsbSeries);
-  const gridSeries = activeSeries.filter(s => !pmcLabels.has(s.label));
+  const gridSeries = activeSeries.filter(s => !pmcKeys.has(seriesKey(s)));
+
+  const [trendsSyncBefore, trendsSyncAfter] = t.trends.emptyBody.split("{cmd}");
 
   return (
     <>
       <div style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)" }}>
-        <TabBtn id="week" label="This week" activeTab={tab} onSelect={setTab} />
-        <TabBtn id="trends" label="Trends" activeTab={tab} onSelect={setTab} />
-        {hasAnalysis && <TabBtn id="analysis" label="Season analysis" activeTab={tab} onSelect={setTab} />}
+        <TabBtn id="week" label={t.tabs.thisWeek} activeTab={tab} onSelect={setTab} />
+        <TabBtn id="trends" label={t.tabs.trends} activeTab={tab} onSelect={setTab} />
+        {hasAnalysis && <TabBtn id="analysis" label={t.tabs.seasonAnalysis} activeTab={tab} onSelect={setTab} />}
       </div>
 
       {tab === "week" && (
         weeklyReview ? (
           <div>
-            <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 16 }}>Week of {fmtDate(weeklyReview.week_start, true)}</p>
+            <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 16 }}>{t.week.weekOf.replace("{date}", fmtDate(weeklyReview.week_start, language, true))}</p>
             {weeklyReview.kpi_delta && <WeeklyKpiDeltas delta={weeklyReview.kpi_delta} />}
             <div className="report-content" dangerouslySetInnerHTML={{ __html: weeklyReview.summary_html }} />
           </div>
         ) : (
           <div className="card" style={{ textAlign: "center", padding: "40px 24px" }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>📊</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>No weekly review yet</div>
-            <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>Generated automatically during each weekly check-in.</p>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t.week.emptyTitle}</div>
+            <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>{t.week.emptyBody}</p>
           </div>
         )
       )}
@@ -959,10 +982,10 @@ export default function ProgressTabs({
           <>
             {hasPMC && <PMCChart ctlData={ctlSeries!.data} atlData={atlSeries!.data} tsbData={tsbSeries!.data} events={events} />}
             <ActivityHeatmap activities={completedActivities} />
-            <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 12 }}>Colored dots show zone status · click any chart to expand</p>
+            <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 12 }}>{t.trends.hint}</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
               {gridSeries.map((s, i) => (
-                <CompactChart key={i} series={s} selected={expandedLabel === s.label} onClick={() => setExpandedLabel(p => p === s.label ? null : s.label)} />
+                <CompactChart key={i} series={s} selected={expandedKey === seriesKey(s)} onClick={() => setExpandedKey(p => p === seriesKey(s) ? null : seriesKey(s))} />
               ))}
             </div>
             {expandedSeries && (
@@ -974,12 +997,12 @@ export default function ProgressTabs({
                   display: "flex", alignItems: "center", justifyContent: "center",
                   padding: "24px 16px",
                 }}
-                onClick={e => { if (e.target === e.currentTarget) setExpandedLabel(null); }}
+                onClick={e => { if (e.target === e.currentTarget) setExpandedKey(null); }}
               >
                 <div style={{
                   width: "min(940px, 92vw)", maxHeight: "88vh", overflow: "auto",
                 }}>
-                  <ExpandedChart series={expandedSeries} events={events} onClose={() => setExpandedLabel(null)} />
+                  <ExpandedChart series={expandedSeries} events={events} onClose={() => setExpandedKey(null)} />
                 </div>
               </div>
             )}
@@ -987,9 +1010,9 @@ export default function ProgressTabs({
         ) : (
           <div className="card" style={{ textAlign: "center", padding: "40px 24px" }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>📈</div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Not enough history yet</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t.trends.emptyTitle}</div>
             <p style={{ color: "var(--muted)", fontSize: 14, maxWidth: 360, margin: "0 auto", lineHeight: 1.6 }}>
-              Run <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>--sync-history</code> to backfill from Garmin.
+              {trendsSyncBefore}<code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>--sync-history</code>{trendsSyncAfter}
             </p>
           </div>
         )
@@ -997,7 +1020,7 @@ export default function ProgressTabs({
 
       {tab === "analysis" && hasAnalysis && (
         <div>
-          {latestAnalysisDate && <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 16 }}>Generated {fmtDate(latestAnalysisDate, true)}</p>}
+          {latestAnalysisDate && <p style={{ fontSize: 12, color: "var(--dim)", marginBottom: 16 }}>{t.analysis.generatedOn.replace("{date}", fmtDate(latestAnalysisDate, language, true))}</p>}
           {analysisHtml && planningHtml
             ? <AnalysisTabs analysis={analysisHtml} planning={planningHtml} />
             : <div className="report-content" dangerouslySetInnerHTML={{ __html: extractMain(analysisHtml ?? planningHtml ?? "") }} />
@@ -1009,17 +1032,18 @@ export default function ProgressTabs({
 }
 
 function AnalysisTabs({ analysis, planning }: { analysis: string; planning: string }) {
+  const t = useT().report;
   const [inner, setInner] = useState<"analysis" | "planning">("analysis");
   return (
     <>
       <div style={{ display: "flex", gap: 4, marginBottom: 16, borderBottom: "1px solid var(--border)" }}>
-        {(["analysis", "planning"] as const).map(t => (
-          <button key={t} onClick={() => setInner(t)} style={{
+        {(["analysis", "planning"] as const).map(tabKey => (
+          <button key={tabKey} onClick={() => setInner(tabKey)} style={{
             background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "6px 14px",
-            color: inner === t ? "var(--text)" : "var(--muted)",
-            borderBottom: inner === t ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1,
+            color: inner === tabKey ? "var(--text)" : "var(--muted)",
+            borderBottom: inner === tabKey ? "2px solid var(--accent)" : "2px solid transparent", marginBottom: -1,
           }}>
-            {t === "analysis" ? "Analysis" : "Training plan"}
+            {tabKey === "analysis" ? t.analysis.analysisTab : t.analysis.planningTab}
           </button>
         ))}
       </div>

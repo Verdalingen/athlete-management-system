@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 type Props = {
   onScan: (barcode: string) => void;
@@ -37,6 +38,8 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
 type Mode = "live" | "capture-opening" | "capture-decoding" | "capture-error";
 
 export function BarcodeScanner({ onScan, onClose }: Props) {
+  const nt = useT().nutrition;
+  const t = nt.barcodeScanner;
   const videoRef = useRef<HTMLVideoElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -120,7 +123,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
       const result = await reader.decodeFromImageUrl(url);
       onScan(result.getText());
     } catch {
-      setErrorMsg("No barcode found in that photo. Try again with the barcode centered and in focus.");
+      setErrorMsg(t.noBarcodeFound);
       setMode("capture-error");
     } finally {
       URL.revokeObjectURL(url);
@@ -164,7 +167,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
             textAlign: "center", color: "rgba(255,255,255,.75)", fontSize: 13, fontWeight: 600,
           }}
         >
-          Align barcode within the frame
+          {t.alignFrame}
         </div>
 
         <div
@@ -174,7 +177,7 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
             background: "linear-gradient(rgba(0,0,0,.6), transparent)",
           }}
         >
-          <button onClick={() => { stopLive(); onClose(); }} style={buttonStyle}>✕ Cancel</button>
+          <button onClick={() => { stopLive(); onClose(); }} style={buttonStyle}>✕ {nt.actions.cancel}</button>
         </div>
       </div>
     );
@@ -206,16 +209,16 @@ export function BarcodeScanner({ onScan, onClose }: Props) {
           textAlign: "center", maxWidth: 320,
         }}
       >
-        {mode === "capture-opening" && "Opening camera…"}
-        {mode === "capture-decoding" && "Reading barcode…"}
+        {mode === "capture-opening" && t.openingCamera}
+        {mode === "capture-decoding" && t.readingBarcode}
         {mode === "capture-error" && <span style={{ color: "var(--red)" }}>{errorMsg}</span>}
       </div>
 
       <div style={{ display: "flex", gap: 12 }}>
         {mode === "capture-error" && (
-          <button onClick={() => setMode("capture-opening")} style={buttonStyle}>Try again</button>
+          <button onClick={() => setMode("capture-opening")} style={buttonStyle}>{t.tryAgain}</button>
         )}
-        <button onClick={onClose} style={buttonStyle}>Cancel</button>
+        <button onClick={onClose} style={buttonStyle}>{nt.actions.cancel}</button>
       </div>
     </div>
   );

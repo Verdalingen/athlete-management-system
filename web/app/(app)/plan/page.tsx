@@ -8,6 +8,9 @@ import type { DayData } from "./PlanCalendar";
 import { ReplanPanel } from "./ReplanPanel";
 import { getReplanJobs } from "@/app/actions/replan";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
+import { localeTag } from "@/lib/i18n/language";
 
 // ── Markdown parsers ──────────────────────────────────────────────────────────
 
@@ -20,7 +23,7 @@ interface PlanMeta {
   totalWeeks: number;
 }
 
-function parseMeta(md: string, start: string, end: string): PlanMeta {
+function parseMeta(md: string, start: string, end: string, defaultTitle: string): PlanMeta {
   const titleMatch   = md.match(/^#\s+(.+)$/m);
   const phaseMatch   = md.match(/\*\*Phase:\*\*\s*([^\n|]+)/);
   const chronicMatch = md.match(/\*\*Chronic Load Entry:\*\*\s*([^\n|]+)/);
@@ -30,7 +33,7 @@ function parseMeta(md: string, start: string, end: string): PlanMeta {
   const totalDays = Math.round((new Date(end).getTime() - new Date(start).getTime()) / msPerDay) + 1;
 
   return {
-    title:       titleMatch?.[1]?.trim() ?? "Training Plan",
+    title:       titleMatch?.[1]?.trim() ?? defaultTitle,
     phase:       phaseMatch?.[1]?.trim() ?? "",
     chronicLoad: chronicMatch?.[1]?.trim() ?? "",
     target:      targetMatch?.[1]?.trim() ?? "",
@@ -46,6 +49,8 @@ export default async function PlanPage() {
   const today = todayISO();
   const sb    = createServerClient();
   const uid   = await getUserId();
+  const language = await getAuthenticatedLanguage(uid);
+  const t = dictionaries[language].plan;
 
   const planRes = await sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1);
   const plan: Plan | null = planRes.data?.[0] ?? null;
@@ -73,7 +78,7 @@ export default async function PlanPage() {
     return (
       <div className="page">
         <div className="card" style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)" }}>
-          No plan found. Run <code style={{ fontFamily: "var(--mono)", fontSize: 13 }}>--replan</code> to generate one.
+          {t.empty.noPlanPrefix} <code style={{ fontFamily: "var(--mono)", fontSize: 13 }}>--replan</code> {t.empty.noPlanSuffix}
         </div>
       </div>
     );
@@ -117,10 +122,10 @@ export default async function PlanPage() {
     weightRecommendations[exerciseId] = getWeightRecommendation(sets);
   }
 
-  const meta      = parseMeta(plan.markdown, plan.start_date, plan.end_date);
+  const meta      = parseMeta(plan.markdown, plan.start_date, plan.end_date, t.header.defaultTitle);
   const weekGoals = parseWeekGoals(plan.markdown);
 
-  const created = new Date(plan.created_at).toLocaleDateString("en-GB", {
+  const created = new Date(plan.created_at).toLocaleDateString(localeTag(language), {
     day: "numeric", month: "long", year: "numeric",
   });
 
@@ -131,22 +136,22 @@ export default async function PlanPage() {
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{meta.title}</h1>
         <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          {formatShort(plan.start_date)} – {formatShort(plan.end_date)}
-          &nbsp;·&nbsp; {meta.totalWeeks} weeks
-          &nbsp;·&nbsp;Generated {created}
+          {formatShort(plan.start_date, language)} – {formatShort(plan.end_date, language)}
+          &nbsp;·&nbsp; {meta.totalWeeks} {t.header.weeks}
+          &nbsp;·&nbsp;{t.header.generated.replace("{date}", created)}
         </p>
       </div>
 
       {/* ── Replan actions ── */}
       <section className="section" style={{ marginTop: 0, marginBottom: 24 }}>
-        <h2 className="section-title">Actions</h2>
+        <h2 className="section-title">{t.actions.title}</h2>
         <ReplanPanel initialJobs={replanJobs} scheduledDays={(daysRes.data ?? []) as ScheduledDay[]} />
       </section>
 
       {/* ── Phase banner ── */}
       {meta.phase && (() => {
         const phaseMatch = meta.phase.match(/^([\d\s→\-–]+)\s*\(([^)]+)\)/);
-        const phaseLabel = phaseMatch ? `Phase ${phaseMatch[1].trim()}` : null;
+        const phaseLabel = phaseMatch ? t.phase.phaseNumber.replace("{number}", phaseMatch[1].trim()) : null;
         const phaseName  = phaseMatch ? phaseMatch[2].trim() : meta.phase;
 
         const startMs    = new Date(plan.start_date + "T00:00:00").getTime();
@@ -160,13 +165,15 @@ export default async function PlanPage() {
             {/* Top row */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--accent)" }}>
-                {phaseLabel ?? "Current Phase"}
+                {phaseLabel ?? t.phase.current}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {meta.chronicLoad && (
-                  <span style={{ fontSize: 11, color: "var(--dim)" }}>Entry load {meta.chronicLoad}</span>
+                  <span style={{ fontSize: 11, color: "var(--dim)" }}>{t.phase.entryLoad.replace("{value}", meta.chronicLoad)}</span>
                 )}
-                <span className="badge badge-accent">Week {currentWeek} / {meta.totalWeeks}</span>
+                <span className="badge badge-accent">
+                  {t.phase.week.replace("{current}", String(currentWeek)).replace("{total}", String(meta.totalWeeks))}
+                </span>
               </div>
             </div>
 
@@ -178,7 +185,7 @@ export default async function PlanPage() {
             {/* Season progress */}
             <div style={{ marginBottom: meta.target ? 16 : 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                <span style={{ fontSize: 11, color: "var(--dim)" }}>Season progress</span>
+                <span style={{ fontSize: 11, color: "var(--dim)" }}>{t.phase.seasonProgress}</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", fontFamily: "var(--mono)" }}>
                   {Math.round(progress)}%
                 </span>
@@ -192,7 +199,7 @@ export default async function PlanPage() {
             {meta.target && (
               <div style={{ borderTop: "1px solid rgba(var(--overlay-rgb),.07)", paddingTop: 14 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 6 }}>
-                  Target
+                  {t.phase.target}
                 </div>
                 <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{meta.target}</div>
               </div>
@@ -203,7 +210,7 @@ export default async function PlanPage() {
 
       {/* ── Season calendar (interactive) ── */}
       <section className="section">
-        <h2 className="section-title">Season Calendar</h2>
+        <h2 className="section-title">{t.seasonCalendar.title}</h2>
         <PlanCalendar
           startDate={plan.start_date}
           endDate={plan.end_date}
@@ -218,13 +225,13 @@ export default async function PlanPage() {
       {/* ── Week-by-week strategy ── */}
       {weekGoals.length > 0 && (
         <section className="section">
-          <h2 className="section-title">Week-by-week Strategy</h2>
+          <h2 className="section-title">{t.strategy.title}</h2>
           <div className="card" style={{ padding: 0 }}>
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: "30%" }}>Week</th>
-                  <th>Goal</th>
+                  <th style={{ width: "30%" }}>{t.strategy.week}</th>
+                  <th>{t.strategy.goal}</th>
                 </tr>
               </thead>
               <tbody>

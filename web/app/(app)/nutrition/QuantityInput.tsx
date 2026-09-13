@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useQuantityInput, type Portion } from "./useQuantityInput";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 type Props = {
   initialGrams: number;
@@ -18,6 +19,7 @@ type Props = {
  * underlying food changes, rather than syncing props into internal state.
  */
 export function QuantityInput({ initialGrams, portions, onChange, loading, compact }: Props) {
+  const t = useT().nutrition.quantityInput;
   const q = useQuantityInput(initialGrams, portions);
 
   useEffect(() => {
@@ -51,18 +53,18 @@ export function QuantityInput({ initialGrams, portions, onChange, loading, compa
         onChange={e => q.setUnit(e.target.value || null)}
         style={compact ? { width: 92, padding: "4px 6px", fontSize: 11 } : { fontSize }}
       >
-        <option value="">Grams</option>
+        <option value="">{t.gramsOption}</option>
         {portions.map(p => (
           <option key={p.label} value={p.label}>{p.label}</option>
         ))}
-        {loading && <option disabled>Loading…</option>}
+        {loading && <option disabled>{t.loading}</option>}
       </select>
 
       {q.activePortion && (
         <span style={{ fontSize: 10, color: "var(--dim)" }}>= {Math.round(q.grams)}g</span>
       )}
       {loading && !q.activePortion && (
-        <span style={{ fontSize: 10, color: "var(--dim)" }}>Loading portions…</span>
+        <span style={{ fontSize: 10, color: "var(--dim)" }}>{t.loadingPortions}</span>
       )}
     </div>
   );

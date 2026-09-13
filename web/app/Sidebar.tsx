@@ -3,6 +3,8 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useT } from "@/lib/i18n/LanguageContext";
+import type { Dictionary } from "@/lib/i18n/types";
 
 // Same useSyncExternalStore approach as ThemeContext/UnitSystemContext: resolves the real
 // collapsed state synchronously on the client instead of a mount-effect setState. The blocking
@@ -26,16 +28,20 @@ function getCollapsedServerSnapshot(): boolean {
   return false;
 }
 
-const NAV = [
-  { href: "/",           label: "Today",     icon: "ti-home" },
-  { href: "/plan",       label: "Plan",      icon: "ti-route" },
-  { href: "/nutrition",  label: "Nutrition", icon: "ti-salad" },
-  { href: "/report",     label: "Progress",  icon: "ti-trending-up" },
-];
+function navItems(t: Dictionary) {
+  return [
+    { href: "/",           label: t.sidebar.nav.today,      icon: "ti-home" },
+    { href: "/plan",       label: t.sidebar.nav.plan,       icon: "ti-route" },
+    { href: "/nutrition",  label: t.sidebar.nav.nutrition,  icon: "ti-salad" },
+    { href: "/report",     label: t.sidebar.nav.progress,   icon: "ti-trending-up" },
+  ];
+}
 
-const BOTTOM_ITEM = { href: "/profile", label: "Settings", icon: "ti-settings" };
+function bottomItem(t: Dictionary) {
+  return { href: "/profile", label: t.sidebar.nav.settings, icon: "ti-settings" };
+}
 
-function NavItems({ items, onNavigate }: { items: typeof NAV; onNavigate?: () => void }) {
+function NavItems({ items, onNavigate }: { items: ReturnType<typeof navItems>; onNavigate?: () => void }) {
   const pathname = usePathname();
   function isActive(href: string) {
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -58,14 +64,14 @@ function NavItems({ items, onNavigate }: { items: typeof NAV; onNavigate?: () =>
   );
 }
 
-function BottomTabBar() {
+function BottomTabBar({ items }: { items: ReturnType<typeof navItems> }) {
   const pathname = usePathname();
   function isActive(href: string) {
     return href === "/" ? pathname === "/" : pathname.startsWith(href);
   }
   return (
     <nav className="tab-bar" aria-label="Primary">
-      {NAV.map(({ href, label, icon }) => (
+      {items.map(({ href, label, icon }) => (
         <Link
           key={href}
           href={href}
@@ -81,6 +87,9 @@ function BottomTabBar() {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const t = useT();
+  const NAV = navItems(t);
+  const BOTTOM_ITEM = bottomItem(t);
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
 
   // The blocking script in layout.tsx already snapshotted the collapse preference onto
@@ -109,12 +118,12 @@ export function Sidebar() {
         <div className="sb-brand">
           <div className="sb-brand-text">
             <span className="sb-brand-name">AMS</span>
-            <span className="sb-brand-sub">Athlete Management System</span>
+            <span className="sb-brand-sub">{t.sidebar.brandSub}</span>
           </div>
           <button
             className="sb-collapse-btn"
             onClick={toggleCollapsed}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? t.sidebar.expand : t.sidebar.collapse}
           >
             <i className={`ti ${collapsed ? "ti-arrow-bar-right" : "ti-arrow-bar-left"}`} aria-hidden="true" />
           </button>
@@ -143,7 +152,7 @@ export function Sidebar() {
       </header>
 
       {/* ── Mobile: fixed bottom tab bar ── */}
-      <BottomTabBar />
+      <BottomTabBar items={NAV} />
     </>
   );
 }

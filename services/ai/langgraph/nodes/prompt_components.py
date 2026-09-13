@@ -95,6 +95,31 @@ def get_plotting_instructions(agent_name: str) -> str:
 - **Placement**: Place the reference where it best supports your analysis. Do not repeat it."""
 
 
+_LANGUAGE_NAMES = {"no": "Norwegian (bokmål)"}
+
+
+def get_language_instructions(language: str | None) -> str:
+    """Instruction block telling the model what language to write athlete-facing text in.
+
+    Empty for English (the model's default), so this is a no-op addition to every existing
+    prompt unless the athlete has actually selected Norwegian — see
+    supabase/migrations/042_user_settings_language.sql and services.supabase.athlete_profile
+    .get_athlete_language() for where `language` comes from.
+    """
+    name = _LANGUAGE_NAMES.get(language or "en")
+    if not name:
+        return ""
+    return f"""
+## Output Language
+Write all athlete-facing natural-language text — analysis, feedback, plan descriptions, coach
+notes, HTML report prose — in {name}. This applies to session/focus names too (e.g. "Recovery
+Run", "Easy Aerobic", "Tempo Run") — translate their meaning into {name} rather than copying
+any English example label shown elsewhere in this prompt verbatim; those examples illustrate
+the *kind* of label to produce, not literal text to output. Keep structured field names, enum
+values (e.g. session types, zone letters), units, dates, and any JSON/code keys exactly as
+specified elsewhere in this prompt; only the natural-language prose changes language."""
+
+
 def get_hitl_instructions(agent_name: str) -> str:
     return """
 ## Human Interaction

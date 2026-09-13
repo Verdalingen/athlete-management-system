@@ -3,6 +3,8 @@
 // grid-building logic (leading blanks, trailing padding to a full week) lives
 // in one place.
 
+import type { Language } from "@/lib/i18n/language";
+
 export interface CalDay {
   iso: string | null;
   day: number | null;
@@ -13,6 +15,20 @@ export const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 export const DAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+const MONTH_NAMES_NO = [
+  "Januar", "Februar", "Mars", "April", "Mai", "Juni",
+  "Juli", "August", "September", "Oktober", "November", "Desember",
+];
+const DAY_HEADERS_NO = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
+
+export function monthNames(language: Language): string[] {
+  return language === "no" ? MONTH_NAMES_NO : MONTH_NAMES;
+}
+
+export function dayHeaders(language: Language): string[] {
+  return language === "no" ? DAY_HEADERS_NO : DAY_HEADERS;
+}
 
 export function buildMonthCells(year: number, month: number): CalDay[] {
   const first = new Date(year, month, 1);

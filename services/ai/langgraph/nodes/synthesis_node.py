@@ -9,6 +9,7 @@ from services.ai.model_config import ModelSelector
 from services.ai.tools.plotting import PlotStorage
 from services.ai.utils.retry_handler import AI_ANALYSIS_CONFIG, retry_with_backoff
 
+from .prompt_components import get_language_instructions
 from .tool_calling_helper import handle_tool_calling_in_node
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ async def synthesis_node(state: TrainingAnalysisState) -> dict[str, list | str]:
                 messages=[
                     {"role": "system", "content": (
                         SYNTHESIS_SYSTEM_PROMPT_BASE + (SYNTHESIS_PLOT_INSTRUCTIONS if plotting_enabled else "")
+                        + get_language_instructions(state.get("language"))
                     )},
                     {"role": "user", "content": (
                         SYNTHESIS_USER_PROMPT_BASE.format(

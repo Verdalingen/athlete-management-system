@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { saveMaxHR } from "@/app/actions/user-settings";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 interface Props {
   manualValue: number | null;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function MaxHRInput({ manualValue, garminEstimate }: Props) {
+  const t = useT().profile.maxHR;
   const [editing, setEditing] = useState(false);
   const [inputVal, setInputVal] = useState(manualValue?.toString() ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function MaxHRInput({ manualValue, garminEstimate }: Props) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
-            Max Heart Rate
+            {t.label}
           </div>
           {!editing && (
             <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
@@ -54,21 +56,21 @@ export function MaxHRInput({ manualValue, garminEstimate }: Props) {
               </span>
               {effectiveHR && <span style={{ fontSize: 13, color: "var(--muted)" }}>bpm</span>}
               {source === "manual" && (
-                <span className="badge" style={{ fontSize: 10 }}>Manual</span>
+                <span className="badge" style={{ fontSize: 10 }}>{t.manual}</span>
               )}
               {source === "garmin" && (
-                <span className="badge badge-cyan" style={{ fontSize: 10 }}>Estimated from Garmin</span>
+                <span className="badge badge-cyan" style={{ fontSize: 10 }}>{t.estimatedFromGarmin}</span>
               )}
             </div>
           )}
           {garminEstimate && manualValue != null && (
             <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>
-              Garmin estimate: {garminEstimate} bpm
+              {t.garminEstimate.replace("{value}", String(garminEstimate))}
             </div>
           )}
           {!effectiveHR && !editing && (
             <div style={{ fontSize: 13, color: "var(--dim)", marginTop: 2 }}>
-              Not set — enter manually or run the CLI to estimate from Garmin data
+              {t.notSet}
             </div>
           )}
         </div>
@@ -76,7 +78,7 @@ export function MaxHRInput({ manualValue, garminEstimate }: Props) {
         {!editing && (
           <button className="btn-secondary" onClick={handleEdit} style={{ flexShrink: 0 }}>
             <i className="ti ti-pencil" style={{ marginRight: 6 }} />
-            {effectiveHR ? "Edit" : "Set"}
+            {effectiveHR ? t.edit : t.set}
           </button>
         )}
       </div>

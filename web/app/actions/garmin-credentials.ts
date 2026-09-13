@@ -1,13 +1,23 @@
 "use server";
 
 import { createServerClient, getUserId } from "@/lib/supabase-server";
+import { dictionaries } from "@/lib/i18n/dictionaries";
+import { getAuthenticatedLanguage, getCookieLanguage } from "@/lib/i18n/getServerLanguage";
+
+// `uid` is only known once getUserId() has resolved, so a failure inside it (or before it)
+// leaves us without an account to look up a saved language for — fall back to the pre-auth
+// cookie in that case, same as getAuthenticatedLanguage itself does for a brand-new account.
+async function resolveErrorLanguage(uid: string | undefined) {
+  return uid ? getAuthenticatedLanguage(uid) : getCookieLanguage();
+}
 
 export async function storeGarminCredentials(
   email: string,
   password: string,
 ): Promise<{ error: string | null }> {
+  let uid: string | undefined;
   try {
-    const uid = await getUserId();
+    uid = await getUserId();
     const sb = createServerClient();
     const { error } = await sb.rpc("store_garmin_credentials", {
       p_user_id: uid,
@@ -17,13 +27,16 @@ export async function storeGarminCredentials(
     if (error) return { error: error.message };
     return { error: null };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Unknown error" };
+    const t = dictionaries[await resolveErrorLanguage(uid)].setup.garmin;
+    if (e instanceof Error) return { error: e.message === "Not authenticated" ? t.notAuthenticated : e.message };
+    return { error: t.unknownError };
   }
 }
 
 export async function deleteGarminCredentials(): Promise<{ error: string | null }> {
+  let uid: string | undefined;
   try {
-    const uid = await getUserId();
+    uid = await getUserId();
     const sb = createServerClient();
     const { error } = await sb.rpc("delete_garmin_credentials", {
       p_user_id: uid,
@@ -31,7 +44,9 @@ export async function deleteGarminCredentials(): Promise<{ error: string | null 
     if (error) return { error: error.message };
     return { error: null };
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Unknown error" };
+    const t = dictionaries[await resolveErrorLanguage(uid)].setup.garmin;
+    if (e instanceof Error) return { error: e.message === "Not authenticated" ? t.notAuthenticated : e.message };
+    return { error: t.unknownError };
   }
 }
 

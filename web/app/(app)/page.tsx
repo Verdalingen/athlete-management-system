@@ -18,10 +18,14 @@ import { getReplanJobs } from "@/app/actions/replan";
 import { RefreshDataButton } from "./RefreshDataButton";
 import type { TrendSeries } from "./report/ProgressTabs";
 import { GoalProgressGrid } from "./GoalProgressGrid";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
+import { localeTag } from "@/lib/i18n/language";
+import type { Dictionary } from "@/lib/i18n/types";
 
-function greeting(hour: number, name: string): string {
-  const part = hour < 5 ? "night" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-  return `Good ${part}, ${name}`;
+function greeting(hour: number, name: string, t: Dictionary["dashboard"]["greeting"]): string {
+  const part = hour < 5 ? t.night : hour < 12 ? t.morning : hour < 18 ? t.afternoon : t.evening;
+  return t.template.replace("{part}", part).replace("{name}", name);
 }
 
 // Maps a `var(--x)` color token to its `-rgb` companion for use inside rgba().
@@ -46,6 +50,9 @@ export default async function DashboardPage() {
   const { start: weekStart, end: weekEnd } = weekBounds(today);
   const sb = createServerClient();
   const uid = await getUserId();
+  const language = await getAuthenticatedLanguage(uid);
+  const t = dictionaries[language].dashboard;
+  const locale = localeTag(language);
 
   const planRes = await sb.from("plans").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(1);
   const plan: Plan | null = planRes.data?.[0] ?? null;
@@ -192,11 +199,11 @@ export default async function DashboardPage() {
     return { label, value, unit, baselineMean: baseline?.mean ?? null, direction, flagged };
   }
   const sicknessSignals = [
-    sicknessSignal("HRV (overnight)", sicknessLatest?.hrv_overnight ?? null, "ms", baselineStats(sicknessBaselineRows.map(r => r.hrv_overnight)), "below"),
-    sicknessSignal("Resting HR", sicknessLatest?.rhr ?? null, "bpm", baselineStats(sicknessBaselineRows.map(r => r.rhr)), "above"),
-    sicknessSignal("Respiration Rate", sicknessLatest?.respiration_avg ?? null, "br/min", baselineStats(sicknessBaselineRows.map(r => r.respiration_avg)), "above"),
-    sicknessSignal("Sleep Stress", sicknessLatest?.sleep_stress_avg ?? null, "/100", baselineStats(sicknessBaselineRows.map(r => r.sleep_stress_avg)), "above"),
-    sicknessSignal("Body Battery Recharge", sicknessLatest?.body_battery_overnight_gain ?? null, "pts", baselineStats(sicknessBaselineRows.map(r => r.body_battery_overnight_gain)), "below"),
+    sicknessSignal(t.sicknessSignals.hrvOvernight, sicknessLatest?.hrv_overnight ?? null, "ms", baselineStats(sicknessBaselineRows.map(r => r.hrv_overnight)), "below"),
+    sicknessSignal(t.sicknessSignals.restingHr, sicknessLatest?.rhr ?? null, "bpm", baselineStats(sicknessBaselineRows.map(r => r.rhr)), "above"),
+    sicknessSignal(t.sicknessSignals.respirationRate, sicknessLatest?.respiration_avg ?? null, "br/min", baselineStats(sicknessBaselineRows.map(r => r.respiration_avg)), "above"),
+    sicknessSignal(t.sicknessSignals.sleepStress, sicknessLatest?.sleep_stress_avg ?? null, "/100", baselineStats(sicknessBaselineRows.map(r => r.sleep_stress_avg)), "above"),
+    sicknessSignal(t.sicknessSignals.bodyBatteryRecharge, sicknessLatest?.body_battery_overnight_gain ?? null, "pts", baselineStats(sicknessBaselineRows.map(r => r.body_battery_overnight_gain)), "below"),
   ];
 
   // Weight recommendation per exercise_id, from actual completed performance history —
@@ -281,25 +288,25 @@ export default async function DashboardPage() {
   // Bench e1RM: full history from analyses, one point per check-in (no daily equivalent).
   const benchRows = (benchRes.data ?? []) as { report_date: string; bench_e1rm_kg: number | null }[];
   const benchSeries: TrendSeries = {
-    label: "Bench e1RM (Epley)", unit: "kg", color: "#c084fc", decimals: 1, higherIsBetter: true,
+    label: t.benchGoal.chartLabel, unit: "kg", color: "#c084fc", decimals: 1, higherIsBetter: true,
     data: benchRows.map(r => ({ date: r.report_date, value: r.bench_e1rm_kg })),
   };
   // Race-time series are charted in decimal minutes (raw seconds reads badly on an axis
   // next to the other decimal-scale charts) — same conversion the original 5K chart used.
   const predicted5kSeries: TrendSeries = {
-    label: "Predicted 5K", unit: "min", color: "#38bdf8", decimals: 1, higherIsBetter: false,
+    label: t.racePredictions.chart5k, unit: "min", color: "#38bdf8", decimals: 1, higherIsBetter: false,
     data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_5k_secs != null ? r.predicted_5k_secs / 60 : null })),
   };
   const predicted10kSeries: TrendSeries = {
-    label: "Predicted 10K", unit: "min", color: "#34d399", decimals: 1, higherIsBetter: false,
+    label: t.racePredictions.chart10k, unit: "min", color: "#34d399", decimals: 1, higherIsBetter: false,
     data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_10k_secs != null ? r.predicted_10k_secs / 60 : null })),
   };
   const predictedHalfMarathonSeries: TrendSeries = {
-    label: "Predicted Half Marathon", unit: "min", color: "#f59e0b", decimals: 1, higherIsBetter: false,
+    label: t.racePredictions.chartHalf, unit: "min", color: "#f59e0b", decimals: 1, higherIsBetter: false,
     data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_half_marathon_secs != null ? r.predicted_half_marathon_secs / 60 : null })),
   };
   const predictedMarathonSeries: TrendSeries = {
-    label: "Predicted Marathon", unit: "min", color: "#f87171", decimals: 1, higherIsBetter: false,
+    label: t.racePredictions.chartMarathon, unit: "min", color: "#f87171", decimals: 1, higherIsBetter: false,
     data: raceHistoryRows.map(r => ({ date: r.date, value: r.predicted_marathon_secs != null ? r.predicted_marathon_secs / 60 : null })),
   };
   const benchChartReady = benchSeries.data.filter(d => d.value !== null).length >= 3;
@@ -313,10 +320,10 @@ export default async function DashboardPage() {
   // predicted time — a race-time number alone doesn't say much without this.
   const goalCharts: { key: string; series: TrendSeries; ready: boolean; caption?: string }[] = [
     { key: "bench", series: benchSeries, ready: benchChartReady },
-    { key: "5k", series: predicted5kSeries, ready: predicted5kChartReady, caption: predicted5kSecs != null ? `Target pace: ${fmtPace(predicted5kSecs, 5)}` : undefined },
-    { key: "10k", series: predicted10kSeries, ready: predicted10kChartReady, caption: predicted10kSecs != null ? `Target pace: ${fmtPace(predicted10kSecs, 10)}` : undefined },
-    { key: "half", series: predictedHalfMarathonSeries, ready: predictedHalfMarathonChartReady, caption: predictedHalfMarathonSecs != null ? `Target pace: ${fmtPace(predictedHalfMarathonSecs, 21.0975)}` : undefined },
-    { key: "marathon", series: predictedMarathonSeries, ready: predictedMarathonChartReady, caption: predictedMarathonSecs != null ? `Target pace: ${fmtPace(predictedMarathonSecs, 42.195)}` : undefined },
+    { key: "5k", series: predicted5kSeries, ready: predicted5kChartReady, caption: predicted5kSecs != null ? t.racePredictions.targetPace.replace("{pace}", fmtPace(predicted5kSecs, 5)) : undefined },
+    { key: "10k", series: predicted10kSeries, ready: predicted10kChartReady, caption: predicted10kSecs != null ? t.racePredictions.targetPace.replace("{pace}", fmtPace(predicted10kSecs, 10)) : undefined },
+    { key: "half", series: predictedHalfMarathonSeries, ready: predictedHalfMarathonChartReady, caption: predictedHalfMarathonSecs != null ? t.racePredictions.targetPace.replace("{pace}", fmtPace(predictedHalfMarathonSecs, 21.0975)) : undefined },
+    { key: "marathon", series: predictedMarathonSeries, ready: predictedMarathonChartReady, caption: predictedMarathonSecs != null ? t.racePredictions.targetPace.replace("{pace}", fmtPace(predictedMarathonSecs, 42.195)) : undefined },
   ].filter(g => g.ready);
 
   return (
@@ -333,10 +340,10 @@ export default async function DashboardPage() {
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div>
               <h1 className="dashboard-greeting" style={{ fontFamily: "var(--font-display)", fontWeight: 700, lineHeight: 1.1, letterSpacing: "-.5px", marginBottom: 4 }}>
-                {greeting(new Date().getHours(), firstName)}
+                {greeting(new Date().getHours(), firstName, t.greeting)}
               </h1>
               <p style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--dim)" }}>
-                {formatLong(today)}
+                {formatLong(today, language)}
               </p>
             </div>
             <RefreshDataButton lastSyncedAt={lastSyncedAt} initialJobs={replanJobs} />
@@ -348,6 +355,7 @@ export default async function DashboardPage() {
               hrvOvernight={sicknessLatest?.hrv_overnight ?? null}
               hrvBaseline={hrvBaseline}
               sleepHours={sicknessLatest?.sleep_hours ?? null}
+              t={t.readiness}
             />
           )}
 
@@ -368,37 +376,37 @@ export default async function DashboardPage() {
               }}>
                 <i className="ti ti-moon-stars" style={{ fontSize: 22, color: "var(--accent)" }} aria-hidden="true" />
               </div>
-              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Rest Day</h2>
-              <p style={{ color: "var(--muted)", fontSize: 14 }}>No session planned today. Recover, eat well, sleep.</p>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, marginBottom: 6 }}>{t.restDay.title}</h2>
+              <p style={{ color: "var(--muted)", fontSize: 14 }}>{t.restDay.description}</p>
             </div>
           )}
 
           <div className="card" style={{ marginTop: 0 }}>
-            <div className="card-title" style={{ margin: "0 0 12px" }}>This Week</div>
+            <div className="card-title" style={{ margin: "0 0 12px" }}>{t.thisWeek.title}</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <MiniStat
-                label="Season"
-                value={meso ? <>Week {meso.week}<span style={{ fontWeight: 400, fontSize: 13, color: "var(--dim)" }}> /{meso.totalWeeks}</span></> : "No plan"}
-                note={meso ? `${meso.daysLeft}d left` : undefined}
+                label={t.thisWeek.season}
+                value={meso ? <>{t.thisWeek.week} {meso.week}<span style={{ fontWeight: 400, fontSize: 13, color: "var(--dim)" }}> /{meso.totalWeeks}</span></> : t.thisWeek.noPlan}
+                note={meso ? t.thisWeek.daysLeft.replace("{days}", String(meso.daysLeft)) : undefined}
               />
               <MiniStat
-                label="Next check-in"
-                value={daysUntilCheckin === null ? "—" : checkinOverdue ? "Due" : `${daysUntilCheckin}d`}
+                label={t.thisWeek.nextCheckin}
+                value={daysUntilCheckin === null ? "—" : checkinOverdue ? t.thisWeek.due : t.thisWeek.daysCount.replace("{days}", String(daysUntilCheckin))}
                 valueColor={checkinOverdue ? "var(--amber)" : undefined}
                 note={
                   daysUntilCheckin === null ? undefined
                     : checkinOverdue ? <CheckInCTA daysSinceCheckin={daysSinceCheckin} />
-                    : nextCheckinDate ? formatShort(nextCheckinDate.toISOString().slice(0, 10)) : undefined
+                    : nextCheckinDate ? formatShort(nextCheckinDate.toISOString().slice(0, 10), language) : undefined
                 }
               />
               <MiniStat
-                label="This week"
-                value={`${sessionCount} sessions`}
-                note={keyCount > 0 ? `${keyCount} key ${keyCount === 1 ? "session" : "sessions"}` : "No key sessions"}
+                label={t.thisWeek.thisWeekLabel}
+                value={t.thisWeek.sessionsCount.replace("{count}", String(sessionCount))}
+                note={keyCount > 0 ? `${keyCount} ${keyCount === 1 ? t.thisWeek.keySession : t.thisWeek.keySessions}` : t.thisWeek.noKeySessions}
               />
               <MiniStat
-                label="Next key"
-                value={nextKey ? `${formatWeekday(nextKey.date)} · ${formatShort(nextKey.date)}` : "None upcoming"}
+                label={t.thisWeek.nextKey}
+                value={nextKey ? `${formatWeekday(nextKey.date, language)} · ${formatShort(nextKey.date, language)}` : t.thisWeek.noneUpcoming}
                 note={nextKey ? (nextKey.focus ?? nextKey.session_type) : undefined}
               />
             </div>
@@ -422,7 +430,7 @@ export default async function DashboardPage() {
       <section className="section">
         <div className="dashboard-activity-grid">
           <FitnessTrendChart data={fitnessTrendData} />
-          <RecentSessionsList activities={completedActivities} />
+          <RecentSessionsList activities={completedActivities} t={t.recentSessions} language={language} />
         </div>
       </section>
 
@@ -434,7 +442,7 @@ export default async function DashboardPage() {
       {/* ── Action prompts (season-end only — check-in CTA lives in "This Week") ── */}
       <DashboardActions
         seasonEnded={seasonEnded}
-        planEndDate={plan ? formatShort(plan.end_date) : ""}
+        planEndDate={plan ? formatShort(plan.end_date, language) : ""}
       />
 
       {/* ── Goals ────────────────────────────────────────────────────────── */}
@@ -459,25 +467,25 @@ export default async function DashboardPage() {
                         background: `rgba(${rgbVar(priorityColor)}, .12)`, color: priorityColor,
                         border: `1px solid rgba(${rgbVar(priorityColor)}, .32)`, flexShrink: 0,
                       }}>
-                        {ev.priority} race
+                        {t.events.priorityRace.replace("{priority}", ev.priority)}
                       </span>
                     )}
                     {!isPast && daysToEvent !== null && (
                       <span style={{ fontSize: 12, color: "var(--dim)", marginLeft: "auto" }}>
-                        {daysToEvent === 0 ? "Today!" : daysToEvent === 1 ? "Tomorrow" : `${daysToEvent} days`}
+                        {daysToEvent === 0 ? t.events.today : daysToEvent === 1 ? t.events.tomorrow : t.events.daysAway.replace("{days}", String(daysToEvent))}
                       </span>
                     )}
-                    {isPast && <span className="badge">Completed</span>}
+                    {isPast && <span className="badge">{t.events.completed}</span>}
                   </div>
                   <div className="card-title" style={{ margin: "0 0 4px", fontSize: 15 }}>{ev.name}</div>
                   {ev.date && (
                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
-                      {new Date(ev.date).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                      {new Date(ev.date).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
                     </div>
                   )}
                   {ev.target_time && (
                     <div style={{ fontSize: 13 }}>
-                      <span style={{ color: "var(--dim)" }}>Target </span>
+                      <span style={{ color: "var(--dim)" }}>{t.events.target} </span>
                       <span style={{ color: priorityColor, fontWeight: 700 }}>{ev.target_time}</span>
                     </div>
                   )}
@@ -490,8 +498,8 @@ export default async function DashboardPage() {
             {benchE1rm != null && !benchChartReady && (
               <div className="card">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                  <div className="card-title" style={{ margin: 0 }}>Bench Press</div>
-                  <span className="badge badge-accent" style={{ fontSize: 10 }}>est. 1RM</span>
+                  <div className="card-title" style={{ margin: 0 }}>{t.benchGoal.title}</div>
+                  <span className="badge badge-accent" style={{ fontSize: 10 }}>{t.benchGoal.estBadge}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
                   <span className="goal-current">{benchE1rm.toFixed(1)}</span>
@@ -499,11 +507,11 @@ export default async function DashboardPage() {
                 </div>
                 {athleteProfile?.bench_1rm_kg != null && (
                   <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>
-                    Profile baseline: {athleteProfile.bench_1rm_kg} kg
+                    {t.benchGoal.profileBaseline.replace("{value}", String(athleteProfile.bench_1rm_kg))}
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 6 }}>
-                  Epley formula from last session&apos;s top set
+                  {t.benchGoal.footnote}
                 </div>
               </div>
             )}
@@ -518,38 +526,38 @@ export default async function DashboardPage() {
              (predictedMarathonSecs != null && !predictedMarathonChartReady) ? (
               <div className="card">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                  <div className="card-title" style={{ margin: 0 }}>Race Predictions</div>
-                  <span className="badge badge-cyan" style={{ fontSize: 10 }}>Garmin</span>
+                  <div className="card-title" style={{ margin: 0 }}>{t.racePredictions.title}</div>
+                  <span className="badge badge-cyan" style={{ fontSize: 10 }}>{t.racePredictions.sourceBadge}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {predicted5kSecs != null && !predicted5kChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--dim)" }}>5 km</span>
+                      <span style={{ color: "var(--dim)" }}>{t.racePredictions.fiveK}</span>
                       <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predicted5kSecs)}</span>
                     </div>
                   )}
                   {predicted10kSecs != null && !predicted10kChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--dim)" }}>10 km</span>
+                      <span style={{ color: "var(--dim)" }}>{t.racePredictions.tenK}</span>
                       <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predicted10kSecs)}</span>
                     </div>
                   )}
                   {predictedHalfMarathonSecs != null && !predictedHalfMarathonChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--dim)" }}>Half marathon</span>
+                      <span style={{ color: "var(--dim)" }}>{t.racePredictions.halfMarathon}</span>
                       <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predictedHalfMarathonSecs)}</span>
                     </div>
                   )}
                   {predictedMarathonSecs != null && !predictedMarathonChartReady && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                      <span style={{ color: "var(--dim)" }}>Marathon</span>
+                      <span style={{ color: "var(--dim)" }}>{t.racePredictions.marathon}</span>
                       <span style={{ fontWeight: 700, fontFamily: "var(--mono)" }}>{fmtRaceTime(predictedMarathonSecs)}</span>
                     </div>
                   )}
                 </div>
                 {athleteProfile?.run_5k_time && (
                   <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 8 }}>
-                    Profile 5k: {athleteProfile.run_5k_time}
+                    {t.racePredictions.profile5k.replace("{value}", athleteProfile.run_5k_time)}
                   </div>
                 )}
               </div>
@@ -574,40 +582,41 @@ export default async function DashboardPage() {
 
 // ── Readiness strip ───────────────────────────────────────────────────────────
 
-function ReadinessStrip({ kpis, hrvOvernight, hrvBaseline, sleepHours }: {
+function ReadinessStrip({ kpis, hrvOvernight, hrvBaseline, sleepHours, t }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   kpis: Record<string, any>;
   hrvOvernight: number | null;
   hrvBaseline: { mean: number; std: number } | null;
   sleepHours: number | null;
+  t: Dictionary["dashboard"]["readiness"];
 }) {
   type Pill = { label: string; detail?: string; color: string; icon: string };
   const pills: Pill[] = [];
 
   const tsb = kpis.training_load?.tsb;
   if (tsb != null) {
-    const label = tsb > 10 ? "Fresh" : tsb > -10 ? "Balanced" : tsb > -30 ? "Building" : "Fatigued";
+    const label = tsb > 10 ? t.tsbFresh : tsb > -10 ? t.tsbBalanced : tsb > -30 ? t.tsbBuilding : t.tsbFatigued;
     const color = tsb > 10 ? "var(--green)" : tsb > -10 ? "var(--cyan)" : tsb > -30 ? "var(--amber)" : "var(--red)";
-    pills.push({ label, detail: `TSB ${tsb > 0 ? "+" : ""}${Math.round(tsb)}`, color, icon: "ti-wave-sine" });
+    pills.push({ label, detail: t.tsbDetail.replace("{value}", `${tsb > 0 ? "+" : ""}${Math.round(tsb)}`), color, icon: "ti-wave-sine" });
   }
 
   const acwr = kpis.training_load?.acwr_uncoupled;
   if (acwr != null) {
-    const label = acwr > 1.5 ? "Danger" : acwr > 1.3 ? "High load" : acwr >= 0.8 ? "ACWR ok" : "Underload";
+    const label = acwr > 1.5 ? t.acwrDanger : acwr > 1.3 ? t.acwrHigh : acwr >= 0.8 ? t.acwrOk : t.acwrUnder;
     const color = acwr > 1.5 ? "var(--red)" : acwr > 1.3 ? "var(--amber)" : acwr >= 0.8 ? "var(--green)" : "var(--cyan)";
-    pills.push({ label, detail: `ACWR ${acwr.toFixed(2)}`, color, icon: "ti-alert-triangle" });
+    pills.push({ label, detail: t.acwrDetail.replace("{value}", acwr.toFixed(2)), color, icon: "ti-alert-triangle" });
   }
 
   const readiness = kpis.training_readiness?.score;
   if (readiness != null) {
     const color = readiness >= 70 ? "var(--green)" : readiness >= 40 ? "var(--amber)" : "var(--red)";
-    pills.push({ label: `Ready ${Math.round(readiness)}`, color, icon: "ti-bolt" });
+    pills.push({ label: t.ready.replace("{value}", String(Math.round(readiness))), color, icon: "ti-bolt" });
   }
 
   const bb = kpis.body_battery?.latest;
   if (bb != null) {
     const color = bb >= 60 ? "var(--green)" : bb >= 40 ? "var(--amber)" : "var(--red)";
-    pills.push({ label: `Battery ${Math.round(bb)}%`, color, icon: "ti-battery-2" });
+    pills.push({ label: t.battery.replace("{value}", String(Math.round(bb))), color, icon: "ti-battery-2" });
   }
 
   // Last night's overnight HRV, same daily_metrics.hrv_overnight + baseline the
@@ -619,8 +628,8 @@ function ReadinessStrip({ kpis, hrvOvernight, hrvBaseline, sleepHours }: {
   if (hrvOvernight != null) {
     const low = hrvBaseline != null && hrvOvernight < hrvBaseline.mean - hrvBaseline.std;
     const color = low ? "var(--amber)" : "var(--green)";
-    const status = low ? "HRV low" : "HRV ok";
-    pills.push({ label: status, detail: `${Math.round(hrvOvernight)} ms`, color, icon: "ti-heart-rate-monitor" });
+    const status = low ? t.hrvLow : t.hrvOk;
+    pills.push({ label: status, detail: t.hrvDetail.replace("{value}", String(Math.round(hrvOvernight))), color, icon: "ti-heart-rate-monitor" });
   }
 
   // Last night's sleep duration, same daily_metrics.sleep_hours Sickness Watch
@@ -628,7 +637,7 @@ function ReadinessStrip({ kpis, hrvOvernight, hrvBaseline, sleepHours }: {
   // mean mislabeled "7-day avg" in the report-generation code.
   if (sleepHours != null) {
     const color = sleepHours >= 7.5 ? "var(--green)" : sleepHours >= 6 ? "var(--amber)" : "var(--red)";
-    pills.push({ label: `Sleep ${sleepHours.toFixed(1)} h`, color, icon: "ti-moon" });
+    pills.push({ label: t.sleep.replace("{value}", sleepHours.toFixed(1)), color, icon: "ti-moon" });
   }
 
   if (pills.length === 0) return null;

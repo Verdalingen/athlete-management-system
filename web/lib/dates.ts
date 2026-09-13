@@ -1,3 +1,5 @@
+import { localeTag, type Language } from "@/lib/i18n/language";
+
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -29,8 +31,8 @@ export function weekBounds(today: string): { start: string; end: string } {
   };
 }
 
-export function formatLong(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
+export function formatLong(iso: string, language: Language = "en"): string {
+  return new Date(iso).toLocaleDateString(localeTag(language), {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -38,15 +40,15 @@ export function formatLong(iso: string): string {
   });
 }
 
-export function formatShort(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
+export function formatShort(iso: string, language: Language = "en"): string {
+  return new Date(iso).toLocaleDateString(localeTag(language), {
     day: "numeric",
     month: "short",
   });
 }
 
-export function formatWeekday(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { weekday: "short" });
+export function formatWeekday(iso: string, language: Language = "en"): string {
+  return new Date(iso).toLocaleDateString(localeTag(language), { weekday: "short" });
 }
 
 export function daysBetween(a: string, b: string): number {

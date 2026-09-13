@@ -2,11 +2,15 @@ import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { getAthleteProfile } from "@/app/actions/athlete-profile";
 import { daysAgoISO } from "@/lib/dates";
 import type { CompletedActivity } from "@/lib/types";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 import ProgressTabs, { type TrendSeries, type ZoneBand, type ZoneLine } from "./ProgressTabs";
 
 export default async function ProgressPage() {
   const sb = createServerClient();
   const uid = await getUserId();
+  const language = await getAuthenticatedLanguage(uid);
+  const t = dictionaries[language].report;
 
   const activityHistoryStart = daysAgoISO(365);
 
@@ -100,6 +104,8 @@ export default async function ProgressPage() {
     lineR:   "rgba(239,68,68,0.8)",
   };
 
+  const sv = t.trends.series;
+
   // ── Recovery composite (0–100): HRV×35% + sleep×30% + battery×25% + RHR×10%
   const recoveryData = dailyRows.map(r => {
     let score = 0, weight = 0;
@@ -126,14 +132,15 @@ export default async function ProgressPage() {
     trendSeries = [
       // ── ACWR — workload safety (from the article) ───────────────────────
       {
-        label: "Workload Ratio (ACWR)",
+        key: "acwr",
+        label: sv.acwr.label,
         unit: "",
         color: "#7c3aed",
         decimals: 2,
         zoneBands: [
-          { min: -Infinity, max: 0.8,  fill: Z.amber, severity: "warning", label: "Under-training (<0.8)",  chartLabel: "Under-training" },
-          { min: 0.8,       max: 1.3,  fill: Z.green, severity: "optimal", label: "Optimal zone (0.8–1.3)", chartLabel: "Optimal Zone" },
-          { min: 1.3,       max: Infinity, fill: Z.red, severity: "danger", label: "Risk zone (>1.3)",      chartLabel: "Risk Zone" },
+          { min: -Infinity, max: 0.8,  fill: Z.amber, severity: "warning", label: sv.acwr.zones.underTraining.label, chartLabel: sv.acwr.zones.underTraining.chart },
+          { min: 0.8,       max: 1.3,  fill: Z.green, severity: "optimal", label: sv.acwr.zones.optimal.label,       chartLabel: sv.acwr.zones.optimal.chart },
+          { min: 1.3,       max: Infinity, fill: Z.red, severity: "danger", label: sv.acwr.zones.risk.label,         chartLabel: sv.acwr.zones.risk.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 0.8, label: "0.8", color: Z.lineG },
@@ -144,19 +151,21 @@ export default async function ProgressPage() {
 
       // ── CTL / ATL / TSB — shown together in PMC ─────────────────────────
       {
-        label: "Fitness (CTL)",
-        unit: "load", color: "var(--accent)", decimals: 1, higherIsBetter: true,
+        key: "ctl",
+        label: sv.ctl.label,
+        unit: t.trends.units.load, color: "var(--accent)", decimals: 1, higherIsBetter: true,
         data: dailyRows.map(r => ({ date: r.date, value: r.ctl ?? null })),
       },
       {
-        label: "Form (TSB)",
+        key: "tsb",
+        label: sv.tsb.label,
         unit: "", color: "var(--accent)", decimals: 1,
         zoneBands: [
-          { min: -Infinity, max: -30, fill: Z.red,     severity: "danger",  label: "Overreaching (<-30)",   chartLabel: "Overreaching" },
-          { min: -30,       max: -10, fill: Z.amber,   severity: "warning", label: "Training load (-30–-10)", chartLabel: "Training load" },
-          { min: -10,       max: 5,   fill: Z.green,   severity: "optimal", label: "Race-ready (-10 to +5)", chartLabel: "Race-ready" },
-          { min: 5,         max: 25,  fill: Z.neutral, severity: "neutral", label: "Fresh (+5 to +25)",      chartLabel: "Fresh" },
-          { min: 25, max: Infinity,   fill: Z.amber,   severity: "warning", label: "Overtapered (>+25)",     chartLabel: "Overtapered" },
+          { min: -Infinity, max: -30, fill: Z.red,     severity: "danger",  label: sv.tsb.zones.overreaching.label, chartLabel: sv.tsb.zones.overreaching.chart },
+          { min: -30,       max: -10, fill: Z.amber,   severity: "warning", label: sv.tsb.zones.trainingLoad.label, chartLabel: sv.tsb.zones.trainingLoad.chart },
+          { min: -10,       max: 5,   fill: Z.green,   severity: "optimal", label: sv.tsb.zones.raceReady.label,    chartLabel: sv.tsb.zones.raceReady.chart },
+          { min: 5,         max: 25,  fill: Z.neutral, severity: "neutral", label: sv.tsb.zones.fresh.label,        chartLabel: sv.tsb.zones.fresh.chart },
+          { min: 25, max: Infinity,   fill: Z.amber,   severity: "warning", label: sv.tsb.zones.overtapered.label,  chartLabel: sv.tsb.zones.overtapered.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: -30, label: "-30", color: Z.lineR },
@@ -167,19 +176,21 @@ export default async function ProgressPage() {
         data: dailyRows.map(r => ({ date: r.date, value: r.tsb ?? null })),
       },
       {
-        label: "Fatigue (ATL)",
-        unit: "load", color: "var(--red)", decimals: 1,
+        key: "atl",
+        label: sv.atl.label,
+        unit: t.trends.units.load, color: "var(--red)", decimals: 1,
         data: dailyRows.map(r => ({ date: r.date, value: r.atl ?? null })),
       },
 
       // ── Recovery composite ──────────────────────────────────────────────
       {
-        label: "Recovery Score",
+        key: "recovery",
+        label: sv.recovery.label,
         unit: "/100", color: "#34d399", decimals: 0, higherIsBetter: true,
         zoneBands: [
-          { min: -Infinity, max: 40,  fill: Z.red,   severity: "danger",  label: "Recovery required (<40)", chartLabel: "Recovery required" },
-          { min: 40,        max: 65,  fill: Z.amber, severity: "warning", label: "Caution zone (40–65)",    chartLabel: "Caution" },
-          { min: 65,        max: Infinity, fill: Z.green, severity: "optimal", label: "Optimal recovery (>65)", chartLabel: "Optimal recovery" },
+          { min: -Infinity, max: 40,  fill: Z.red,   severity: "danger",  label: sv.recovery.zones.required.label, chartLabel: sv.recovery.zones.required.chart },
+          { min: 40,        max: 65,  fill: Z.amber, severity: "warning", label: sv.recovery.zones.caution.label,  chartLabel: sv.recovery.zones.caution.chart },
+          { min: 65,        max: Infinity, fill: Z.green, severity: "optimal", label: sv.recovery.zones.optimal.label, chartLabel: sv.recovery.zones.optimal.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 40, label: "40", color: Z.lineR },
@@ -190,23 +201,25 @@ export default async function ProgressPage() {
 
       // ── VO2max ──────────────────────────────────────────────────────────
       {
-        label: "VO₂max",
+        key: "vo2max",
+        label: sv.vo2max.label,
         unit: "ml/kg/min", color: "#10b981", decimals: 1, higherIsBetter: true,
         data: forwardFill(dailyRows.map(r => ({ date: r.date, value: r.vo2max_running ?? r.vo2max_cycling ?? null }))),
       },
 
       // ── HRV — personal baseline ─────────────────────────────────────────
       {
-        label: "HRV (overnight)",
+        key: "hrv",
+        label: sv.hrv.label,
         unit: "ms", color: "#fbbf24", decimals: 0, higherIsBetter: true,
         zoneBands: hrvMean != null && hrvStd != null ? [
-          { min: -Infinity,            max: hrvMean - hrvStd * 2, fill: Z.red,     severity: "danger",  label: "Suppressed (>2 SD below)", chartLabel: "Suppressed" },
-          { min: hrvMean - hrvStd * 2, max: hrvMean - hrvStd,     fill: Z.amber,   severity: "warning", label: "Low (1–2 SD below)",       chartLabel: "Low" },
-          { min: hrvMean - hrvStd,     max: hrvMean + hrvStd,      fill: Z.green,  severity: "optimal", label: `Baseline ±1 SD (${hrvMean.toFixed(0)} ms)`, chartLabel: "Baseline" },
-          { min: hrvMean + hrvStd,     max: Infinity,              fill: Z.neutral, severity: "neutral", label: "Elevated (>1 SD above)",   chartLabel: "Elevated" },
+          { min: -Infinity,            max: hrvMean - hrvStd * 2, fill: Z.red,     severity: "danger",  label: sv.hrv.zones.suppressed.label, chartLabel: sv.hrv.zones.suppressed.chart },
+          { min: hrvMean - hrvStd * 2, max: hrvMean - hrvStd,     fill: Z.amber,   severity: "warning", label: sv.hrv.zones.low.label,        chartLabel: sv.hrv.zones.low.chart },
+          { min: hrvMean - hrvStd,     max: hrvMean + hrvStd,      fill: Z.green,  severity: "optimal", label: sv.hrv.zones.baseline.labelTemplate.replace("{value}", hrvMean.toFixed(0)), chartLabel: sv.hrv.zones.baseline.chart },
+          { min: hrvMean + hrvStd,     max: Infinity,              fill: Z.neutral, severity: "neutral", label: sv.hrv.zones.elevated.label,   chartLabel: sv.hrv.zones.elevated.chart },
         ] satisfies ZoneBand[] : [],
         zoneLines: hrvMean != null && hrvStd != null ? [
-          { value: hrvMean,          label: `Baseline ${hrvMean.toFixed(0)} ms`, color: Z.lineG },
+          { value: hrvMean,          label: sv.hrv.lines.baselineTemplate.replace("{value}", hrvMean.toFixed(0)), color: Z.lineG },
           { value: hrvMean - hrvStd, label: "−1 SD",                              color: Z.lineA },
         ] satisfies ZoneLine[] : [],
         data: dailyRows.map(r => ({ date: r.date, value: r.hrv_overnight ?? null })),
@@ -214,12 +227,13 @@ export default async function ProgressPage() {
 
       // ── Sleep ────────────────────────────────────────────────────────────
       {
-        label: "Sleep Score",
+        key: "sleep_score",
+        label: sv.sleepScore.label,
         unit: "/100", color: "#a78bfa", decimals: 0, higherIsBetter: true,
         zoneBands: [
-          { min: -Infinity, max: 50,  fill: Z.red,   severity: "danger",  label: "Poor (<50)",   chartLabel: "Poor" },
-          { min: 50,        max: 70,  fill: Z.amber, severity: "warning", label: "Fair (50–70)", chartLabel: "Fair" },
-          { min: 70, max: Infinity,   fill: Z.green, severity: "optimal", label: "Good (>70)",   chartLabel: "Good" },
+          { min: -Infinity, max: 50,  fill: Z.red,   severity: "danger",  label: sv.sleepScore.zones.poor.label, chartLabel: sv.sleepScore.zones.poor.chart },
+          { min: 50,        max: 70,  fill: Z.amber, severity: "warning", label: sv.sleepScore.zones.fair.label, chartLabel: sv.sleepScore.zones.fair.chart },
+          { min: 70, max: Infinity,   fill: Z.green, severity: "optimal", label: sv.sleepScore.zones.good.label, chartLabel: sv.sleepScore.zones.good.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 50, label: "50", color: Z.lineR },
@@ -228,31 +242,33 @@ export default async function ProgressPage() {
         data: dailyRows.map(r => ({ date: r.date, value: r.sleep_score ?? null })),
       },
       {
-        label: "Sleep Hours",
-        unit: "h", color: "#818cf8", decimals: 1, higherIsBetter: true,
+        key: "sleep_hours",
+        label: sv.sleepHours.label,
+        unit: t.trends.units.hours, color: "#818cf8", decimals: 1, higherIsBetter: true,
         zoneBands: [
-          { min: -Infinity, max: 6, fill: Z.red,     severity: "danger",  label: "Too little (<6 h)",  chartLabel: "Too little" },
-          { min: 6,         max: 7, fill: Z.amber,   severity: "warning", label: "Marginal (6–7 h)",   chartLabel: "Marginal" },
-          { min: 7,         max: 9, fill: Z.green,   severity: "optimal", label: "Optimal (7–9 h)",    chartLabel: "Optimal" },
-          { min: 9, max: Infinity,  fill: Z.neutral, severity: "neutral", label: "Long (>9 h)",         chartLabel: "Long" },
+          { min: -Infinity, max: 6, fill: Z.red,     severity: "danger",  label: sv.sleepHours.zones.tooLittle.label, chartLabel: sv.sleepHours.zones.tooLittle.chart },
+          { min: 6,         max: 7, fill: Z.amber,   severity: "warning", label: sv.sleepHours.zones.marginal.label,  chartLabel: sv.sleepHours.zones.marginal.chart },
+          { min: 7,         max: 9, fill: Z.green,   severity: "optimal", label: sv.sleepHours.zones.optimal.label,   chartLabel: sv.sleepHours.zones.optimal.chart },
+          { min: 9, max: Infinity,  fill: Z.neutral, severity: "neutral", label: sv.sleepHours.zones.long.label,      chartLabel: sv.sleepHours.zones.long.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
-          { value: 6, label: "6 h", color: Z.lineR },
-          { value: 7, label: "7 h", color: Z.lineG },
-          { value: 9, label: "9 h", color: Z.lineA },
+          { value: 6, label: `6 ${t.trends.units.hours}`, color: Z.lineR },
+          { value: 7, label: `7 ${t.trends.units.hours}`, color: Z.lineG },
+          { value: 9, label: `9 ${t.trends.units.hours}`, color: Z.lineA },
         ] satisfies ZoneLine[],
         data: dailyRows.map(r => ({ date: r.date, value: r.sleep_hours ?? null })),
       },
 
       // ── Physiological signals ────────────────────────────────────────────
       {
-        label: "Resting Heart Rate",
+        key: "rhr",
+        label: sv.rhr.label,
         unit: "bpm", color: "var(--red)", decimals: 0, higherIsBetter: false,
         zoneBands: [
-          { min: -Infinity, max: 50,  fill: Z.green,   severity: "optimal", label: "Excellent (<50)",   chartLabel: "Excellent" },
-          { min: 50,        max: 60,  fill: Z.neutral, severity: "neutral", label: "Good (50–60)",      chartLabel: "Good" },
-          { min: 60,        max: 70,  fill: Z.amber,   severity: "warning", label: "Moderate (60–70)",  chartLabel: "Moderate" },
-          { min: 70, max: Infinity,   fill: Z.red,     severity: "danger",  label: "Elevated (>70)",    chartLabel: "Elevated" },
+          { min: -Infinity, max: 50,  fill: Z.green,   severity: "optimal", label: sv.rhr.zones.excellent.label, chartLabel: sv.rhr.zones.excellent.chart },
+          { min: 50,        max: 60,  fill: Z.neutral, severity: "neutral", label: sv.rhr.zones.good.label,      chartLabel: sv.rhr.zones.good.chart },
+          { min: 60,        max: 70,  fill: Z.amber,   severity: "warning", label: sv.rhr.zones.moderate.label,  chartLabel: sv.rhr.zones.moderate.chart },
+          { min: 70, max: Infinity,   fill: Z.red,     severity: "danger",  label: sv.rhr.zones.elevated.label,  chartLabel: sv.rhr.zones.elevated.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 50, label: "50", color: Z.lineG },
@@ -262,12 +278,13 @@ export default async function ProgressPage() {
         data: dailyRows.map(r => ({ date: r.date, value: r.rhr ?? null })),
       },
       {
-        label: "Body Battery (EOD)",
+        key: "body_battery",
+        label: sv.bodyBattery.label,
         unit: "%", color: "#34d399", decimals: 0, higherIsBetter: true,
         zoneBands: [
-          { min: -Infinity, max: 25,  fill: Z.red,   severity: "danger",  label: "Depleted (<25)", chartLabel: "Depleted" },
-          { min: 25,        max: 50,  fill: Z.amber, severity: "warning", label: "Low (25–50)",    chartLabel: "Low" },
-          { min: 50, max: Infinity,   fill: Z.green, severity: "optimal", label: "Good (>50)",     chartLabel: "Good" },
+          { min: -Infinity, max: 25,  fill: Z.red,   severity: "danger",  label: sv.bodyBattery.zones.depleted.label, chartLabel: sv.bodyBattery.zones.depleted.chart },
+          { min: 25,        max: 50,  fill: Z.amber, severity: "warning", label: sv.bodyBattery.zones.low.label,      chartLabel: sv.bodyBattery.zones.low.chart },
+          { min: 50, max: Infinity,   fill: Z.green, severity: "optimal", label: sv.bodyBattery.zones.good.label,     chartLabel: sv.bodyBattery.zones.good.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 25, label: "25%", color: Z.lineR },
@@ -276,12 +293,13 @@ export default async function ProgressPage() {
         data: dailyRows.map(r => ({ date: r.date, value: r.body_battery ?? null })),
       },
       {
-        label: "Daily Stress",
+        key: "stress",
+        label: sv.stress.label,
         unit: "", color: "#fb923c", decimals: 0, higherIsBetter: false,
         zoneBands: [
-          { min: -Infinity, max: 25,  fill: Z.green, severity: "optimal", label: "Low (<25)",      chartLabel: "Low" },
-          { min: 25,        max: 50,  fill: Z.amber, severity: "warning", label: "Moderate (25–50)", chartLabel: "Moderate" },
-          { min: 50, max: Infinity,   fill: Z.red,   severity: "danger",  label: "High (>50)",     chartLabel: "High stress" },
+          { min: -Infinity, max: 25,  fill: Z.green, severity: "optimal", label: sv.stress.zones.low.label,      chartLabel: sv.stress.zones.low.chart },
+          { min: 25,        max: 50,  fill: Z.amber, severity: "warning", label: sv.stress.zones.moderate.label, chartLabel: sv.stress.zones.moderate.chart },
+          { min: 50, max: Infinity,   fill: Z.red,   severity: "danger",  label: sv.stress.zones.high.label,     chartLabel: sv.stress.zones.high.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 25, label: "25", color: Z.lineG },
@@ -292,32 +310,35 @@ export default async function ProgressPage() {
 
       // ── Load adaptation rate (bar chart) ────────────────────────────────
       {
-        label: "Load Adaptation Rate",
-        unit: "CTL/wk", color: "var(--green)", decimals: 1, chartType: "bar",
+        key: "ramp_rate",
+        label: sv.rampRate.label,
+        unit: t.trends.units.ctlPerWeek, color: "var(--green)", decimals: 1, chartType: "bar",
         zoneBands: [
-          { min: -Infinity, max: -5,  fill: Z.amber, severity: "warning", label: "Detraining (<-5)",    chartLabel: "Detraining" },
-          { min: -5,        max:  0,  fill: Z.neutral, severity: "neutral", label: "Recovery (-5–0)",   chartLabel: "Recovery" },
-          { min:  0,        max:  7,  fill: Z.green, severity: "optimal", label: "Optimal build (0–7)", chartLabel: "Optimal build" },
-          { min:  7,        max: 12,  fill: Z.amber, severity: "warning", label: "Caution (7–12)",      chartLabel: "Caution" },
-          { min: 12, max: Infinity,   fill: Z.red,   severity: "danger",  label: "Injury risk (>12)",   chartLabel: "Injury risk" },
+          { min: -Infinity, max: -5,  fill: Z.amber, severity: "warning", label: sv.rampRate.zones.detraining.label,   chartLabel: sv.rampRate.zones.detraining.chart },
+          { min: -5,        max:  0,  fill: Z.neutral, severity: "neutral", label: sv.rampRate.zones.recovery.label,   chartLabel: sv.rampRate.zones.recovery.chart },
+          { min:  0,        max:  7,  fill: Z.green, severity: "optimal", label: sv.rampRate.zones.optimalBuild.label, chartLabel: sv.rampRate.zones.optimalBuild.chart },
+          { min:  7,        max: 12,  fill: Z.amber, severity: "warning", label: sv.rampRate.zones.caution.label,      chartLabel: sv.rampRate.zones.caution.chart },
+          { min: 12, max: Infinity,   fill: Z.red,   severity: "danger",  label: sv.rampRate.zones.injuryRisk.label,   chartLabel: sv.rampRate.zones.injuryRisk.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
-          { value:  7, label: "7 — caution",      color: Z.lineA },
-          { value: 12, label: "12 — injury risk",  color: Z.lineR },
+          { value:  7, label: `7 — ${sv.rampRate.lines.caution}`,      color: Z.lineA },
+          { value: 12, label: `12 — ${sv.rampRate.lines.injuryRisk}`,  color: Z.lineR },
         ] satisfies ZoneLine[],
         data: dailyRows.map(r => ({ date: r.date, value: r.ramp_7d ?? null })),
       },
 
       // ── Body weight ──────────────────────────────────────────────────────
       {
-        label: "Body Weight",
+        key: "weight",
+        label: sv.weight.label,
         unit: "kg", color: "var(--dim)", decimals: 1,
         data: dailyRows.map(r => ({ date: r.date, value: r.weight_kg ?? null })),
       },
 
       // ── Calories burned (Garmin measured daily expenditure) ─────────────
       {
-        label: "Calories Burned",
+        key: "calories",
+        label: sv.calories.label,
         unit: "kcal", color: "#fb7185", decimals: 0, chartType: "bar",
         data: dailyRows.map(r => ({ date: r.date, value: r.total_calories ?? null })),
       },
@@ -326,23 +347,25 @@ export default async function ProgressPage() {
     // Fallback from analyses.kpis snapshots (limited zone support)
     trendSeries = [
       {
-        label: "Fitness (CTL)",
-        unit: "load",
+        key: "ctl",
+        label: sv.ctl.label,
+        unit: t.trends.units.load,
         color: "var(--accent)",
         decimals: 1,
         higherIsBetter: true,
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.training_load?.chronic_28d_avg ?? null })),
       },
       {
-        label: "Form (TSB)",
+        key: "tsb",
+        label: sv.tsb.label,
         unit: "",
         color: "var(--accent)",
         decimals: 1,
         zoneBands: [
-          { min: -Infinity, max: -30, fill: Z.red,     severity: "danger",  label: "Overreaching" },
-          { min: -30,       max: -10, fill: Z.amber,   severity: "warning", label: "Training load" },
-          { min: -10,       max: 5,   fill: Z.green,   severity: "optimal", label: "Race-ready" },
-          { min: 5,         max: Infinity, fill: Z.neutral, severity: "neutral", label: "Fresh" },
+          { min: -Infinity, max: -30, fill: Z.red,     severity: "danger",  label: sv.tsb.zones.overreaching.chart },
+          { min: -30,       max: -10, fill: Z.amber,   severity: "warning", label: sv.tsb.zones.trainingLoad.chart },
+          { min: -10,       max: 5,   fill: Z.green,   severity: "optimal", label: sv.tsb.zones.raceReady.chart },
+          { min: 5,         max: Infinity, fill: Z.neutral, severity: "neutral", label: sv.tsb.zones.fresh.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: -30, label: "-30", color: Z.lineR },
@@ -352,7 +375,8 @@ export default async function ProgressPage() {
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.training_load?.tsb ?? null })),
       },
       {
-        label: "VO₂max",
+        key: "vo2max",
+        label: sv.vo2max.label,
         unit: "ml/kg/min",
         color: "#34d399",
         decimals: 1,
@@ -360,7 +384,8 @@ export default async function ProgressPage() {
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.physiological?.vo2max_running ?? null })),
       },
       {
-        label: "HRV",
+        key: "hrv",
+        label: sv.hrv.shortLabel,
         unit: "ms",
         color: "#fbbf24",
         decimals: 0,
@@ -368,15 +393,16 @@ export default async function ProgressPage() {
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.hrv?.weekly_avg ?? null })),
       },
       {
-        label: "Sleep Score",
+        key: "sleep_score",
+        label: sv.sleepScore.label,
         unit: "/100",
         color: "#a78bfa",
         decimals: 0,
         higherIsBetter: true,
         zoneBands: [
-          { min: -Infinity, max: 50,  fill: Z.red,   severity: "danger",  label: "Poor" },
-          { min: 50,        max: 70,  fill: Z.amber, severity: "warning", label: "Fair" },
-          { min: 70,        max: Infinity, fill: Z.green, severity: "optimal", label: "Good" },
+          { min: -Infinity, max: 50,  fill: Z.red,   severity: "danger",  label: sv.sleepScore.zones.poor.chart },
+          { min: 50,        max: 70,  fill: Z.amber, severity: "warning", label: sv.sleepScore.zones.fair.chart },
+          { min: 70,        max: Infinity, fill: Z.green, severity: "optimal", label: sv.sleepScore.zones.good.chart },
         ] satisfies ZoneBand[],
         zoneLines: [
           { value: 50, label: "50", color: Z.lineR },
@@ -385,7 +411,8 @@ export default async function ProgressPage() {
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.sleep?.avg_score ?? null })),
       },
       {
-        label: "Resting Heart Rate",
+        key: "rhr",
+        label: sv.rhr.label,
         unit: "bpm",
         color: "var(--red)",
         decimals: 0,
@@ -393,7 +420,8 @@ export default async function ProgressPage() {
         data: fallbackRows.map(r => ({ date: r.report_date, value: r.kpis?.physiological?.rhr ?? null })),
       },
       {
-        label: "Body Weight",
+        key: "weight",
+        label: sv.weight.label,
         unit: "kg",
         color: "var(--dim)",
         decimals: 1,
@@ -411,40 +439,47 @@ export default async function ProgressPage() {
   // fewer than 3 non-null points (`activeSeries` filter), so duplicating that
   // threshold here would just be a second place for it to drift out of sync.
   trendSeries.push({
-    label: "Bench e1RM (Epley)",
+    key: "bench_e1rm",
+    label: sv.benchE1rm.label,
     unit: "kg", color: "#c084fc", decimals: 1, higherIsBetter: true,
     data: benchRows.map(r => ({ date: r.report_date, value: r.bench_e1rm_kg })),
   });
   trendSeries.push({
-    label: "Predicted 5K",
+    key: "pred_5k",
+    label: sv.pred5k.label,
     unit: "min", color: "#38bdf8", decimals: 1, higherIsBetter: false,
     data: dailyRows.map(r => ({ date: r.date, value: r.predicted_5k_secs != null ? r.predicted_5k_secs / 60 : null })),
   });
   trendSeries.push({
-    label: "Predicted 10K",
+    key: "pred_10k",
+    label: sv.pred10k.label,
     unit: "min", color: "#34d399", decimals: 1, higherIsBetter: false,
     data: dailyRows.map(r => ({ date: r.date, value: r.predicted_10k_secs != null ? r.predicted_10k_secs / 60 : null })),
   });
   trendSeries.push({
-    label: "Predicted Half Marathon",
+    key: "pred_half_marathon",
+    label: sv.predHalfMarathon.label,
     unit: "min", color: "#f59e0b", decimals: 1, higherIsBetter: false,
     data: dailyRows.map(r => ({ date: r.date, value: r.predicted_half_marathon_secs != null ? r.predicted_half_marathon_secs / 60 : null })),
   });
   trendSeries.push({
-    label: "Predicted Marathon",
+    key: "pred_marathon",
+    label: sv.predMarathon.label,
     unit: "min", color: "#f87171", decimals: 1, higherIsBetter: false,
     data: dailyRows.map(r => ({ date: r.date, value: r.predicted_marathon_secs != null ? r.predicted_marathon_secs / 60 : null })),
   });
 
+  const [syncHistoryBefore, syncHistoryAfter] = t.header.syncHistoryHint.split("{cmd}");
+
   return (
     <div className="page">
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Progress</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{t.header.title}</h1>
         <p style={{ color: "var(--muted)", fontSize: 13 }}>
-          Weekly reviews, long-term trends, and season analysis
+          {t.header.subtitle}
           {!useDailyMetrics && dailyRows.length === 0 && (
             <span style={{ color: "var(--amber)", marginLeft: 8 }}>
-              · Run <code style={{ fontFamily: "var(--mono)" }}>--sync-history</code> to load full Garmin history
+              · {syncHistoryBefore}<code style={{ fontFamily: "var(--mono)" }}>--sync-history</code>{syncHistoryAfter}
             </span>
           )}
         </p>

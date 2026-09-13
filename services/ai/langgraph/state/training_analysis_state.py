@@ -13,6 +13,7 @@ from services.ai.langgraph.schemas import (
 class TrainingAnalysisState(MessagesState):
     user_id: str
     athlete_name: str
+    language: str
     garmin_data: dict[str, Any]
     mfp_data: dict[str, Any] | None
     analysis_context: str
@@ -82,6 +83,7 @@ def create_initial_state(
     user_id: str,
     athlete_name: str,
     garmin_data: dict[str, Any],
+    language: str = "en",
     mfp_data: dict[str, Any] | None = None,
     analysis_context: str = "",
     planning_context: str = "",
@@ -101,6 +103,7 @@ def create_initial_state(
         user_id=user_id,
         athlete_name=athlete_name,
         garmin_data=garmin_data,
+        language=language,
         mfp_data=mfp_data,
         analysis_context=analysis_context,
         planning_context=planning_context,
