@@ -1,6 +1,7 @@
 """Tests for services/scheduling/spec_bootstrap.py — the deterministic (non-LLM) pieces of a
 ProgramSpec, shared by season_planner_node.py and scripts/bootstrap_program_spec.py. Pure
-functions, no Supabase — fed hand-built row fixtures matching the real table shapes."""
+functions, no Supabase — fed hand-built row fixtures matching the real table shapes.
+"""
 from services.scheduling.spec_bootstrap import (
     build_deterministic_leg_spacing_constraint,
     build_deterministic_recovery_spacing_constraints,

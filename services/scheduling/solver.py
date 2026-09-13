@@ -165,7 +165,8 @@ def _solve_single_session_per_day(
 ) -> ScheduleResult:
     """The original model: exactly one session_type_key (or FREE) per calendar day. Unchanged
     from before allow_multi_session_days existed — every spec that doesn't opt in gets
-    byte-identical behavior."""
+    byte-identical behavior.
+    """
     window_set = set(window_dates)
     known_dates = window_set | set(fixed.keys())
 
@@ -317,7 +318,8 @@ def _solve_multi_session_per_day(
     """4-slot-per-day model: each date gets up to 4 independently-assignable cells
     (morning/midday/afternoon/evening), each exactly one session_type_key (or FREE). A
     whole-day-fixed date (fixed_whole_day) gets no cells at all — it's a single fixed point,
-    same as the single-session model, and nothing else can share that date."""
+    same as the single-session model, and nothing else can share that date.
+    """
     window_set = set(window_dates)
     known_dates = window_set | set(fixed_whole_day.keys()) | {d for d, _slot in fixed_slots}
 
@@ -396,7 +398,7 @@ def _solve_multi_session_per_day(
                 # now that a day can hold several sessions and isn't automatically all-or-
                 # nothing. Needs a real auxiliary boolean per day (CP-SAT has no native
                 # "AND of expressions" usable directly in a linear sum).
-                rest_day_bools = []
+                rest_day_bools: list[cp_model.IntVar | int] = []
                 for d in week_dates:
                     if d in fixed_whole_day:
                         rest_day_bools.append(1 if fixed_whole_day[d] in rest_keys else 0)

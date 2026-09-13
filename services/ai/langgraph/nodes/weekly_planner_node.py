@@ -937,7 +937,7 @@ async def _execute_full_redraft(
     state: TrainingAnalysisState,
     supabase_user_id: str,
     agent_start_time: datetime,
-) -> dict[str, list | str]:
+) -> dict[str, Any]:
     """The original weekly-planner behavior: the LLM redrafts the entire multi-week schedule.
 
     Structure is patched by the hand-written _fix_* functions below. Still
@@ -1066,7 +1066,7 @@ async def _execute_full_redraft(
         "running_sessions": running_sessions,
         "coach_feedback": coach_feedback,
         "schedule_updated": agent_output.schedule_updated,
-        "costs": [create_cost_entry("weekly_planner", execution_time)],
+        "timings": [create_timing_entry("weekly_planner", execution_time)],
     }
 
 
@@ -1074,7 +1074,7 @@ async def _execute_checkin(
     state: TrainingAnalysisState,
     supabase_user_id: str,
     agent_start_time: datetime,
-) -> dict[str, list | str]:
+) -> dict[str, Any]:
     """Solver-driven check-in path (Phase 4): solve_schedule() decides placement, not the LLM.
 
     The LLM only translates the athlete's note into overrides the solver must
@@ -1337,7 +1337,7 @@ async def _execute_checkin(
         "running_sessions": running_sessions if schedule_updated else None,
         "coach_feedback": coach_feedback,
         "schedule_updated": schedule_updated,
-        "costs": [create_cost_entry("weekly_planner", execution_time)],
+        "timings": [create_timing_entry("weekly_planner", execution_time)],
     }
 
 

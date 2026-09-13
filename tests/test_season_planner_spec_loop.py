@@ -2,13 +2,15 @@
 feedback retry loop that assembles a ProgramSpec from an LLM draft and validates it (Pydantic
 reference checks, then solve_schedule feasibility) before it's ever written as active. No real
 LLM call: author_fn is dependency-injected, so a fake stands in and asserts on call count /
-feedback content instead."""
+feedback content instead.
+"""
 import pytest
 
 from services.ai.langgraph.nodes.season_planner_node import (
     ProgramSpecInfeasibleError,
     author_feasible_spec,
 )
+from services.ai.langgraph.schemas.agent_outputs import Question
 from services.ai.langgraph.schemas.program_spec_outputs import (
     NewSessionTypeDraft,
     SeasonPlannerOutput,
@@ -30,7 +32,10 @@ def _output(draft: SeasonProgramSpecDraft) -> SeasonPlannerOutput:
 
 
 def _hitl_output() -> SeasonPlannerOutput:
-    return SeasonPlannerOutput(output=[{"id": "q1", "message": "?"}], program_spec=None)
+    return SeasonPlannerOutput(
+        output=[Question(id="q1", message="?", context=None, message_type="question")],
+        program_spec=None,
+    )
 
 
 class TestFeasibleOnFirstAttempt:

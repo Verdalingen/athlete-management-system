@@ -210,7 +210,8 @@ class TestMultiSessionPerDay:
     """allow_multi_session_days=True: more than one session can share a calendar day, and
     SpacingConstraint's gap-hours math becomes genuinely sub-day-resolution — the whole point
     of the time_slot model (see solver.py's module docstring for why the old day-granularity
-    approximation made any spacing threshold at or below 24h a structural no-op)."""
+    approximation made any spacing threshold at or below 24h a structural no-op).
+    """
 
     def test_default_spec_never_populates_slot_assignments(self):
         spec = ProgramSpec(

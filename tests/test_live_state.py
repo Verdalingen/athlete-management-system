@@ -1,6 +1,8 @@
 """Tests for services/scheduling/live_state.py — pure functions turning live scheduled_days-
-shaped rows into solve_schedule() inputs for a check-in. No Supabase; hand-built row fixtures."""
+shaped rows into solve_schedule() inputs for a check-in. No Supabase; hand-built row fixtures.
+"""
 from datetime import date, timedelta
+from typing import Any
 
 from services.scheduling.live_state import compute_checkin_fixed_days, resolve_today_pin
 from services.scheduling.program_spec import ProgramSessionType, ProgramSpec
@@ -58,7 +60,7 @@ class TestComputeCheckinFixedDays:
 
     def test_existing_days_carried_forward(self):
         window = self._window()
-        existing = {
+        existing: dict[date, dict[str, Any]] = {
             window[0]: {"session_type": "strength", "slot": "A"},
             window[1]: {"session_type": "run", "is_key": True},
         }

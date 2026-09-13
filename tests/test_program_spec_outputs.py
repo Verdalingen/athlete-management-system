@@ -1,9 +1,13 @@
 """Tests for services/ai/langgraph/schemas/program_spec_outputs.py — the season planner's
 structured-output schema, and the spec-assembly step (deterministic pieces + LLM draft ->
-ProgramSpec) that season_planner_node.author_feasible_spec relies on to catch a bad reference."""
+ProgramSpec) that season_planner_node.author_feasible_spec relies on to catch a bad reference.
+"""
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
+from services.ai.langgraph.schemas.agent_outputs import Question
 from services.ai.langgraph.schemas.program_spec_outputs import (
     NewSessionTypeDraft,
     SeasonPlannerOutput,
@@ -12,8 +16,8 @@ from services.ai.langgraph.schemas.program_spec_outputs import (
 from services.scheduling.program_spec import ProgramSessionType, ProgramSpec, WeeklyTarget
 
 
-def _draft(**overrides) -> SeasonProgramSpecDraft:
-    kwargs = {"spec_rationale": "Test rationale."}
+def _draft(**overrides: Any) -> SeasonProgramSpecDraft:
+    kwargs: dict[str, Any] = {"spec_rationale": "Test rationale."}
     kwargs.update(overrides)
     return SeasonProgramSpecDraft(**kwargs)
 
@@ -26,7 +30,7 @@ class TestSeasonProgramSpecDraft:
 
     def test_new_session_type_rejects_strength_kind(self):
         with pytest.raises(ValidationError):
-            NewSessionTypeDraft(key="x", category="c", label="X", session_kind="strength")
+            NewSessionTypeDraft(key="x", category="c", label="X", session_kind="strength")  # type: ignore[arg-type]
 
 
 class TestSeasonPlannerOutputValidation:
@@ -40,7 +44,7 @@ class TestSeasonPlannerOutputValidation:
 
     def test_hitl_questions_do_not_require_program_spec(self):
         out = SeasonPlannerOutput(
-            output=[{"id": "q1", "message": "How many days can you train?"}],
+            output=[Question(id="q1", message="How many days can you train?", context=None, message_type="question")],
             program_spec=None,
         )
         assert out.program_spec is None
@@ -48,7 +52,8 @@ class TestSeasonPlannerOutputValidation:
 
 class TestSpecAssemblyFromDraftPlusDeterministic:
     """Mirrors the assembly step inside author_feasible_spec: deterministic strength types +
-    the LLM's new_session_types/weekly_targets merged into one ProgramSpec."""
+    the LLM's new_session_types/weekly_targets merged into one ProgramSpec.
+    """
 
     def _deterministic_types(self):
         return [

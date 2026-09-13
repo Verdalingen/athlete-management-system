@@ -5,7 +5,8 @@ which has already decided placement to satisfy a real SpacingConstraint).
 
 No real Supabase — a minimal fake client stands in, following this module's own established
 "pure logic, thin I/O" split (expand_strength_session_slots itself is I/O-touching, so this is
-the one place a fake client is warranted rather than testing a pure function directly)."""
+the one place a fake client is warranted rather than testing a pure function directly).
+"""
 import pytest
 
 from services.supabase import plan_writer
@@ -110,7 +111,8 @@ class TestMultiSessionSameDate:
     """Migration 044: two strength sessions can land on the same calendar date at different
     time_slot values (allow_multi_session_days=True). corrected_slots is keyed by
     (date, time_slot), not bare date — before this fix the second same-date assignment silently
-    overwrote the first in the dict, losing a whole session."""
+    overwrote the first in the dict, losing a whole session.
+    """
 
     ASSIGNMENTS = [
         {"date": "2026-09-01", "slot": "A", "time_slot": "morning"},

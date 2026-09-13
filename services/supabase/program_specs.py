@@ -12,7 +12,7 @@ from typing import Any
 
 from services.scheduling.program_spec import ProgramSpec
 
-from .client import get_supabase
+from .client import get_supabase, rows
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def get_active_program_spec(user_id: str) -> ProgramSpec | None:
     should fail loudly here, not silently misbehave downstream in the solver.
     """
     sb = get_supabase()
-    result = (
+    found = rows(
         sb.table("program_specs")
         .select("spec")
         .eq("user_id", user_id)
@@ -34,10 +34,9 @@ def get_active_program_spec(user_id: str) -> ProgramSpec | None:
         .limit(1)
         .execute()
     )
-    rows = result.data or []
-    if not rows:
+    if not found:
         return None
-    return ProgramSpec(**rows[0]["spec"])
+    return ProgramSpec(**found[0]["spec"])
 
 
 def write_active_program_spec(
@@ -65,7 +64,7 @@ def write_active_program_spec(
             "p_source": source,
         },
     ).execute()
-    new_id = result.data
+    new_id = str(result.data)
     logger.info("Activated program_specs row %s (source=%s)", new_id, source)
     return new_id
 
@@ -88,33 +87,33 @@ def fetch_checkin_context(
     start_str = min(window_dates).isoformat()
     end_str = max(window_dates).isoformat()
 
-    scheduled_rows = (
+    scheduled_rows = rows(
         sb.table("scheduled_days")
         .select("date, session_type, is_key")
         .eq("user_id", user_id)
         .gte("date", start_str)
         .lte("date", end_str)
         .execute()
-    ).data or []
+    )
 
-    strength_rows = (
+    strength_rows = rows(
         sb.table("strength_sessions")
         .select("date, slot")
         .eq("user_id", user_id)
         .gte("date", start_str)
         .lte("date", end_str)
         .execute()
-    ).data or []
+    )
     slot_by_date = {r["date"]: r.get("slot") for r in strength_rows}
 
     existing: dict[date, dict[str, Any]] = {}
     today_row: dict[str, Any] | None = None
-    for row in scheduled_rows:
-        enriched = dict(row)
-        if row.get("session_type") == "strength" and row["date"] in slot_by_date:
-            enriched["slot"] = slot_by_date[row["date"]]
-        existing[date.fromisoformat(row["date"])] = enriched
-        if row["date"] == today_str:
+    for r in scheduled_rows:
+        enriched = dict(r)
+        if r.get("session_type") == "strength" and r["date"] in slot_by_date:
+            enriched["slot"] = slot_by_date[r["date"]]
+        existing[date.fromisoformat(r["date"])] = enriched
+        if r["date"] == today_str:
             today_row = enriched
 
     today_strength_row = {"slot": slot_by_date[today_str]} if today_str in slot_by_date else None

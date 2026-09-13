@@ -301,7 +301,8 @@ def _merged_day_type(rows: list[dict[str, Any]]) -> str:
     calorie-bucketing purposes — the hardest session present dominates energy needs (a key
     session anywhere in the day means "hard", regardless of what else is scheduled that day).
     Degrades to _day_type_for's single-row logic when there's exactly one row, the common case
-    for every date whose sessions are all time_slot='day'."""
+    for every date whose sessions are all time_slot='day'.
+    """
     if not rows:
         return "default"
     types = {_day_type_for(r) for r in rows}
@@ -583,13 +584,11 @@ def sync_todays_nutrition_target() -> dict[str, Any] | None:
     uid = _user_id()
     today_str = str(date.today())
 
-    today_rows = get_scheduled_days(today_str)
-    day_type = _merged_day_type(today_rows)
+    today = get_scheduled_day(today_str)
+    day_type = _day_type_for(today)
     workout_context = (
-        " · ".join(
-            part for r in today_rows for part in (r.get("focus"), r.get("description")) if part
-        ) or None
-        if today_rows and day_type in ("hard", "easy") else None
+        " · ".join(filter(None, [today.get("focus"), today.get("description")])) or None
+        if today and day_type in ("hard", "easy") else None
     )
 
     weight_kg = _get_latest_weight_kg()
@@ -935,7 +934,8 @@ def get_future_garmin_running_workout_ids(from_date: str) -> dict[tuple[str, str
     """Return {(date, time_slot): {"workout_id": id}} for every currently-stored 'run'
     scheduled_days row with a Garmin workout scheduled on/after from_date. Mirrors
     get_future_garmin_workout_ids() above — call this BEFORE write_plan() for the same reason
-    (write_plan() replaces scheduled_days rows)."""
+    (write_plan() replaces scheduled_days rows).
+    """
     sb = get_supabase()
     user_id = _user_id()
     result = rows(
@@ -1096,12 +1096,12 @@ def plan_shift_layout(
 
     cursor = start + timedelta(days=days)
     date_to_new_date: dict[str, str] = {}
-    for row in kept:
-        old_date = row["date"]
+    for r in kept:
+        old_date = r["date"]
         if old_date not in date_to_new_date:
             date_to_new_date[old_date] = cursor.isoformat()
             cursor += timedelta(days=1)
-        row["_new_date"] = date_to_new_date[old_date]
+        r["_new_date"] = date_to_new_date[old_date]
     return kept, dropped, warnings
 
 

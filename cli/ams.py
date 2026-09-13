@@ -933,8 +933,8 @@ def _sync_completed_exercise_sets(garmin_data: dict[str, Any], days_back: int = 
 
 def _write_to_supabase(
     result: dict[str, Any],
-    workout_ids: dict[str, Any],
-    running_workout_ids: dict[str, Any] | None = None,
+    workout_ids: dict[tuple[str, str], Any],
+    running_workout_ids: dict[tuple[str, str], Any] | None = None,
     garmin_data: dict[str, Any] | None = None,
 ) -> None:
     """Write the completed plan to Supabase. Logs a warning and continues on failure."""
