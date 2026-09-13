@@ -14,7 +14,7 @@ are one problem.
 [![CI](https://github.com/Verdalingen/athlete-management-system/actions/workflows/ci.yml/badge.svg)](https://github.com/Verdalingen/athlete-management-system/actions/workflows/ci.yml)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
 [![Next.js 16](https://img.shields.io/badge/web-Next.js%2016%20%2B%20Supabase-black.svg)](web/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: All rights reserved](https://img.shields.io/badge/License-All%20rights%20reserved-lightgrey.svg)](LICENSE)
 
 > Not affiliated with Garmin. Not medical advice.
 
@@ -352,4 +352,7 @@ The lineage is real and worth stating plainly. So is the difference.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+All rights reserved — see [LICENSE](LICENSE). This repository is public for
+reading and evaluation only; it is not licensed for reuse. The inherited
+portions from [leonzzz435/garmin-ai-coach](https://github.com/leonzzz435/garmin-ai-coach)
+remain under that project's MIT License, reproduced in full in [LICENSE](LICENSE).
