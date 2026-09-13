@@ -135,6 +135,38 @@ class TestWorkflowImports:
         for node in nodes:
             assert callable(node)
 
+    def test_program_spec_modules_importable(self):
+        """Phase 3+4: the ProgramSpec/solver wiring modules import cleanly."""
+        from services.ai.langgraph.nodes.season_planner_node import author_feasible_spec
+        from services.ai.langgraph.schemas.checkin_outputs import CheckinContentOutput, CheckinTranslationOutput
+        from services.ai.langgraph.schemas.program_spec_outputs import SeasonPlannerOutput
+        from services.scheduling.live_state import compute_checkin_fixed_days, resolve_today_pin
+        from services.scheduling.spec_bootstrap import (
+            build_deterministic_leg_spacing_constraint,
+            build_deterministic_recovery_spacing_constraints,
+            build_deterministic_session_types,
+            build_deterministic_weekly_targets,
+        )
+        from services.supabase.program_specs import (
+            fetch_checkin_context,
+            get_active_program_spec,
+            write_active_program_spec,
+        )
+
+        assert callable(author_feasible_spec)
+        assert callable(build_deterministic_session_types)
+        assert callable(build_deterministic_weekly_targets)
+        assert callable(build_deterministic_leg_spacing_constraint)
+        assert callable(build_deterministic_recovery_spacing_constraints)
+        assert callable(resolve_today_pin)
+        assert callable(compute_checkin_fixed_days)
+        assert callable(get_active_program_spec)
+        assert callable(write_active_program_spec)
+        assert callable(fetch_checkin_context)
+        assert SeasonPlannerOutput is not None
+        assert CheckinTranslationOutput is not None
+        assert CheckinContentOutput is not None
+
     def test_workflow_functions_importable(self):
         from services.ai.langgraph.workflows.planning_workflow import (
             create_integrated_analysis_and_planning_workflow,

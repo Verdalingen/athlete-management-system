@@ -200,6 +200,46 @@ class TestMultipleEvents:
         assert mapping["2026-01-06"] == "2026-01-06"  # Race B still protected
 
 
+class TestMultiSessionDays:
+    """Since migration 045, a date can hold more than one row (different time_slot). The cursor
+    that assigns _new_date must advance once per distinct date, not once per row, or same-day
+    siblings get split apart across different new dates.
+    """
+
+    def _pair(self, offset: int, *, rest: bool = False, key: bool = False) -> list[dict]:
+        base = day(offset, rest=rest, key=key)
+        morning = {**base, "id": f"{offset}-morning", "time_slot": "morning"}
+        evening = {**base, "id": f"{offset}-evening", "time_slot": "evening"}
+        return [morning, evening]
+
+    def test_same_day_siblings_land_on_the_same_new_date(self):
+        rows = [*self._pair(0), day(1), day(2)]
+        kept, dropped, _ = plan_shift_layout(rows, [], START, 1)
+
+        assert dropped == []
+        day0_new_dates = {r["_new_date"] for r in kept if r["date"] == day(0)["date"]}
+        assert day0_new_dates == {"2026-01-02"}  # both siblings, one shared new date
+
+    def test_cursor_advances_once_per_distinct_date_not_per_row(self):
+        rows = self._pair(0) + self._pair(1) + [day(2)]
+        kept, _, _ = plan_shift_layout(rows, [], START, 1)
+
+        mapping = {r["date"]: r["_new_date"] for r in kept}
+        # Three distinct old dates -> three distinct new dates, not five (len(rows)).
+        assert set(mapping.values()) == {"2026-01-02", "2026-01-03", "2026-01-04"}
+
+    def test_dropping_one_sibling_does_not_touch_the_other(self):
+        # A rest-flagged sibling can be dropped independently of its same-day, non-rest sibling.
+        base = day(0)
+        rest_sibling = {**base, "id": "0-morning", "time_slot": "morning", "is_rest": True}
+        real_sibling = {**base, "id": "0-evening", "time_slot": "evening", "is_rest": False}
+        rows = [rest_sibling, real_sibling, day(1), day(2), day(3, key=True, focus="Race")]
+        kept, dropped, _ = plan_shift_layout(rows, ["2026-01-04"], START, 1)
+
+        assert [r["id"] for r in dropped] == ["0-morning"]
+        assert any(r["id"] == "0-evening" for r in kept)
+
+
 class TestEdgeCases:
     def test_empty_plan_is_a_no_op(self):
         assert plan_shift_layout([], [], START, 1) == ([], [], [])

@@ -196,9 +196,12 @@ def _reconcile_strength_focus_labels(
     """
     if not scheduled_days:
         return
-    slot_name_by_date = {s["date"]: s["slot_name"] for s in strength_sessions if s.get("slot_name")}
+    slot_name_by_key = {
+        (s["date"], s.get("time_slot", "day")): s["slot_name"]
+        for s in strength_sessions if s.get("slot_name")
+    }
     for day in scheduled_days:
-        slot_name = slot_name_by_date.get(day.get("date"))
+        slot_name = slot_name_by_key.get((day.get("date"), day.get("time_slot", "day")))
         if slot_name and day.get("focus") != slot_name:
             logger.warning(
                 "Focus label mismatch on %s: planner wrote %r, actual slot is %r — correcting",
@@ -222,9 +225,12 @@ def _apply_running_descriptions(
     """
     if not scheduled_days:
         return
-    segments_by_date = {s["date"]: s["segments"] for s in running_sessions if s.get("segments")}
+    segments_by_key = {
+        (s["date"], s.get("time_slot", "day")): s["segments"]
+        for s in running_sessions if s.get("segments")
+    }
     for day in scheduled_days:
-        segments = segments_by_date.get(day.get("date"))
+        segments = segments_by_key.get((day.get("date"), day.get("time_slot", "day")))
         if segments is not None:
             normalize_recovery_segments(segments)
             day["description"] = render_running_description(segments, language=language)
@@ -267,6 +273,19 @@ def _save_expert_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
             logger.info("Saved: %s", output_path)
 
     return files_generated
+
+
+def _raise_if_node_errors(result: dict[str, Any]) -> None:
+    """Raise loudly on a failed node instead of letting empty data through silently.
+
+    A node failure returns {"errors": [...]} (execute_node_with_error_handling)
+    instead of raising — nothing downstream ever checked this before, so a
+    failed node's absent scheduled_days/strength_sessions silently defaulted
+    to [] and write_plan() would still insert an empty plan, deleting the
+    real overlapping plan via its date-range cleanup.
+    """
+    if result.get("errors"):
+        raise RuntimeError("; ".join(result["errors"]))
 
 
 def _save_plan_outputs(output_dir: Path, result: dict[str, Any]) -> list[str]:
@@ -368,6 +387,8 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
             language=config_parser.get_language(),
         )
 
+        _raise_if_node_errors(result)
+
         # The weekly planner only decides {date, slot} for strength sessions now — expand into full
         # exercise lists from the athlete's saved templates (+ deterministic bench wave) here, once,
         # before anything downstream (Garmin push, Supabase write) reads strength_sessions.
@@ -402,8 +423,8 @@ async def run_analysis_from_config(config_path: Path, user_comment: str | None =
         logger.info("✅ Analysis completed successfully!")
         logger.info("📁 Results saved to: %s", output_dir)
 
-        workout_ids: dict[str, Any] = {}
-        running_workout_ids: dict[str, Any] = {}
+        workout_ids: dict[tuple[str, str], Any] = {}
+        running_workout_ids: dict[tuple[str, str], Any] = {}
         if extraction_settings.get("upload_to_garmin", False):
             strength_sessions = result.get("strength_sessions") or []
             if strength_sessions:
@@ -548,6 +569,8 @@ async def run_replan_from_config(
         language=config_parser.get_language(),
     )
 
+    _raise_if_node_errors(result)
+
     # The weekly planner only decides {date, slot} for strength sessions now — expand into full
     # exercise lists from the athlete's saved templates (+ deterministic bench wave) here, once,
     # before anything downstream (Garmin push, Supabase write) reads strength_sessions.
@@ -597,8 +620,8 @@ async def run_replan_from_config(
     files = _save_plan_outputs(output_dir, result)
     logger.info("✅ Check-in complete — schedule updated: %s", files)
 
-    workout_ids: dict[str, Any] = {}
-    running_workout_ids: dict[str, Any] = {}
+    workout_ids: dict[tuple[str, str], Any] = {}
+    running_workout_ids: dict[tuple[str, str], Any] = {}
     if extraction_settings.get("upload_to_garmin", False):
         strength_sessions = result.get("strength_sessions") or []
         if strength_sessions:
@@ -910,8 +933,8 @@ def _sync_completed_exercise_sets(garmin_data: dict[str, Any], days_back: int = 
 
 def _write_to_supabase(
     result: dict[str, Any],
-    workout_ids: dict[str, Any],
-    running_workout_ids: dict[str, Any] | None = None,
+    workout_ids: dict[tuple[str, str], Any],
+    running_workout_ids: dict[tuple[str, str], Any] | None = None,
     garmin_data: dict[str, Any] | None = None,
 ) -> None:
     """Write the completed plan to Supabase. Logs a warning and continues on failure."""
@@ -1010,28 +1033,34 @@ def _orphaned_workout_ids_by_date(client: Any, dates: list[str]) -> dict[str, li
 
 def _sync_strength_sessions(
     new_sessions: list[dict[str, Any]],
-    old_workout_ids: dict[str, Any],
+    old_workout_ids: dict[tuple[str, str], Any],
     email: str,
     password: str,
-) -> dict[str, Any]:
+) -> dict[tuple[str, str], Any]:
     """Delete future planned Garmin workouts, then upload new sessions. Single connection.
 
     Sessions whose date is in the past are assumed completed and left untouched.
-    Returns {date: {workout_id, schedule_id, name}} for the newly uploaded sessions.
+    Returns {(date, time_slot): {workout_id, schedule_id, name}} for the newly uploaded
+    sessions — keyed by (date, time_slot) since a date can hold more than one strength session
+    (see migration 045); a bare-date dict would silently drop one of two same-day uploads'
+    tracked ids.
     """
     today = date.today().isoformat()
 
     gc = GarminConnectClient()
     gc.connect(email=email, password=password)
     client = gc.client
-    new_workout_ids: dict[str, Any] = {}
+    new_workout_ids: dict[tuple[str, str], Any] = {}
 
     try:
         # Remove old planned sessions that haven't happened yet — union of what Supabase
         # remembers and what's actually on Garmin for these dates (see
-        # _orphaned_workout_ids_by_date's docstring for why both are needed).
+        # _orphaned_workout_ids_by_date's docstring for why both are needed). Deletion itself
+        # only needs date granularity — Garmin workout titles don't encode time_slot, and we
+        # delete everything for a date before re-uploading fresh sessions for it regardless of
+        # how many slots it holds.
         to_delete: dict[str, set[int]] = {}
-        for session_date, entry in old_workout_ids.items():
+        for (session_date, _slot), entry in old_workout_ids.items():
             if session_date >= today and entry.get("workout_id"):
                 to_delete.setdefault(session_date, set()).add(int(entry["workout_id"]))
         for session_date, ids in _orphaned_workout_ids_by_date(
@@ -1081,7 +1110,7 @@ def _sync_strength_sessions(
             )
             try:
                 entry = upload_strength_session(client, session)
-                new_workout_ids[session.date] = entry
+                new_workout_ids[(session.date, s.get("time_slot", "day"))] = entry
                 logger.info(
                     "✅ '%s' → workoutId=%s scheduled on %s",
                     session.name, entry["workout_id"], session.date,
@@ -1095,32 +1124,34 @@ def _sync_strength_sessions(
 
 def _sync_running_sessions(
     new_sessions: list[dict[str, Any]],
-    old_workout_ids: dict[str, Any],
+    old_workout_ids: dict[tuple[str, str], Any],
     email: str,
     password: str,
     scheduled_days: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+) -> dict[tuple[str, str], Any]:
     """Delete future planned Garmin running workouts, then upload new sessions. Single connection.
 
     Mirrors _sync_strength_sessions() above. Sessions whose date is in the past are assumed
-    completed and left untouched. Returns {date: {workout_id, schedule_id, name}} for the newly
-    uploaded sessions.
+    completed and left untouched. Returns {(date, time_slot): {workout_id, schedule_id, name}}
+    for the newly uploaded sessions.
 
     scheduled_days supplies each date's `focus` label (e.g. "VO2max", "Tempo") for the Garmin
     workout name — running_sessions itself carries no name field, unlike strength sessions whose
     name comes from the template slot.
     """
     today = date.today().isoformat()
-    focus_by_date = {d["date"]: d.get("focus") for d in (scheduled_days or [])}
+    focus_by_key = {
+        (d["date"], d.get("time_slot", "day")): d.get("focus") for d in (scheduled_days or [])
+    }
 
     gc = GarminConnectClient()
     gc.connect(email=email, password=password)
     client = gc.client
-    new_workout_ids: dict[str, Any] = {}
+    new_workout_ids: dict[tuple[str, str], Any] = {}
 
     try:
         to_delete: dict[str, set[int]] = {}
-        for session_date, entry in old_workout_ids.items():
+        for (session_date, _slot), entry in old_workout_ids.items():
             if session_date >= today and entry.get("workout_id"):
                 to_delete.setdefault(session_date, set()).add(int(entry["workout_id"]))
         for session_date, ids in _orphaned_workout_ids_by_date(
@@ -1159,7 +1190,8 @@ def _sync_running_sessions(
                 date_prefix = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%b %-d")
             except ValueError:
                 date_prefix = raw_date
-            focus = focus_by_date.get(raw_date)
+            time_slot = s.get("time_slot", "day")
+            focus = focus_by_key.get((raw_date, time_slot))
             workout_name = f"{date_prefix} · {focus}" if focus else f"{date_prefix} · Run"
             session = PlannedRunningSession(
                 name=workout_name,
@@ -1169,7 +1201,7 @@ def _sync_running_sessions(
             )
             try:
                 entry = upload_running_session(client, session)
-                new_workout_ids[session.date] = entry
+                new_workout_ids[(session.date, time_slot)] = entry
                 logger.info(
                     "✅ '%s' → workoutId=%s scheduled on %s",
                     session.name, entry["workout_id"], session.date,
@@ -1490,42 +1522,59 @@ def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = Non
     uid = os.environ.get("SUPABASE_USER_ID", "")
 
     strength = rows(
-        sb.table("strength_sessions").select("id, date, name, estimated_duration_secs")
+        sb.table("strength_sessions").select("id, date, time_slot, name, estimated_duration_secs")
         .eq("user_id", uid).gte("date", today_iso).order("date").execute()
     )
     new_sessions = []
+    strength_id_by_key: dict[tuple[str, str], str] = {}
     for s in strength:
         exercises = rows(
             sb.table("exercises").select("*").eq("session_id", s["id"]).order("display_order").execute()
         )
+        time_slot = s.get("time_slot") or "day"
         new_sessions.append({
-            "date": s["date"], "name": s["name"], "exercises": exercises,
+            "date": s["date"], "time_slot": time_slot, "name": s["name"], "exercises": exercises,
             "estimated_duration_secs": s["estimated_duration_secs"],
         })
+        strength_id_by_key[(s["date"], time_slot)] = s["id"]
     if new_sessions:
         logger.info("📲 Re-pushing %d strength session(s) after shift…", len(new_sessions))
         ids = _sync_strength_sessions(
             new_sessions, get_future_garmin_workout_ids(today_iso), email, password
         )
-        for d, entry in ids.items():
-            sb.table("strength_sessions").update({"garmin_workout_id": entry["workout_id"]}) \
-                .eq("user_id", uid).eq("date", d).execute()
+        # Row-id-scoped, not date-scoped — two strength sessions can share a date (different
+        # time_slot) since migration 045; filtering by bare date would stamp the same workout
+        # id onto both rows.
+        for key, entry in ids.items():
+            row_id = strength_id_by_key.get(key)
+            if row_id:
+                sb.table("strength_sessions").update({"garmin_workout_id": entry["workout_id"]}) \
+                    .eq("id", row_id).execute()
 
     days_rows = rows(
-        sb.table("scheduled_days").select("date, focus, running_segments")
+        sb.table("scheduled_days").select("id, date, time_slot, focus, running_segments")
         .eq("user_id", uid).gte("date", today_iso)
         .not_.is_("running_segments", "null").order("date").execute()
     )
-    running = [{"date": r["date"], "segments": r["running_segments"]} for r in days_rows if r["running_segments"]]
+    scheduled_day_id_by_key = {(r["date"], r.get("time_slot") or "day"): r["id"] for r in days_rows}
+    running = [
+        {"date": r["date"], "time_slot": r.get("time_slot") or "day", "segments": r["running_segments"]}
+        for r in days_rows if r["running_segments"]
+    ]
     if running:
         logger.info("📲 Re-pushing %d running session(s) after shift…", len(running))
         ids = _sync_running_sessions(
             running, get_future_garmin_running_workout_ids(today_iso), email, password,
-            scheduled_days=[{"date": r["date"], "focus": r.get("focus")} for r in days_rows],
+            scheduled_days=[
+                {"date": r["date"], "time_slot": r.get("time_slot") or "day", "focus": r.get("focus")}
+                for r in days_rows
+            ],
         )
-        for d, entry in ids.items():
-            sb.table("scheduled_days").update({"garmin_workout_id": entry["workout_id"]}) \
-                .eq("user_id", uid).eq("date", d).execute()
+        for key, entry in ids.items():
+            row_id = scheduled_day_id_by_key.get(key)
+            if row_id:
+                sb.table("scheduled_days").update({"garmin_workout_id": entry["workout_id"]}) \
+                    .eq("id", row_id).execute()
 
     summary = f"Shifted {result['shifted']} day(s) by +{days}."
     if result.get("dropped"):
