@@ -20,6 +20,7 @@ garminconnect = ">=0.2.30, <0.3"
 anthropic = ">=0.71.0, <0.72"
 typing-extensions = ">=4.13.0"  # pydantic-core 2.33+ requires Sentinel which landed in 4.13
 supabase = ">=2.15.0"
+psycopg2-binary = ">=2.9, <3"  # only used by scripts/setup_db.py to apply migrations directly
 pydantic = ">=2.12, <3"
 pydantic-settings = ">=2.0, <3"
 ortools = ">=9.11, <10"
@@ -40,6 +41,7 @@ ruff = ">=0.14.1, <0.15"
 vulture = ">=2.14, <3"
 types-PyYAML = "*"
 types-requests = "*"
+types-psycopg2 = "*"
 
 [tasks]
 # Development tasks
@@ -58,6 +60,15 @@ dead-code-verbose = "vulture services cli core --min-confidence 80 --verbose"
 # CLI coach interface
 coach-cli = "python cli/ams.py"
 coach-init = "python cli/ams.py --init-config"
+
+# One-shot database setup — applies every file in supabase/migrations/, in
+# order, inside a single transaction. Needs DATABASE_URL in .env.
+setup-db = "python scripts/setup_db.py"
+setup-db-seed = "python scripts/setup_db.py --seed"
+seed-demo = "python scripts/setup_db.py --seed-only"
+
+# Web app dependency install, runnable from the repo root
+setup-web = { cmd = "npm install", cwd = "web" }
 
 [environments]
 default = { solve-group = "default" }

@@ -193,7 +193,7 @@ plan itself.
 |---|---|
 | Pipeline | Python 3.13, LangGraph, Pydantic v2, managed by [Pixi](https://pixi.sh) |
 | Models | Anthropic — per-node tier assignment (fast / reasoning / deep) |
-| Data | Supabase (Postgres, Auth, Vault), 41 append-only migrations |
+| Data | Supabase (Postgres, Auth, Vault), 46 append-only migrations |
 | Web | Next.js 16, React 19, Tailwind 4, deployed on Vercel |
 | Quality | 339 tests, mypy strict (0 errors), ruff — all gated in CI |
 
@@ -203,31 +203,58 @@ plan itself.
 
 This is not a `clone && run` project: the pipeline reads athlete context,
 credentials and the plan from Supabase, so the database and an account have to
-exist first. The order matters.
+exist first. The order below matters — each step needs the one before it.
 
-**1. Database.** Create a Supabase project and apply the migrations in
-[`supabase/migrations/`](supabase/migrations/) in numeric order — via the
-Supabase SQL editor, or `supabase db push` if you have the CLI linked.
-
-**2. Environment.** Copy [`.env.example`](.env.example) to `.env` and fill in the
-Supabase URL, the service-role key, and at least one LLM provider key.
-
-**3. Account.** Run the web app and complete the setup wizard — it writes the
-`athlete_profile` row that holds your goals and constraints. That wizard is the
-single source of truth for coaching context; the YAML config does not carry it.
-
-```bash
-cd web && npm install && npm run dev
-```
-
-**4. Point the CLI at that account.** Set `SUPABASE_USER_ID` in `.env` to the
-account's UUID (Supabase dashboard → Authentication → Users). Without it the CLI
-cannot resolve coaching context and exits.
-
-**5. Run it.**
+**1. Install the Python side.**
 
 ```bash
 pixi install
+```
+
+Pulls Python 3.13 and every dependency, including `psycopg2`, which step 3 uses.
+
+**2. Create a Supabase project, then set up `.env`.**
+
+Copy [`.env.example`](.env.example) to `.env` and fill in:
+
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` — Dashboard → Project Settings → API
+- `DATABASE_URL` — Dashboard → Project Settings → Database → Connection string →
+  URI (the **direct** connection on port 5432, not the pooler — DDL needs a
+  plain session). Only used by the next step; the app and CLI never read it.
+- At least one LLM provider key (`ANTHROPIC_API_KEY`)
+
+**3. Apply the schema — one command instead of 46 files.**
+
+```bash
+pixi run setup-db
+```
+
+Runs every file in [`supabase/migrations/`](supabase/migrations/) against
+`DATABASE_URL`, in numeric order, inside a single transaction — a failure
+partway through rolls back cleanly rather than leaving the schema half-applied.
+No Supabase CLI install or manual SQL-editor pasting needed. Want the seeded
+demo athlete too (see [below](#exploring-it-without-a-garmin-account))? Use
+`pixi run setup-db-seed` instead.
+
+**4. Web app dependencies, then run it.**
+
+```bash
+pixi run setup-web   # npm install, from the repo root
+cd web && npm run dev
+```
+
+**5. Account.** With the web app running, complete the setup wizard — it writes
+the `athlete_profile` row that holds your goals and constraints. That wizard is
+the single source of truth for coaching context; the YAML config does not carry
+it.
+
+**6. Point the CLI at that account.** Set `SUPABASE_USER_ID` in `.env` to the
+account's UUID (Supabase dashboard → Authentication → Users). Without it the CLI
+cannot resolve coaching context and exits.
+
+**7. Run it.**
+
+```bash
 pixi run coach-init my_training_config.yaml
 pixi run coach-cli --config my_training_config.yaml
 ```
@@ -262,9 +289,14 @@ metrics *derived* from that training rather than drawn, plus a 28-day plan,
 logged lifts, check-in reports and a nutrition diary:
 
 ```bash
-# paste supabase/seed_demo.sql into the Supabase SQL editor, then:
+pixi run setup-db-seed   # fresh project: migrations + seed_demo.sql in one go
 cd web && DEMO_USER_ID=00000000-0000-4000-8000-000000000001 npm run dev
 ```
+
+Already applied the schema and just want the demo data? Migrations aren't
+written to be re-run (no `IF NOT EXISTS` guards, per the append-only
+convention), so use `pixi run seed-demo` instead — it loads only
+`seed_demo.sql`, skipping the migrations.
 
 `DEMO_USER_ID` changes which user's data the pages read. It is ignored outside a
 development build, and you still have to sign in — it overrides the data source,
@@ -338,7 +370,7 @@ and it covers nutrition and recovery as part of the same plan rather than
 leaving them out of scope.
 
 Everything that makes those possible is new here: the Supabase data layer and
-its 41 migrations, the web application, the Garmin workout uploaders for both
+its 46 migrations, the web application, the Garmin workout uploaders for both
 strength and running, the deterministic rule engine, plan-drift detection, the
 training-load metrics implementation, and the scheduled job runner. Roughly
 24,000 lines are new against about 4,600 in the inherited analysis stage, and
