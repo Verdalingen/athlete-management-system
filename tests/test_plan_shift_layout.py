@@ -201,7 +201,7 @@ class TestMultipleEvents:
 
 
 class TestMultiSessionDays:
-    """Since migration 044, a date can hold more than one row (different time_slot). The cursor
+    """Since migration 045, a date can hold more than one row (different time_slot). The cursor
     that assigns _new_date must advance once per distinct date, not once per row, or same-day
     siblings get split apart across different new dates.
     """

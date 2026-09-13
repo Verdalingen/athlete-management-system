@@ -24,7 +24,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 # The 4 real time-of-day buckets a session can be scheduled into. Deliberately excludes the
-# storage-layer 'day' sentinel (migration 044) — that value only exists on scheduled_days/
+# storage-layer 'day' sentinel (migration 045) — that value only exists on scheduled_days/
 # strength_sessions rows to mean "unslotted, single-session-per-date convention"; a ProgramSpec
 # never authors 'day' itself, only these 4 real slots (or leaves time_slot unset for "any slot").
 TimeSlot = Literal["morning", "midday", "afternoon", "evening"]
@@ -197,7 +197,7 @@ class ProgramSpec(BaseModel):
     """The full per-athlete rule set.
 
     One row of supabase.program_specs.spec, versioned — see
-    supabase/migrations/042_program_specs.sql.
+    supabase/migrations/043_program_specs.sql.
     """
 
     session_types: list[ProgramSessionType] = Field(..., min_length=1)

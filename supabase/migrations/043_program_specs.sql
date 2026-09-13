@@ -1,4 +1,4 @@
--- 042: program_specs — a versioned, structured, per-athlete rule set.
+-- 043: program_specs — a versioned, structured, per-athlete rule set.
 --
 -- Replaces the pattern of encoding an athlete's training rules directly in Python
 -- (weekly_planner_node.py's hardcoded 48h leg-spacing threshold and muscle-group

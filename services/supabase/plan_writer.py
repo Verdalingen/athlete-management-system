@@ -1039,7 +1039,7 @@ def plan_shift_layout(
     """Pure date arithmetic behind shift_plan — no I/O, so it can be tested directly.
 
     ``rows`` is the ordered list of scheduled_days on/after ``from_date`` (rest days included;
-    since migration 044 a date can hold more than one row — different time_slot). Returns
+    since migration 045 a date can hold more than one row — different time_slot). Returns
     (kept, dropped, warnings); each kept row carries a ``_new_date``. Rows sharing a date are
     always re-laid onto the SAME new date together (the cursor advances once per distinct date,
     not once per row) — same-day siblings never get split apart by a shift.
@@ -1156,7 +1156,7 @@ def shift_plan(
     # app-level correspondence write_plan() establishes between the two tables. Fetched up front
     # so the drop/move steps below can act on each row's own id instead of filtering by date,
     # which would otherwise touch every strength_sessions row sharing a date (real bug once a
-    # date can hold more than one row — see migration 044).
+    # date can hold more than one row — see migration 045).
     strength_rows = rows(
         sb.table("strength_sessions").select("id, date, time_slot")
         .eq("user_id", uid).eq("plan_id", plan_id)
@@ -1190,7 +1190,7 @@ def shift_plan(
     # Move latest-first — belt-and-suspenders against an in-flight update colliding with a date
     # still occupied by a row that hasn't moved yet. No longer load-bearing for correctness the
     # way it used to be: both tables are updated by each row's own id now, not by a date filter
-    # (see migration 044: (user_id, date, time_slot) is unique on both tables).
+    # (see migration 045: (user_id, date, time_slot) is unique on both tables).
     for row_id, new_date, old_date, time_slot in sorted(updates, key=lambda u: u[1], reverse=True):
         sb.table("scheduled_days").update({"date": new_date}).eq("id", row_id).execute()
         strength_row = strength_by_key.get((old_date, time_slot))
@@ -1250,7 +1250,7 @@ def count_completed_bench_sessions(
     })
 
 
-# Chronological order for sorting/rotating same-date strength sessions since migration 044 —
+# Chronological order for sorting/rotating same-date strength sessions since migration 045 —
 # local rather than imported from services.scheduling, matching this file's existing style of
 # not reaching into the solver layer for a plain ordering.
 _TIME_SLOT_ORDER = ("morning", "midday", "afternoon", "evening", "day")
@@ -1264,7 +1264,7 @@ def _recompute_slots_from_rotation(
     Ignores whatever `slot` each assignment already carries (only logged, not
     trusted) — see expand_strength_session_slots' docstring for why. Keyed by
     (date, time_slot) rather than bare date so two strength sessions on the same
-    calendar date (multi-session-day, migration 044) both keep their own rotation
+    calendar date (multi-session-day, migration 045) both keep their own rotation
     slot instead of one silently overwriting the other in the dict.
     """
     next_slot = get_next_strength_slot()
@@ -1449,7 +1449,7 @@ def write_plan(
     ).gte("end_date", start_date).execute()
 
     # ── Insert scheduled_days ────────────────────────────────────────────────
-    # Keyed by (date, time_slot) — a date can hold more than one row (see migration 044);
+    # Keyed by (date, time_slot) — a date can hold more than one row (see migration 045);
     # every entry defaults time_slot to 'day' so single-session dates behave exactly as before.
     segments_by_key = {
         (s["date"], s.get("time_slot", "day")): s["segments"]

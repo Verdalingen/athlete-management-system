@@ -1042,7 +1042,7 @@ def _sync_strength_sessions(
     Sessions whose date is in the past are assumed completed and left untouched.
     Returns {(date, time_slot): {workout_id, schedule_id, name}} for the newly uploaded
     sessions — keyed by (date, time_slot) since a date can hold more than one strength session
-    (see migration 044); a bare-date dict would silently drop one of two same-day uploads'
+    (see migration 045); a bare-date dict would silently drop one of two same-day uploads'
     tracked ids.
     """
     today = date.today().isoformat()
@@ -1543,7 +1543,7 @@ def cmd_shift_plan(config_path: Path, days: int = 1, from_date: str | None = Non
             new_sessions, get_future_garmin_workout_ids(today_iso), email, password
         )
         # Row-id-scoped, not date-scoped — two strength sessions can share a date (different
-        # time_slot) since migration 044; filtering by bare date would stamp the same workout
+        # time_slot) since migration 045; filtering by bare date would stamp the same workout
         # id onto both rows.
         for key, entry in ids.items():
             row_id = strength_id_by_key.get(key)

@@ -1,10 +1,10 @@
--- 044: time_slot + combo_group_id — the schema foundation for scheduling more
+-- 045: time_slot + combo_group_id — the schema foundation for scheduling more
 -- than one session per calendar day.
 --
 -- Both scheduled_days and strength_sessions have always only had a
 -- non-unique index on (user_id, date) — "one row per calendar day" was an
 -- app-layer convention, never a DB constraint. That convention is what made
--- a 24h leg-spacing rule (see 043's SpacingConstraint work) a structural
+-- a 24h leg-spacing rule (see 044's SpacingConstraint work) a structural
 -- no-op: two session types can't share a date, so any two different dates
 -- are already >=24h apart under the day-granularity approximation, and the
 -- rule can never actually bind either way. The athlete explicitly rejected

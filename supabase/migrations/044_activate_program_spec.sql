@@ -1,10 +1,10 @@
--- 043: activate_program_spec() — atomically supersede + insert a program_specs
+-- 044: activate_program_spec() — atomically supersede + insert a program_specs
 -- row, closing a real gap in the naive "update old row, then insert new row"
 -- sequence: if the process dies between those two client-side calls, the
 -- athlete is left with ZERO active specs (the partial unique index only
 -- prevents more than one, not fewer). Phase 3+4 wires this in so
 -- season_planner_node's auto-activate-on-feasible write can't land in that
--- half-done state. Additive only — doesn't touch the 042 table/columns.
+-- half-done state. Additive only — doesn't touch the 043 table/columns.
 
 CREATE OR REPLACE FUNCTION activate_program_spec(
   p_user_id UUID,

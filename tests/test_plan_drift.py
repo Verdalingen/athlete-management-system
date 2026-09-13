@@ -140,7 +140,7 @@ class TestNotAPureShift:
 
 
 class TestOccurrenceAware:
-    """Since migration 044, a date can hold more than one planned session of the same type
+    """Since migration 045, a date can hold more than one planned session of the same type
     (e.g. two runs). completed_by_date is a Counter, not a set — presence isn't enough, the
     exact count must be matched, or a genuinely missed second same-day session would be
     invisible.

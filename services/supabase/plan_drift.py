@@ -69,7 +69,7 @@ def detect_pure_shift(
     ``planned`` is [{date, session_type}] for non-rest days only, ``completed_by_date`` maps an
     ISO date to a Counter of how many of each session kind were completed that day (a real
     count, not just presence — two same-day runs are two, not one, since a date can hold more
-    than one planned session, see migration 044). Returns None for offset 0 (nothing drifted),
+    than one planned session, see migration 045). Returns None for offset 0 (nothing drifted),
     for any partial match (some on time, some late — that's a judgment call, not a shift), and
     when anything was missed outright.
     """

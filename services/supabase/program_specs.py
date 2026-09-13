@@ -50,7 +50,7 @@ def write_active_program_spec(
 ) -> str:
     """Atomically supersede the current active spec (if any) and insert this one.
 
-    Via the activate_program_spec() RPC (migration 043) — a plain update-then-
+    Via the activate_program_spec() RPC (migration 044) — a plain update-then-
     insert has a real gap where a crash between the two steps leaves the
     athlete with zero active specs. Returns the new row's id.
     """
