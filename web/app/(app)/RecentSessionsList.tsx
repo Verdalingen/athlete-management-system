@@ -1,5 +1,7 @@
 import type { CompletedActivity } from "@/lib/types";
 import { formatDuration, formatShort } from "@/lib/dates";
+import type { Dictionary } from "@/lib/i18n/types";
+import type { Language } from "@/lib/i18n/language";
 
 // No existing mapping from Garmin's raw activity_type to an icon — built from the
 // actual values data_extractor.py normalizes to (running, cycling, swimming,
@@ -27,7 +29,7 @@ function statFor(a: CompletedActivity): string | null {
   return null;
 }
 
-export function RecentSessionsList({ activities }: { activities: CompletedActivity[] }) {
+export function RecentSessionsList({ activities, t, language }: { activities: CompletedActivity[]; t: Dictionary["dashboard"]["recentSessions"]; language: Language }) {
   // Capped at 5 (not "however many exist") so this naturally sits close to the
   // heatmap card's height instead of towering over it — matches how the
   // inspiration dashboards size a "recent" list to its sibling panel.
@@ -37,9 +39,9 @@ export function RecentSessionsList({ activities }: { activities: CompletedActivi
 
   return (
     <div className="card">
-      <div className="card-title" style={{ margin: "0 0 10px" }}>Recent Sessions</div>
+      <div className="card-title" style={{ margin: "0 0 10px" }}>{t.title}</div>
       {recent.length === 0 ? (
-        <div style={{ fontSize: 12, color: "var(--dim)" }}>No completed activities synced yet.</div>
+        <div style={{ fontSize: 12, color: "var(--dim)" }}>{t.empty}</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
           {recent.map((a, i) => {
@@ -61,9 +63,9 @@ export function RecentSessionsList({ activities }: { activities: CompletedActivi
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {a.activity_name ?? a.activity_type ?? "Activity"}
+                    {a.activity_name ?? a.activity_type ?? t.activityFallback}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--dim)" }}>{formatShort(a.date)}</div>
+                  <div style={{ fontSize: 11, color: "var(--dim)" }}>{formatShort(a.date, language)}</div>
                 </div>
                 {stat && (
                   <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>

@@ -4,6 +4,8 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import type { ReplanJob } from "@/app/actions/replan";
+import { useT } from "@/lib/i18n/LanguageContext";
+import type { Dictionary } from "@/lib/i18n/types";
 
 // Mirrors KPI_SYNC_MIN_INTERVAL in cli/ams.py — keep these in sync.
 // The backend enforces this authoritatively (via a local stamp file, checked again
@@ -33,21 +35,29 @@ function getNowServerSnapshot(): number | null {
   return null;
 }
 
-function formatElapsed(ms: number): string {
+function formatElapsed(ms: number, t: Dictionary["dashboard"]["refreshData"]): string {
   const totalMinutes = Math.floor(ms / 60000);
-  if (totalMinutes < 1) return "just now";
+  if (totalMinutes < 1) return t.justNow;
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours > 0) return `${hours}h${minutes ? ` ${minutes}m` : ""} ago`;
-  return `${minutes}m ago`;
+  if (hours > 0) {
+    return minutes
+      ? t.hoursMinutesAgo.replace("{hours}", String(hours)).replace("{minutes}", String(minutes))
+      : t.hoursAgo.replace("{hours}", String(hours));
+  }
+  return t.minutesAgo.replace("{minutes}", String(minutes));
 }
 
-function formatRemaining(ms: number): string {
+function formatRemaining(ms: number, t: Dictionary["dashboard"]["refreshData"]): string {
   const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (hours > 0) return `${hours}h${minutes ? ` ${minutes}m` : ""}`;
-  return `${minutes}m`;
+  if (hours > 0) {
+    return minutes
+      ? t.hoursMinutesRemaining.replace("{hours}", String(hours)).replace("{minutes}", String(minutes))
+      : t.hoursRemaining.replace("{hours}", String(hours));
+  }
+  return t.minutesRemaining.replace("{minutes}", String(minutes));
 }
 
 /** Manual "refresh Garmin data" button for the dashboard — queues the same
@@ -61,6 +71,7 @@ export function RefreshDataButton({ lastSyncedAt, initialJobs }: {
   lastSyncedAt: string | null;
   initialJobs: ReplanJob[];
 }) {
+  const t = useT().dashboard.refreshData;
   const router = useRouter();
   // jobs is never mutated independently of the prop, so it doesn't need its own state -
   // the parent Server Component re-fetches and re-passes initialJobs (see the polling
@@ -93,7 +104,7 @@ export function RefreshDataButton({ lastSyncedAt, initialJobs }: {
       await queueReplan("sync_kpis");
       router.refresh();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to queue refresh");
+      setError(e instanceof Error ? e.message : t.failed);
     } finally {
       setQueuing(false);
     }
@@ -102,13 +113,13 @@ export function RefreshDataButton({ lastSyncedAt, initialJobs }: {
   const label = now == null
     ? ""
     : isActive
-      ? "Refreshing…"
+      ? t.refreshing
       : lastSyncedAt == null
-        ? "Never synced"
-        : `Synced ${formatElapsed(elapsedMs!)}`;
+        ? t.neverSynced
+        : t.synced.replace("{elapsed}", formatElapsed(elapsedMs!, t));
 
   const title = withinMinInterval && !isActive
-    ? `Already synced recently — next refresh eligible in ${formatRemaining(MIN_INTERVAL_MS - elapsedMs!)}`
+    ? t.alreadySynced.replace("{remaining}", formatRemaining(MIN_INTERVAL_MS - elapsedMs!, t))
     : undefined;
 
   return (
@@ -133,7 +144,7 @@ export function RefreshDataButton({ lastSyncedAt, initialJobs }: {
         <span style={{ fontSize: 11, color: "var(--dim)" }}>{latestSyncJob.coach_feedback}</span>
       )}
       {!error && !isActive && latestSyncJob?.status === "error" && (
-        <span style={{ fontSize: 11, color: "var(--red)" }}>{latestSyncJob.error_message ?? "Refresh failed"}</span>
+        <span style={{ fontSize: 11, color: "var(--red)" }}>{latestSyncJob.error_message ?? t.refreshFailed}</span>
       )}
     </div>
   );

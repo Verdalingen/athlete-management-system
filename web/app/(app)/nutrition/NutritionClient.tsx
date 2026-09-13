@@ -14,6 +14,9 @@ import { QuantityInput } from "./QuantityInput";
 import type { Portion } from "./useQuantityInput";
 import { useFormatQty } from "./UnitSystemContext";
 import { todayISO, daysSince } from "@/lib/dates";
+import { useT, useLanguage } from "@/lib/i18n/LanguageContext";
+import { localeTag } from "@/lib/i18n/language";
+import type { Dictionary } from "@/lib/i18n/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,25 +144,29 @@ type USDAFood = {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const MEALS = [
-  { key: "breakfast",    label: "Breakfast",    emoji: "🌅" },
-  { key: "pre_workout",  label: "Pre-Workout",  emoji: "⚡" },
-  { key: "lunch",        label: "Lunch",        emoji: "☀️" },
-  { key: "post_workout", label: "Post-Workout", emoji: "💪" },
-  { key: "dinner",       label: "Dinner",       emoji: "🌙" },
-  { key: "snacks",       label: "Snacks",       emoji: "🍎" },
-];
+function getMeals(t: Dictionary["nutrition"]) {
+  return [
+    { key: "breakfast",    label: t.meals.breakfast,    emoji: "🌅" },
+    { key: "pre_workout",  label: t.meals.preWorkout,   emoji: "⚡" },
+    { key: "lunch",        label: t.meals.lunch,        emoji: "☀️" },
+    { key: "post_workout", label: t.meals.postWorkout,  emoji: "💪" },
+    { key: "dinner",       label: t.meals.dinner,       emoji: "🌙" },
+    { key: "snacks",       label: t.meals.snacks,       emoji: "🍎" },
+  ];
+}
 
 const WATER_LOG_MAX_ML = 1000; // one "bottle" — the fill gauge's full-scale range
 const WATER_LOG_STEP_ML = 25;
 
-const DAY_TYPE_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  hard:    { label: "⚡ Hard Session Day",  color: "var(--red)",    bg: "rgba(var(--red-rgb),.12)" },
-  easy:    { label: "🏃 Easy Day",          color: "var(--blue)",   bg: "rgba(111,182,255,.12)" },
-  rest:    { label: "😴 Rest Day",          color: "var(--green)",  bg: "rgba(var(--green-rgb),.12)" },
-  race:    { label: "🏁 Race Day",          color: "var(--accent)", bg: "rgba(124,92,255,.12)" },
-  default: { label: "📅 Training Day",     color: "var(--muted)",  bg: "rgba(var(--overlay-rgb),.05)" },
-};
+function getDayTypeLabels(t: Dictionary["nutrition"]): Record<string, { label: string; color: string; bg: string }> {
+  return {
+    hard:    { label: t.dayTypes.hard,    color: "var(--red)",    bg: "rgba(var(--red-rgb),.12)" },
+    easy:    { label: t.dayTypes.easy,    color: "var(--blue)",   bg: "rgba(111,182,255,.12)" },
+    rest:    { label: t.dayTypes.rest,    color: "var(--green)",  bg: "rgba(var(--green-rgb),.12)" },
+    race:    { label: t.dayTypes.race,    color: "var(--accent)", bg: "rgba(124,92,255,.12)" },
+    default: { label: t.dayTypes.default, color: "var(--muted)",  bg: "rgba(var(--overlay-rgb),.05)" },
+  };
+}
 
 // Standard adult RDAs (approximate)
 const RDA: Record<string, number> = {
@@ -188,47 +195,50 @@ const RDA: Record<string, number> = {
   fiber_g:         38,
 };
 
-const MICRO_GROUPS = [
-  {
-    label: "Vitamins",
-    items: [
-      { key: "vitamin_c_mg",    label: "Vitamin C",  unit: "mg" },
-      { key: "vitamin_d_mcg",   label: "Vitamin D",  unit: "µg" },
-      { key: "vitamin_a_mcg",   label: "Vitamin A",  unit: "µg" },
-      { key: "vitamin_e_mg",    label: "Vitamin E",  unit: "mg" },
-      { key: "vitamin_k_mcg",   label: "Vitamin K",  unit: "µg" },
-      { key: "thiamin_mg",      label: "Thiamin",    unit: "mg" },
-      { key: "riboflavin_mg",   label: "Riboflavin", unit: "mg" },
-      { key: "niacin_mg",       label: "Niacin",     unit: "mg" },
-      { key: "vitamin_b6_mg",   label: "Vitamin B6", unit: "mg" },
-      { key: "folate_mcg",      label: "Folate",     unit: "µg" },
-      { key: "vitamin_b12_mcg", label: "Vitamin B12",unit: "µg" },
-    ],
-  },
-  {
-    label: "Minerals",
-    items: [
-      { key: "calcium_mg",    label: "Calcium",    unit: "mg" },
-      { key: "iron_mg",       label: "Iron",       unit: "mg" },
-      { key: "magnesium_mg",  label: "Magnesium",  unit: "mg" },
-      { key: "potassium_mg",  label: "Potassium",  unit: "mg" },
-      { key: "phosphorus_mg", label: "Phosphorus", unit: "mg" },
-      { key: "zinc_mg",       label: "Zinc",       unit: "mg" },
-      { key: "sodium_mg",     label: "Sodium",     unit: "mg" },
-      { key: "copper_mg",     label: "Copper",     unit: "mg" },
-    ],
-  },
-  {
-    label: "Fats",
-    items: [
-      { key: "saturated_fat_g",       label: "Saturated",     unit: "g" },
-      { key: "monounsaturated_fat_g",  label: "Monounsat.",    unit: "g" },
-      { key: "polyunsaturated_fat_g",  label: "Polyunsat.",    unit: "g" },
-      { key: "omega3_g",              label: "Omega-3",       unit: "g" },
-      { key: "cholesterol_mg",        label: "Cholesterol",   unit: "mg" },
-    ],
-  },
-];
+function getMicroGroups(t: Dictionary["nutrition"]) {
+  const mi = t.micronutrients.items;
+  return [
+    {
+      label: t.micronutrients.groups.vitamins,
+      items: [
+        { key: "vitamin_c_mg",    label: mi.vitaminC,   unit: "mg" },
+        { key: "vitamin_d_mcg",   label: mi.vitaminD,   unit: "µg" },
+        { key: "vitamin_a_mcg",   label: mi.vitaminA,   unit: "µg" },
+        { key: "vitamin_e_mg",    label: mi.vitaminE,   unit: "mg" },
+        { key: "vitamin_k_mcg",   label: mi.vitaminK,   unit: "µg" },
+        { key: "thiamin_mg",      label: mi.thiamin,    unit: "mg" },
+        { key: "riboflavin_mg",   label: mi.riboflavin, unit: "mg" },
+        { key: "niacin_mg",       label: mi.niacin,     unit: "mg" },
+        { key: "vitamin_b6_mg",   label: mi.vitaminB6,  unit: "mg" },
+        { key: "folate_mcg",      label: mi.folate,     unit: "µg" },
+        { key: "vitamin_b12_mcg", label: mi.vitaminB12, unit: "µg" },
+      ],
+    },
+    {
+      label: t.micronutrients.groups.minerals,
+      items: [
+        { key: "calcium_mg",    label: mi.calcium,    unit: "mg" },
+        { key: "iron_mg",       label: mi.iron,       unit: "mg" },
+        { key: "magnesium_mg",  label: mi.magnesium,  unit: "mg" },
+        { key: "potassium_mg",  label: mi.potassium,  unit: "mg" },
+        { key: "phosphorus_mg", label: mi.phosphorus, unit: "mg" },
+        { key: "zinc_mg",       label: mi.zinc,       unit: "mg" },
+        { key: "sodium_mg",     label: mi.sodium,     unit: "mg" },
+        { key: "copper_mg",     label: mi.copper,     unit: "mg" },
+      ],
+    },
+    {
+      label: t.micronutrients.groups.fats,
+      items: [
+        { key: "saturated_fat_g",       label: mi.saturated,       unit: "g" },
+        { key: "monounsaturated_fat_g",  label: mi.monounsaturated, unit: "g" },
+        { key: "polyunsaturated_fat_g",  label: mi.polyunsaturated, unit: "g" },
+        { key: "omega3_g",              label: mi.omega3,          unit: "g" },
+        { key: "cholesterol_mg",        label: mi.cholesterol,     unit: "mg" },
+      ],
+    },
+  ];
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -273,9 +283,9 @@ function computeTotals(entries: DiaryEntry[]) {
   };
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, language: "en" | "no"): string {
   const d = new Date(iso + "T12:00:00");
-  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  return d.toLocaleDateString(localeTag(language), { weekday: "long", day: "numeric", month: "long" });
 }
 
 function prevDate(iso: string): string {
@@ -399,6 +409,11 @@ export function NutritionClient({
   dayType: string;
   mealRecommendations: MealRecommendation[];
 }) {
+  const nt = useT().nutrition;
+  const [language] = useLanguage();
+  const MEALS = getMeals(nt);
+  const DAY_TYPE_LABELS = getDayTypeLabels(nt);
+  const MICRO_GROUPS = getMicroGroups(nt);
   const formatQty = useFormatQty();
   const [date, setDate] = useState(initialDate);
   const [entries, setEntries] = useState<DiaryEntry[]>(initialEntries);
@@ -613,15 +628,16 @@ export function NutritionClient({
         selectSearchResult(food as USDAFood);
         setSearchOpen(true);
       } else {
-        setBarcodeError(`Barcode ${barcode} not found in Open Food Facts database. Try searching by name.`);
+        setBarcodeError(nt.barcodeLookup.notFound.replace("{code}", barcode));
         setSearchOpen(true);
       }
     } catch {
-      setBarcodeError("Barcode lookup failed. Check your connection and try again.");
+      setBarcodeError(nt.barcodeLookup.failed);
       setSearchOpen(true);
     } finally {
       setBarcodeLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectSearchResult]);
 
   const handlePhotoLog = useCallback(async (
@@ -656,7 +672,7 @@ export function NutritionClient({
       fdcId: 0,
       description: food.name,
       brand: food.brand ?? null,
-      category: "My foods",
+      category: nt.searchModal.myFoods,
       servingSize: food.serving_size_g,
       servingUnit: "g",
       servingLabel: food.serving_size_g !== 100 ? `1 serving (${food.serving_size_g}g)` : null,
@@ -1153,7 +1169,7 @@ export function NutritionClient({
     try {
       const res = await fetch("/api/nutrition/targets/generate", { method: "POST" });
       const { targets, error } = await res.json();
-      if (error) { setTargetGenNote(`Error: ${error}`); return; }
+      if (error) { setTargetGenNote(nt.targetsModal.errorPrefix.replace("{error}", error)); return; }
       generatedTargets.current = targets as NutritionTarget[];
       // Update form to show the day_type matching the current selection
       const match = (targets as NutritionTarget[]).find(t => t.day_type === targetForm.day_type)
@@ -1171,7 +1187,7 @@ export function NutritionClient({
         setCurrentTarget(match);
       }
       const note = match?.notes;
-      setTargetGenNote(note ? `Coach: ${note}` : "Targets generated and saved for all day types.");
+      setTargetGenNote(note ? nt.targetsModal.coachNote.replace("{note}", note) : nt.targetsModal.generatedSuccess);
     } finally {
       setTargetGenerating(false);
     }
@@ -1209,15 +1225,15 @@ export function NutritionClient({
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button className="btn-secondary" style={{ padding: "6px 10px" }} onClick={() => navigateDate(prevDate(date))}>‹</button>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>{formatDate(date)}</div>
-            {isToday && <div style={{ fontSize: 11, color: "var(--dim)" }}>Today</div>}
+            <div style={{ fontSize: 15, fontWeight: 700 }}>{formatDate(date, language)}</div>
+            {isToday && <div style={{ fontSize: 11, color: "var(--dim)" }}>{nt.dayNav.today}</div>}
           </div>
           <button className="btn-secondary" style={{ padding: "6px 10px" }} onClick={() => navigateDate(nextDate(date))} disabled={date >= todayISO()}>›</button>
         </div>
 
         {!isToday && (
           <button className="btn-soft" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => navigateDate(todayISO())}>
-            Go to today
+            {nt.dayNav.goToToday}
           </button>
         )}
 
@@ -1230,7 +1246,7 @@ export function NutritionClient({
           </span>
           {currentTarget && (
             <span style={{ fontSize: 11, color: "var(--dim)" }}>
-              Target <span style={{ color: "var(--accent)", fontWeight: 700 }}>{currentTarget.calories.toLocaleString("en-US")} kcal</span>
+              {nt.topBar.target} <span style={{ color: "var(--accent)", fontWeight: 700 }}>{currentTarget.calories.toLocaleString(localeTag(language))} kcal</span>
             </span>
           )}
           {/* Secondary actions: inline row on desktop, collapsed behind a
@@ -1240,8 +1256,8 @@ export function NutritionClient({
             <button
               className="btn-secondary ntr-more-btn"
               onClick={() => setMoreMenuOpen(o => !o)}
-              title="More actions"
-              aria-label="More actions"
+              title={nt.topBar.moreActions}
+              aria-label={nt.topBar.moreActions}
               aria-expanded={moreMenuOpen}
             >
               <i className="ti ti-dots-vertical" aria-hidden="true" />
@@ -1255,10 +1271,10 @@ export function NutritionClient({
                   style={{ fontSize: 12, padding: "6px 12px", display: "flex", alignItems: "center", gap: 5 }}
                   onClick={() => setCopyOpen(o => !o)}
                   disabled={copying}
-                  title="Copy meals from a previous day"
+                  title={nt.topBar.copyDayTooltip}
                 >
                   <i className="ti ti-copy" style={{ fontSize: 13 }} aria-hidden="true" />
-                  {copying ? "Copying…" : "Copy day"}
+                  {copying ? nt.actions.copying : nt.topBar.copyDay}
                 </button>
                 {copyOpen && (
                   <div style={{
@@ -1268,13 +1284,13 @@ export function NutritionClient({
                     overflow: "hidden",
                   }}>
                     <div style={{ padding: "8px 14px 6px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em" }}>
-                      Copy food entries from
+                      {nt.topBar.copyFrom}
                     </div>
                     {Array.from({ length: 7 }, (_, i) => {
                       const d = new Date();
                       d.setDate(d.getDate() - (i + 1));
                       const ds = d.toISOString().split("T")[0];
-                      const label = i === 0 ? "Yesterday" : i === 1 ? "2 days ago" : d.toLocaleDateString("en", { weekday: "short", month: "short", day: "numeric" });
+                      const label = i === 0 ? nt.topBar.yesterday : i === 1 ? nt.topBar.twoDaysAgo : d.toLocaleDateString(localeTag(language), { weekday: "short", month: "short", day: "numeric" });
                       return (
                         <button
                           key={ds}
@@ -1288,7 +1304,7 @@ export function NutritionClient({
                       );
                     })}
                     <div style={{ padding: "6px 14px 8px", fontSize: 10, color: "var(--dim)" }}>
-                      Water entries are not copied
+                      {nt.topBar.waterNotCopied}
                     </div>
                   </div>
                 )}
@@ -1310,7 +1326,7 @@ export function NutritionClient({
                 style={{ fontSize: 12, padding: "6px 14px", background: "rgba(var(--amber-rgb),.1)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
               >
                 <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 13 }} />
-                Meals
+                {nt.topBar.meals}
               </button>
               <button
                 onClick={() => { setMealPlanOpen(true); setMoreMenuOpen(false); }}
@@ -1318,23 +1334,23 @@ export function NutritionClient({
                 style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5 }}
               >
                 <i className="ti ti-calendar-week" aria-hidden="true" style={{ fontSize: 13 }} />
-                Meal Plan
+                {nt.topBar.mealPlan}
               </button>
               <button
                 onClick={() => { generateMealRecommendations(1); setMoreMenuOpen(false); }}
                 disabled={recsGenerating}
-                title="Fallback — the coach normally plans the coming week automatically"
+                title={nt.topBar.regenerateTooltip}
                 className="btn-secondary ntr-secondary-btn"
                 style={{ fontSize: 12, padding: "6px 14px", display: "flex", alignItems: "center", gap: 5, opacity: recsGenerating ? 0.7 : 1 }}
               >
                 <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 13 }} />
-                {recsGenerating ? "Suggesting…" : "Regenerate today"}
+                {recsGenerating ? nt.topBar.suggesting : nt.topBar.regenerateToday}
               </button>
             </div>
           </div>
 
           <button className="btn-primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => openSearch("snacks")}>
-            + Log Food
+            {nt.topBar.logFood}
           </button>
         </div>
       </div>
@@ -1353,39 +1369,39 @@ export function NutritionClient({
 
           {/* Calorie ring */}
           <div className="card" style={{ padding: 16 }}>
-            <div className="card-title">Calories</div>
+            <div className="card-title">{nt.calorieCard.title}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <div style={{ position: "relative", display: "inline-block" }}>
                 <CalRing value={totals.calories} max={calTarget || 2200} size={96} stroke={9} />
                 <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center", lineHeight: 1 }}>
                   <div style={{ fontSize: 11, color: "var(--dim)" }}>
-                    {calTarget > 0 ? (isOverCalories ? "over" : "remaining") : "logged"}
+                    {calTarget > 0 ? (isOverCalories ? nt.calorieCard.over : nt.calorieCard.remaining) : nt.calorieCard.logged}
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: isOverCalories ? "var(--amber)" : "var(--text)", marginTop: 2 }}>
                     {calTarget > 0
-                      ? (isOverCalories ? "+" : "") + (isOverCalories ? totals.calories - calTarget : remaining).toLocaleString("en-US")
-                      : totals.calories.toLocaleString("en-US")}
+                      ? (isOverCalories ? "+" : "") + (isOverCalories ? totals.calories - calTarget : remaining).toLocaleString(localeTag(language))
+                      : totals.calories.toLocaleString(localeTag(language))}
                   </div>
                   <div style={{ fontSize: 10, color: "var(--dim)" }}>kcal</div>
                 </div>
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, marginBottom: 6 }}>
-                  <span style={{ color: "var(--dim)" }}>Goal </span>
-                  <span style={{ fontWeight: 700 }}>{calTarget > 0 ? calTarget.toLocaleString("en-US") : "—"}</span>
+                  <span style={{ color: "var(--dim)" }}>{nt.calorieCard.goal} </span>
+                  <span style={{ fontWeight: 700 }}>{calTarget > 0 ? calTarget.toLocaleString(localeTag(language)) : "—"}</span>
                 </div>
                 <div style={{ fontSize: 12, marginBottom: 6 }}>
-                  <span style={{ color: "var(--dim)" }}>Logged </span>
-                  <span style={{ fontWeight: 700 }}>{totals.calories.toLocaleString("en-US")}</span>
+                  <span style={{ color: "var(--dim)" }}>{nt.calorieCard.loggedLabel} </span>
+                  <span style={{ fontWeight: 700 }}>{totals.calories.toLocaleString(localeTag(language))}</span>
                 </div>
                 {calTarget > 0 && (
                   <div style={{ fontSize: 11, color: totals.calories > calTarget ? "var(--amber)" : "var(--green)", fontWeight: 700 }}>
-                    {totals.calories > calTarget ? `+${(totals.calories - calTarget).toLocaleString("en-US")} over` : "On track ✓"}
+                    {totals.calories > calTarget ? nt.calorieCard.overAmount.replace("{amount}", (totals.calories - calTarget).toLocaleString(localeTag(language))) : nt.calorieCard.onTrack}
                   </div>
                 )}
                 {!currentTarget && (
                   <button className="btn-soft" style={{ fontSize: 10, padding: "3px 8px", marginTop: 4 }} onClick={() => setTargetsOpen(true)}>
-                    Set targets
+                    {nt.calorieCard.setTargets}
                   </button>
                 )}
               </div>
@@ -1395,13 +1411,13 @@ export function NutritionClient({
           {/* Water */}
           <div className="card" style={{ padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div className="card-title" style={{ margin: 0 }}>Hydration</div>
+              <div className="card-title" style={{ margin: 0 }}>{nt.hydrationCard.title}</div>
               <button
                 className="btn-soft"
                 style={{ fontSize: 11, padding: "4px 10px" }}
                 onClick={() => { setWaterSliderMl(250); setWaterLogOpen(true); }}
               >
-                + Drink
+                {nt.hydrationCard.addDrink}
               </button>
             </div>
             <div className="progress-bar" style={{ marginBottom: 8 }}>
@@ -1417,7 +1433,7 @@ export function NutritionClient({
                   onClick={handleRemoveWater}
                   style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 10, padding: 0, textDecoration: "underline" }}
                 >
-                  Undo last
+                  {nt.hydrationCard.undoLast}
                 </button>
               )}
             </div>
@@ -1429,12 +1445,12 @@ export function NutritionClient({
           {/* Totals summary */}
           {totals.calories > 0 && (
             <div className="card" style={{ padding: 16 }}>
-              <div className="card-title">Today&apos;s totals</div>
+              <div className="card-title">{nt.totalsCard.title}</div>
               {[
-                ["Sugar", totals.sugar_g, "g"],
-                ["Sodium", totals.sodium_mg, "mg"],
-                ["Sat. fat", totals.saturated_fat_g, "g"],
-                ["Cholesterol", totals.cholesterol_mg, "mg"],
+                [nt.macroLabels.sugar, totals.sugar_g, "g"],
+                [nt.macroLabels.sodium, totals.sodium_mg, "mg"],
+                [nt.totalsCard.satFat, totals.saturated_fat_g, "g"],
+                [nt.totalsCard.cholesterol, totals.cholesterol_mg, "mg"],
               ].map(([label, val, unit]) => (
                 <div key={label as string} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, paddingBottom: 6, borderBottom: "1px solid var(--border)", marginBottom: 6 }}>
                   <span style={{ color: "var(--muted)" }}>{label}</span>
@@ -1448,7 +1464,7 @@ export function NutritionClient({
         {/* ── CENTER: Meal diary ─────────────────────────────────────── */}
         <div className="nutrition-col-diary" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {loadingEntries && (
-            <div style={{ textAlign: "center", padding: 40, color: "var(--dim)", fontSize: 13 }}>Loading…</div>
+            <div style={{ textAlign: "center", padding: 40, color: "var(--dim)", fontSize: 13 }}>{nt.actions.loading}</div>
           )}
 
           {!loadingEntries && MEALS.map(meal => {
@@ -1478,14 +1494,14 @@ export function NutritionClient({
                     {mealCal > 0 && <span style={{ fontSize: 11, color: "var(--dim)" }}><span style={{ color: "var(--muted)", fontWeight: 600 }}>{mealCal}</span> kcal</span>}
                     <button
                       onClick={() => { setPhotoMeal(meal.key); setPhotoOpen(true); }}
-                      title="Photo AI recognition"
+                      title={nt.diary.photoAiTooltip}
                       style={{ background: "none", border: "1px solid rgba(124,92,255,.25)", borderRadius: 6, cursor: "pointer", color: "var(--accent)", fontSize: 13, padding: "3px 7px", transition: "color .12s", lineHeight: 1 }}
                     >
                       <i className="ti ti-camera" aria-hidden="true" />
                     </button>
                     <button
                       onClick={() => { setActiveMeal(meal.key); setScannerOpen(true); setBarcodeError(null); }}
-                      title="Scan barcode"
+                      title={nt.diary.scanBarcodeTooltip}
                       style={{ background: "none", border: "1px solid rgba(var(--blue-rgb),.25)", borderRadius: 6, cursor: "pointer", color: "var(--blue)", fontSize: 13, padding: "3px 7px", transition: "color .12s", lineHeight: 1 }}
                     >
                       <i className="ti ti-scan" aria-hidden="true" />
@@ -1494,7 +1510,7 @@ export function NutritionClient({
                       onClick={() => openSearch(meal.key)}
                       style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", fontSize: 11, padding: "3px 8px", transition: "color .12s" }}
                     >
-                      + Add
+                      {nt.diary.addBtn}
                     </button>
                   </div>
                 </div>
@@ -1508,7 +1524,7 @@ export function NutritionClient({
                     <div style={{ background: "rgba(124,92,255,.06)", borderBottom: "1px solid rgba(124,92,255,.15)", padding: "8px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                         <i className="ti ti-brain" aria-hidden="true" style={{ fontSize: 12, color: "var(--accent)" }} />
-                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".05em" }}>Coach recommends</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".05em" }}>{nt.diary.coachRecommends}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <button
@@ -1518,7 +1534,7 @@ export function NutritionClient({
                             return next;
                           })}
                           style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, transform: isRecExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1 }}
-                          title={isRecExpanded ? "Collapse ingredients" : "Expand ingredients"}
+                          title={isRecExpanded ? nt.diary.collapseIngredients : nt.diary.expandIngredients}
                         >›</button>
                         <div style={{ fontSize: 12, fontWeight: 600 }}>{rec.name}</div>
                       </div>
@@ -1552,7 +1568,7 @@ export function NutritionClient({
                           style={{ fontSize: 10, padding: "3px 10px" }}
                           onClick={() => logRecommendedMeal(rec)}
                         >
-                          Use recommended
+                          {nt.diary.useRecommended}
                         </button>
                       </div>
                     </div>
@@ -1578,7 +1594,7 @@ export function NutritionClient({
                               return next;
                             })}
                             style={{ background: "none", border: "none", color: "var(--amber)", cursor: "pointer", fontSize: 13, padding: "0 4px 0 0", flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1 }}
-                            title={isExpanded ? "Collapse ingredients" : "Expand ingredients"}
+                            title={isExpanded ? nt.diary.collapseIngredients : nt.diary.expandIngredients}
                           >›</button>
                         ) : <div style={{ width: 14 }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1589,7 +1605,7 @@ export function NutritionClient({
                             </div>
                           </div>
                           <div style={{ fontSize: 10, color: "var(--dim)" }}>
-                            {isMeal ? `${entry.meal_items!.length} ingredients · ${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}` : `${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}${entry.brand ? ` · ${entry.brand}` : ""}`}
+                            {isMeal ? `${nt.mealManager.ingredientsCountPlain.replace("{count}", String(entry.meal_items!.length))} · ${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}` : `${formatQty(entry.quantity_g, entry.serving_qty, entry.serving_label)}${entry.brand ? ` · ${entry.brand}` : ""}`}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 10, alignItems: "center", marginLeft: 10 }}>
@@ -1642,17 +1658,17 @@ export function NutritionClient({
                   className="ntr-quick-row"
                 >
                   <div style={{ width: 16, height: 16, borderRadius: 4, border: "1px dashed currentColor", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>+</div>
-                  Quick add (just numbers)
+                  {nt.diary.quickAddRow}
                 </div>
 
                 {/* Meal totals */}
                 {mealEntries.length > 0 && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderTop: "1px solid var(--border)" }}>
                     {[
-                      { label: "Cal", val: mealCal, unit: "" },
-                      { label: "Protein", val: mealP, unit: "g", color: "var(--accent)" },
-                      { label: "Carbs",  val: mealC, unit: "g", color: "var(--blue)" },
-                      { label: "Fat",    val: mealF, unit: "g", color: "var(--amber)" },
+                      { label: nt.macroLabels.cal, val: mealCal, unit: "" },
+                      { label: nt.macroLabels.protein, val: mealP, unit: "g", color: "var(--accent)" },
+                      { label: nt.macroLabels.carbs,  val: mealC, unit: "g", color: "var(--blue)" },
+                      { label: nt.macroLabels.fat,    val: mealF, unit: "g", color: "var(--amber)" },
                     ].map(cell => (
                       <div key={cell.label} style={{ padding: "7px 14px", textAlign: "center", borderRight: "1px solid var(--border)" }}>
                         <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em" }}>{cell.label}</div>
@@ -1680,11 +1696,11 @@ export function NutritionClient({
             const microScore = Math.round((microCount / 22) * 100);
             return (
               <div className="card" style={{ padding: 14 }}>
-                <div className="card-title">Day Summary</div>
+                <div className="card-title">{nt.daySummary.title}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
                   {[
-                    { label: "Protein", score: protScore, color: "var(--accent)" },
-                    { label: "Micros",  score: microScore, color: "var(--blue)" },
+                    { label: nt.macroLabels.protein, score: protScore, color: "var(--accent)" },
+                    { label: nt.daySummary.micros,  score: microScore, color: "var(--blue)" },
                   ].map(s => (
                     <div key={s.label} style={{ textAlign: "center", background: "rgba(var(--overlay-rgb),.04)", borderRadius: 8, padding: "10px 6px" }}>
                       <div style={{
@@ -1706,20 +1722,20 @@ export function NutritionClient({
                   return (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                       <div style={{ fontSize: 9, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
-                        Workout nutrition
+                        {nt.daySummary.workoutNutrition}
                       </div>
                       {(["pre", "post"] as const).map(w => {
                         const isPost   = w === "post";
                         const status   = isPost ? postStatus : preStatus;
                         const proteinG = isPost ? postP : preP;
                         const cal      = isPost ? postCal : preCal;
-                        const label    = isPost ? "Post-workout" : "Pre-workout";
+                        const label    = isPost ? nt.daySummary.postWorkout : nt.daySummary.preWorkout;
                         return (
                           <div key={w} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: isPost ? 0 : 5 }}>
                             <i className={`ti ${icons[status]}`} aria-hidden="true" style={{ fontSize: 13, color: colors[status], flexShrink: 0 }} />
                             <span style={{ fontSize: 11, fontWeight: 600, flex: 1 }}>{label}</span>
                             <span style={{ fontSize: 10, color: status === "empty" ? "var(--dim)" : "var(--muted)" }}>
-                              {status === "empty" ? "not logged" : `P${proteinG}g${!isPost ? ` C${preC}g` : ""} · ${cal} kcal`}
+                              {status === "empty" ? nt.daySummary.notLogged : `P${proteinG}g${!isPost ? ` C${preC}g` : ""} · ${cal} kcal`}
                             </span>
                           </div>
                         );
@@ -1736,10 +1752,10 @@ export function NutritionClient({
           {/* Macros */}
           <div className="card" style={{ padding: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div className="card-title" style={{ margin: 0 }}>Macros</div>
+              <div className="card-title" style={{ margin: 0 }}>{nt.macrosCard.title}</div>
               {currentTarget && (
                 <button style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 11 }} onClick={() => setTargetsOpen(true)}>
-                  Edit
+                  {nt.actions.edit}
                 </button>
               )}
             </div>
@@ -1747,9 +1763,9 @@ export function NutritionClient({
             {/* Macro pills */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 14 }}>
               {[
-                { label: "P", val: totals.protein_g, color: "var(--accent)" },
-                { label: "C", val: totals.carbs_g,   color: "var(--blue)" },
-                { label: "F", val: totals.fat_g,     color: "var(--amber)" },
+                { label: nt.macrosCard.pillProtein, val: totals.protein_g, color: "var(--accent)" },
+                { label: nt.macrosCard.pillCarbs, val: totals.carbs_g,   color: "var(--blue)" },
+                { label: nt.macrosCard.pillFat, val: totals.fat_g,     color: "var(--amber)" },
               ].map(m => (
                 <div key={m.label} style={{ textAlign: "center", background: "rgba(var(--overlay-rgb),.04)", borderRadius: 8, padding: "8px 4px" }}>
                   <div style={{ fontSize: 10, color: "var(--dim)", marginBottom: 2 }}>{m.label}</div>
@@ -1760,22 +1776,22 @@ export function NutritionClient({
             </div>
 
             <MacroBar
-              label="Protein" value={totals.protein_g}
+              label={nt.macroLabels.protein} value={totals.protein_g}
               max={currentTarget?.protein_g ?? Math.max(1, Math.round(totals.protein_g * 1.2))}
               color="var(--accent)"
             />
             <MacroBar
-              label="Carbs" value={totals.carbs_g}
+              label={nt.macroLabels.carbs} value={totals.carbs_g}
               max={currentTarget?.carbs_g ?? Math.max(1, Math.round(totals.carbs_g * 1.2))}
               color="var(--blue)"
             />
             <MacroBar
-              label="Fat" value={totals.fat_g}
+              label={nt.macroLabels.fat} value={totals.fat_g}
               max={currentTarget?.fat_g ?? Math.max(1, Math.round(totals.fat_g * 1.2))}
               color="var(--amber)"
             />
             <MacroBar
-              label="Fiber" value={totals.fiber_g}
+              label={nt.macroLabels.fiber} value={totals.fiber_g}
               max={currentTarget?.fiber_g ?? 30}
               color="var(--green)"
             />
@@ -1783,10 +1799,10 @@ export function NutritionClient({
 
           {/* Micronutrients */}
           <div className="card" style={{ padding: 14 }}>
-            <div className="card-title">Micronutrients</div>
+            <div className="card-title">{nt.micronutrients.title}</div>
             {totals.calories === 0 ? (
               <div style={{ fontSize: 12, color: "var(--dim)", textAlign: "center", padding: "16px 0" }}>
-                Log food to see micronutrients
+                {nt.micronutrients.emptyState}
               </div>
             ) : (
               MICRO_GROUPS.map(group => (
@@ -1828,12 +1844,12 @@ export function NutritionClient({
             <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", gap: 10, alignItems: "flex-end" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "var(--dim)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" }}>
-                  Add to {MEALS.find(m => m.key === activeMeal)?.label}
+                  {nt.searchModal.addTo.replace("{meal}", MEALS.find(m => m.key === activeMeal)?.label ?? "")}
                 </div>
                 <input
                   ref={searchInputRef}
                   className="input"
-                  placeholder="Search foods (USDA + Open Food Facts)…"
+                  placeholder={nt.searchModal.searchPlaceholder}
                   value={searchQuery}
                   onChange={e => handleSearch(e.target.value)}
                   style={{ fontSize: 14 }}
@@ -1841,7 +1857,7 @@ export function NutritionClient({
               </div>
               <button
                 onClick={() => { setSearchOpen(false); setPhotoMeal(activeMeal); setPhotoOpen(true); }}
-                title="Photo AI recognition"
+                title={nt.diary.photoAiTooltip}
                 style={{
                   background: "rgba(124,92,255,.1)", border: "1px solid rgba(124,92,255,.3)",
                   color: "var(--accent)", borderRadius: 8, cursor: "pointer",
@@ -1850,11 +1866,11 @@ export function NutritionClient({
                 }}
               >
                 <i className="ti ti-camera" aria-hidden="true" style={{ fontSize: 16 }} />
-                <span style={{ fontSize: 11, fontWeight: 700 }}>AI</span>
+                <span style={{ fontSize: 11, fontWeight: 700 }}>{nt.searchModal.aiLabel}</span>
               </button>
               <button
                 onClick={() => { setSearchOpen(false); setScannerOpen(true); setBarcodeError(null); }}
-                title="Scan barcode"
+                title={nt.diary.scanBarcodeTooltip}
                 style={{
                   background: "rgba(var(--blue-rgb),.1)", border: "1px solid rgba(var(--blue-rgb),.3)",
                   color: "var(--blue)", borderRadius: 8, cursor: "pointer",
@@ -1866,7 +1882,7 @@ export function NutritionClient({
               </button>
               <button
                 onClick={() => { setSearchOpen(false); setMealManagerOpen(true); }}
-                title="View saved meals"
+                title={nt.searchModal.viewSavedMealsTooltip}
                 style={{
                   background: "rgba(var(--amber-rgb),.1)", border: "1px solid rgba(var(--amber-rgb),.3)",
                   color: "var(--amber)", borderRadius: 8, cursor: "pointer",
@@ -1875,11 +1891,11 @@ export function NutritionClient({
                 }}
               >
                 <i className="ti ti-tools-kitchen-2" aria-hidden="true" style={{ fontSize: 14 }} />
-                <span style={{ fontSize: 10, fontWeight: 700 }}>Meal</span>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>{nt.searchModal.mealLabel}</span>
               </button>
               <button
                 onClick={() => { setEditingCustomFood(null); setCustomFoodModalOpen(true); }}
-                title="Create custom food"
+                title={nt.searchModal.createCustomFoodTooltip}
                 style={{
                   background: "rgba(var(--green-rgb),.1)", border: "1px solid rgba(var(--green-rgb),.3)",
                   color: "var(--green)", borderRadius: 8, cursor: "pointer",
@@ -1888,7 +1904,7 @@ export function NutritionClient({
                 }}
               >
                 <i className="ti ti-plus" aria-hidden="true" style={{ fontSize: 14 }} />
-                <span style={{ fontSize: 10, fontWeight: 700 }}>Food</span>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>{nt.searchModal.foodLabel}</span>
               </button>
               <button
                 onClick={() => setSearchOpen(false)}
@@ -1915,7 +1931,7 @@ export function NutritionClient({
                     onClick={() => setSelectedFood(null)}
                     style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontSize: 12, marginBottom: 14, padding: 0 }}
                   >
-                    ← Back to results
+                    {nt.searchModal.backToResults}
                   </button>
 
                   <div style={{ marginBottom: 16 }}>
@@ -1925,7 +1941,7 @@ export function NutritionClient({
 
                   {/* Serving size input */}
                   <div style={{ marginBottom: 20 }}>
-                    <label className="field-label">Quantity</label>
+                    <label className="field-label">{nt.searchModal.quantity}</label>
                     <QuantityInput
                       key={selectedFood.fdcId || selectedFood.customFoodId || selectedFood.description}
                       initialGrams={addQty}
@@ -1937,13 +1953,13 @@ export function NutritionClient({
 
                   {/* Nutrition preview (scaled) */}
                   <div style={{ background: "rgba(var(--overlay-rgb),.04)", borderRadius: 10, padding: 14, marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}>Nutrition for {addQty}g</div>
+                    <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}>{nt.searchModal.nutritionFor.replace("{qty}", String(addQty))}</div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }}>
                       {[
-                        { label: "Cal",     val: Math.round(selectedFood.calories * addQty / 100),    unit: "",  color: "var(--text)" },
-                        { label: "Protein", val: round1(selectedFood.protein * addQty / 100),          unit: "g", color: "var(--accent)" },
-                        { label: "Carbs",   val: round1(selectedFood.carbs   * addQty / 100),          unit: "g", color: "var(--blue)" },
-                        { label: "Fat",     val: round1(selectedFood.fat     * addQty / 100),          unit: "g", color: "var(--amber)" },
+                        { label: nt.macroLabels.cal,     val: Math.round(selectedFood.calories * addQty / 100),    unit: "",  color: "var(--text)" },
+                        { label: nt.macroLabels.protein, val: round1(selectedFood.protein * addQty / 100),          unit: "g", color: "var(--accent)" },
+                        { label: nt.macroLabels.carbs,   val: round1(selectedFood.carbs   * addQty / 100),          unit: "g", color: "var(--blue)" },
+                        { label: nt.macroLabels.fat,     val: round1(selectedFood.fat     * addQty / 100),          unit: "g", color: "var(--amber)" },
                       ].map(m => (
                         <div key={m.label} style={{ textAlign: "center" }}>
                           <div style={{ fontSize: 18, fontWeight: 800, color: m.color }}>{m.val}</div>
@@ -1953,9 +1969,9 @@ export function NutritionClient({
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
                       {[
-                        { label: "Fiber",  val: round1(selectedFood.fiber * addQty / 100), unit: "g" },
-                        { label: "Sugar",  val: round1(selectedFood.sugar * addQty / 100), unit: "g" },
-                        { label: "Sodium", val: Math.round(selectedFood.sodium * addQty / 100), unit: "mg" },
+                        { label: nt.macroLabels.fiber,  val: round1(selectedFood.fiber * addQty / 100), unit: "g" },
+                        { label: nt.macroLabels.sugar,  val: round1(selectedFood.sugar * addQty / 100), unit: "g" },
+                        { label: nt.macroLabels.sodium, val: Math.round(selectedFood.sodium * addQty / 100), unit: "mg" },
                       ].map(m => (
                         <div key={m.label} style={{ fontSize: 11, color: "var(--muted)" }}>
                           {m.label}: <span style={{ color: "var(--text)" }}>{m.val}{m.unit}</span>
@@ -1970,7 +1986,11 @@ export function NutritionClient({
                     disabled={addingFood || addQty <= 0}
                     onClick={() => handleAddFood(selectedFood, activeMeal, addQty, addServingQty, addServingLabel)}
                   >
-                    {addingFood ? "Adding…" : `Add ${formatQty(addQty, addServingQty, addServingLabel)} to ${MEALS.find(m => m.key === activeMeal)?.label}`}
+                    {addingFood
+                      ? nt.actions.adding
+                      : nt.searchModal.addQtyTo
+                          .replace("{qty}", formatQty(addQty, addServingQty, addServingLabel))
+                          .replace("{meal}", MEALS.find(m => m.key === activeMeal)?.label ?? "")}
                   </button>
                   {selectedFood?.isCustom && selectedFood.customFoodId && (
                     <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -1980,7 +2000,7 @@ export function NutritionClient({
                           if (cf) { setEditingCustomFood(cf); setCustomFoodModalOpen(true); }
                         }}
                       >
-                        <i className="ti ti-edit" style={{ marginRight: 5 }} aria-hidden="true" />Edit food
+                        <i className="ti ti-edit" style={{ marginRight: 5 }} aria-hidden="true" />{nt.searchModal.editFood}
                       </button>
                       <button className="btn-secondary" style={{ fontSize: 12, color: "var(--red)", borderColor: "rgba(var(--red-rgb),.3)" }}
                         onClick={() => selectedFood.customFoodId && deleteCustomFood(selectedFood.customFoodId)}
@@ -1995,16 +2015,16 @@ export function NutritionClient({
                   {searchQuery.length === 0 && (
                     <div>
                       {recentLoading ? (
-                        <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>Loading recent foods…</div>
+                        <div style={{ padding: 24, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>{nt.searchModal.loadingRecent}</div>
                       ) : recentFoods.length > 0 ? (
                         <>
                           <div style={{ padding: "10px 20px 6px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", display: "flex", alignItems: "center", gap: 6 }}>
                             <i className="ti ti-history" style={{ fontSize: 12 }} aria-hidden="true" />
-                            Recent foods
+                            {nt.searchModal.recentFoods}
                           </div>
                           {recentFoods.map((food, i) => {
                             const daysAgo = daysSince(food.date);
-                            const dateLabel = daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : daysAgo <= 6 ? `${daysAgo}d ago` : new Date(food.date).toLocaleDateString("en", { month: "short", day: "numeric" });
+                            const dateLabel = daysAgo === 0 ? nt.dayNav.today : daysAgo === 1 ? nt.topBar.yesterday : daysAgo <= 6 ? nt.searchModal.daysAgoShort.replace("{n}", String(daysAgo)) : new Date(food.date).toLocaleDateString(localeTag(language), { month: "short", day: "numeric" });
                             return (
                               <div
                                 key={i}
@@ -2032,7 +2052,9 @@ export function NutritionClient({
                                 <button
                                   onClick={e => { e.stopPropagation(); logRecentFood(food); }}
                                   disabled={addingFood}
-                                  title={`Log ${formatQty(food.quantity_g, food.serving_qty, food.serving_label)} to ${MEALS.find(m => m.key === activeMeal)?.label}`}
+                                  title={nt.searchModal.logQtyTo
+                                    .replace("{qty}", formatQty(food.quantity_g, food.serving_qty, food.serving_label))
+                                    .replace("{meal}", MEALS.find(m => m.key === activeMeal)?.label ?? "")}
                                   style={{
                                     background: "rgba(124,92,255,.12)", border: "1px solid rgba(124,92,255,.3)",
                                     color: "var(--accent)", borderRadius: 7, width: 28, height: 28,
@@ -2048,7 +2070,7 @@ export function NutritionClient({
                           {customFoods.length > 0 && (
                             <>
                               <div style={{ padding: "10px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".07em", borderTop: "1px solid var(--border)" }}>
-                                My Foods
+                                {nt.searchModal.myFoods}
                               </div>
                               {customFoods.slice(0, 5).map(food => (
                                 <div key={food.id} className="ntr-search-row"
@@ -2057,27 +2079,27 @@ export function NutritionClient({
                                 >
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{food.name}</div>
-                                    <div style={{ fontSize: 11, color: "var(--dim)" }}>{food.brand ?? "Custom"} · {food.serving_size_g}g serving</div>
+                                    <div style={{ fontSize: 11, color: "var(--dim)" }}>{food.brand ?? nt.searchModal.customFallback} · {nt.searchModal.servingSuffix.replace("{qty}", String(food.serving_size_g))}</div>
                                   </div>
                                   <div style={{ fontSize: 11, flexShrink: 0, display: "flex", gap: 6 }}>
                                     <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories_per_100g} kcal</span>
                                     <span style={{ color: "var(--accent)" }}>P{food.protein_per_100g}g</span>
                                   </div>
                                   <button onClick={e => { e.stopPropagation(); setEditingCustomFood(food); setCustomFoodModalOpen(true); }}
-                                    style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }} title="Edit">⋮</button>
+                                    style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }} title={nt.actions.edit}>⋮</button>
                                 </div>
                               ))}
                             </>
                           )}
                           <div style={{ padding: "10px 20px", fontSize: 11, color: "var(--dim)", textAlign: "center" }}>
-                            Or type to search USDA + Open Food Facts (1M+ foods, incl. Nordic brands)
+                            {nt.searchModal.typeToSearchHint}
                           </div>
                         </>
                       ) : (
                         <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
                           <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
-                          Type to search USDA + Open Food Facts
-                          <div style={{ fontSize: 11, marginTop: 6 }}>Over 1 million foods from USDA FoodData Central, plus Open Food Facts&rsquo; global branded-product database (strong Nordic coverage)</div>
+                          {nt.searchModal.typeToSearchEmpty}
+                          <div style={{ fontSize: 11, marginTop: 6 }}>{nt.searchModal.emptyStateDetail}</div>
                         </div>
                       )}
                     </div>
@@ -2092,7 +2114,7 @@ export function NutritionClient({
                     return (
                       <>
                         <div style={{ padding: "10px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: ".07em" }}>
-                          My Foods
+                          {nt.searchModal.myFoods}
                         </div>
                         {matches.map(food => (
                           <div key={food.id} className="ntr-search-row"
@@ -2101,7 +2123,7 @@ export function NutritionClient({
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{food.name}</div>
-                              <div style={{ fontSize: 11, color: "var(--dim)" }}>{food.brand ?? "Custom"} · {food.serving_size_g}g serving</div>
+                              <div style={{ fontSize: 11, color: "var(--dim)" }}>{food.brand ?? nt.searchModal.customFallback} · {nt.searchModal.servingSuffix.replace("{qty}", String(food.serving_size_g))}</div>
                             </div>
                             <div style={{ display: "flex", gap: 8, fontSize: 11, flexShrink: 0 }}>
                               <span style={{ color: "var(--text)", fontWeight: 700 }}>{food.calories_per_100g} kcal</span>
@@ -2113,13 +2135,13 @@ export function NutritionClient({
                             <button
                               onClick={e => { e.stopPropagation(); setEditingCustomFood(food); setCustomFoodModalOpen(true); }}
                               style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 16, padding: "0 2px", flexShrink: 0 }}
-                              title="Edit"
+                              title={nt.actions.edit}
                             >⋮</button>
                           </div>
                         ))}
                         {searchResults.length > 0 && (
                           <div style={{ padding: "6px 20px 4px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", borderTop: "1px solid var(--border)" }}>
-                            Search results
+                            {nt.searchModal.searchResultsHeader}
                           </div>
                         )}
                       </>
@@ -2127,7 +2149,7 @@ export function NutritionClient({
                   })()}
 
                   {searchLoading && (
-                    <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>Searching…</div>
+                    <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>{nt.actions.searching}</div>
                   )}
                   {!searchLoading && searchQuery.length > 0 && searchResults.length === 0 && (() => {
                     const q = searchQuery.toLowerCase();
@@ -2135,10 +2157,10 @@ export function NutritionClient({
                     if (hasCustom) return null;
                     return (
                       <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
-                        No results for &ldquo;{searchQuery}&rdquo;
+                        {nt.searchModal.noResults.replace("{query}", searchQuery)}
                         <div style={{ marginTop: 10 }}>
                           <button className="btn-soft" style={{ fontSize: 12 }} onClick={() => { setCustomFoodModalOpen(true); setEditingCustomFood(null); }}>
-                            + Create &ldquo;{searchQuery}&rdquo; as custom food
+                            {nt.searchModal.createAsCustom.replace("{query}", searchQuery)}
                           </button>
                         </div>
                       </div>
@@ -2156,7 +2178,7 @@ export function NutritionClient({
                           {food.description}
                         </div>
                         <div style={{ fontSize: 11, color: "var(--dim)" }}>
-                          {food.brand ?? food.category ?? "Generic"}
+                          {food.brand ?? food.category ?? nt.searchModal.genericCategory}
                           {food.servingLabel ? ` · ${food.servingLabel}` : ""}
                         </div>
                       </div>
@@ -2184,19 +2206,19 @@ export function NutritionClient({
         >
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", width: "100%", maxWidth: 400, padding: 24 }}>
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>
-              Quick add to {MEALS.find(m => m.key === quickMeal)?.label}
+              {nt.quickAddModal.title.replace("{meal}", MEALS.find(m => m.key === quickMeal)?.label ?? "")}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div className="field">
-                <label className="field-label">Food name</label>
-                <input className="input" value={quickForm.name} onChange={e => setQuickForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Homemade pasta" />
+                <label className="field-label">{nt.quickAddModal.foodName}</label>
+                <input className="input" value={quickForm.name} onChange={e => setQuickForm(p => ({ ...p, name: e.target.value }))} placeholder={nt.quickAddModal.foodNamePlaceholder} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {[
-                  { key: "calories", label: "Calories", unit: "kcal" },
-                  { key: "protein",  label: "Protein",  unit: "g" },
-                  { key: "carbs",    label: "Carbs",    unit: "g" },
-                  { key: "fat",      label: "Fat",      unit: "g" },
+                  { key: "calories", label: nt.macroLabels.calories, unit: "kcal" },
+                  { key: "protein",  label: nt.macroLabels.protein,  unit: "g" },
+                  { key: "carbs",    label: nt.macroLabels.carbs,    unit: "g" },
+                  { key: "fat",      label: nt.macroLabels.fat,      unit: "g" },
                 ].map(f => (
                   <div className="field" key={f.key}>
                     <label className="field-label">{f.label}</label>
@@ -2211,29 +2233,29 @@ export function NutritionClient({
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
                 <div className="field">
-                  <label className="field-label">Qty (optional)</label>
+                  <label className="field-label">{nt.quickAddModal.qtyOptional}</label>
                   <input
                     type="number" className="input" min={0} step={0.5}
                     value={quickForm.servingQty}
                     onChange={e => setQuickForm(p => ({ ...p, servingQty: e.target.value }))}
-                    placeholder="e.g. 2"
+                    placeholder={nt.quickAddModal.qtyPlaceholder}
                   />
                 </div>
                 <div className="field">
-                  <label className="field-label">Unit (optional)</label>
+                  <label className="field-label">{nt.quickAddModal.unitOptional}</label>
                   <input
                     className="input"
                     value={quickForm.servingLabel}
                     onChange={e => setQuickForm(p => ({ ...p, servingLabel: e.target.value }))}
-                    placeholder="e.g. cookies"
+                    placeholder={nt.quickAddModal.unitPlaceholder}
                   />
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setQuickOpen(false)}>Cancel</button>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setQuickOpen(false)}>{nt.actions.cancel}</button>
               <button className="btn-primary" style={{ flex: 1 }} disabled={!quickForm.name || addingFood} onClick={handleQuickAdd}>
-                {addingFood ? "Adding…" : "Add"}
+                {addingFood ? nt.actions.adding : nt.actions.add}
               </button>
             </div>
           </div>
@@ -2247,7 +2269,7 @@ export function NutritionClient({
           onClick={e => { if (e.target === e.currentTarget) setWaterLogOpen(false); }}
         >
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", width: "100%", maxWidth: 340, padding: 24 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Log water</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 18 }}>{nt.waterModal.title}</div>
 
             <div style={{ display: "flex", gap: 20, alignItems: "center", justifyContent: "center" }}>
               {/* Drag-to-fill bottle gauge */}
@@ -2300,14 +2322,14 @@ export function NutritionClient({
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setWaterLogOpen(false)}>Cancel</button>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setWaterLogOpen(false)}>{nt.actions.cancel}</button>
               <button
                 className="btn-primary"
                 style={{ flex: 1 }}
                 disabled={waterSliderMl <= 0 || addingWater}
                 onClick={() => handleLogWater(waterSliderMl)}
               >
-                {addingWater ? "Logging…" : `Log ${waterSliderMl}ml`}
+                {addingWater ? nt.actions.logging : nt.waterModal.logAmount.replace("{amount}", String(waterSliderMl))}
               </button>
             </div>
           </div>
@@ -2322,17 +2344,17 @@ export function NutritionClient({
         >
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius)", width: "100%", maxWidth: 460, padding: 24 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Set nutrition targets</div>
+              <div style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>{nt.targetsModal.title}</div>
               <button
                 onClick={handleGenerateTargets}
                 disabled={targetGenerating}
                 style={{ background: "rgba(124,92,255,.12)", border: "1px solid rgba(124,92,255,.35)", color: "var(--accent)", borderRadius: 8, cursor: "pointer", padding: "6px 12px", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, flexShrink: 0, opacity: targetGenerating ? 0.7 : 1 }}
               >
                 <i className="ti ti-sparkles" aria-hidden="true" style={{ fontSize: 13 }} />
-                {targetGenerating ? "Generating…" : "Generate with AI"}
+                {targetGenerating ? nt.actions.generating : nt.targetsModal.generateWithAi}
               </button>
             </div>
-            <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: targetGenNote ? 10 : 20 }}>Targets are specific to the training day type.</div>
+            <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: targetGenNote ? 10 : 20 }}>{nt.targetsModal.subtitle}</div>
             {targetGenNote && (
               <div style={{ fontSize: 11, background: "rgba(124,92,255,.08)", border: "1px solid rgba(124,92,255,.2)", borderRadius: 8, padding: "8px 12px", color: "var(--accent)", marginBottom: 16, lineHeight: 1.5 }}>
                 <i className="ti ti-brain" aria-hidden="true" style={{ marginRight: 5 }} />
@@ -2341,34 +2363,34 @@ export function NutritionClient({
             )}
 
             <div className="field" style={{ marginBottom: 14 }}>
-              <label className="field-label">Day type</label>
+              <label className="field-label">{nt.targetsModal.dayType}</label>
               <select className="select-input" value={targetForm.day_type} onChange={e => {
                 const dt = e.target.value;
                 const gen = generatedTargets.current.find(t => t.day_type === dt);
                 if (gen) {
                   setTargetForm({ day_type: dt, calories: gen.calories ?? 2200, protein_g: gen.protein_g ?? 160, carbs_g: gen.carbs_g ?? 250, fat_g: gen.fat_g ?? 75, fiber_g: gen.fiber_g ?? 30, water_ml: gen.water_ml ?? 2500 });
-                  setTargetGenNote(gen.notes ? `Coach: ${gen.notes}` : null);
+                  setTargetGenNote(gen.notes ? nt.targetsModal.coachNote.replace("{note}", gen.notes) : null);
                 } else {
                   setTargetForm(p => ({ ...p, day_type: dt }));
                   setTargetGenNote(null);
                 }
               }}>
-                <option value="default">Default (all days)</option>
-                <option value="hard">Hard session day</option>
-                <option value="easy">Easy day</option>
-                <option value="rest">Rest day</option>
-                <option value="race">Race day</option>
+                <option value="default">{nt.targetsModal.dayTypeOptions.default}</option>
+                <option value="hard">{nt.targetsModal.dayTypeOptions.hard}</option>
+                <option value="easy">{nt.targetsModal.dayTypeOptions.easy}</option>
+                <option value="rest">{nt.targetsModal.dayTypeOptions.rest}</option>
+                <option value="race">{nt.targetsModal.dayTypeOptions.race}</option>
               </select>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, marginBottom: 14 }}>
               {[
-                { key: "calories", label: "Calories", unit: "kcal" },
-                { key: "protein_g", label: "Protein", unit: "g" },
-                { key: "carbs_g", label: "Carbs", unit: "g" },
-                { key: "fat_g", label: "Fat", unit: "g" },
-                { key: "fiber_g", label: "Fiber", unit: "g" },
-                { key: "water_ml", label: "Water", unit: "ml" },
+                { key: "calories", label: nt.macroLabels.calories, unit: "kcal" },
+                { key: "protein_g", label: nt.macroLabels.protein, unit: "g" },
+                { key: "carbs_g", label: nt.macroLabels.carbs, unit: "g" },
+                { key: "fat_g", label: nt.macroLabels.fat, unit: "g" },
+                { key: "fiber_g", label: nt.macroLabels.fiber, unit: "g" },
+                { key: "water_ml", label: nt.targetsModal.water, unit: "ml" },
               ].map(f => (
                 <div className="field" key={f.key}>
                   <label className="field-label">{f.label} ({f.unit})</label>
@@ -2382,9 +2404,9 @@ export function NutritionClient({
             </div>
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setTargetsOpen(false)}>Cancel</button>
+              <button className="btn-secondary" style={{ flex: 1 }} onClick={() => setTargetsOpen(false)}>{nt.actions.cancel}</button>
               <button className="btn-primary" style={{ flex: 1 }} disabled={targetSaving} onClick={handleSaveTargets}>
-                {targetSaving ? "Saving…" : "Save targets"}
+                {targetSaving ? nt.actions.saving : nt.targetsModal.saveTargets}
               </button>
             </div>
           </div>
@@ -2477,8 +2499,8 @@ export function NutritionClient({
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14,
         }}>
           <i className="ti ti-scan" aria-hidden="true" style={{ fontSize: 36, color: "var(--blue)" }} />
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>Looking up barcode…</div>
-          <div style={{ fontSize: 12, color: "var(--dim)" }}>Searching Open Food Facts database</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>{nt.barcodeLookup.title}</div>
+          <div style={{ fontSize: 12, color: "var(--dim)" }}>{nt.barcodeLookup.subtitle}</div>
         </div>
       )}
 
@@ -2490,7 +2512,7 @@ export function NutritionClient({
         display: "flex", gap: 8, alignItems: "center",
       }}>
         <span style={{ background: "rgba(var(--overlay-rgb),.08)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontSize: 10, color: "var(--muted)" }}>⌘K</span>
-        Quick log food
+        {nt.keyboardHint.quickLogFood}
       </div>
 
       <style>{`

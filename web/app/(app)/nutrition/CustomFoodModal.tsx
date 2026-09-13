@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 export type CustomFood = {
   id: string;
@@ -32,6 +33,9 @@ type Props = {
 };
 
 export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
+  const nt = useT().nutrition;
+  const t = nt.customFoodModal;
+  const ml = nt.macroLabels;
   const [form, setForm] = useState<FormState>(editFood ?? EMPTY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +46,8 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
   const serving = form.serving_size_g > 0 ? form.serving_size_g / 100 : 1;
 
   async function save() {
-    if (!form.name.trim()) { setError("Food name is required."); return; }
-    if (form.calories_per_100g <= 0) { setError("Calories must be greater than 0."); return; }
+    if (!form.name.trim()) { setError(t.nameRequired); return; }
+    if (form.calories_per_100g <= 0) { setError(t.caloriesRequired); return; }
     setSaving(true);
     setError(null);
     try {
@@ -95,7 +99,7 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
           <i className="ti ti-salad" style={{ fontSize: 17, color: "var(--accent)" }} aria-hidden="true" />
           <div style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>
-            {editFood ? "Edit custom food" : "Create custom food"}
+            {editFood ? t.editTitle : t.createTitle}
           </div>
           <button onClick={onClose} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--muted)", padding: "5px 10px", fontSize: 13 }}>✕</button>
         </div>
@@ -105,24 +109,24 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
           {/* Name + brand */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label className="field-label">Food name *</label>
-              <input className="input" value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Homemade granola" autoFocus />
+              <label className="field-label">{t.foodName}</label>
+              <input className="input" value={form.name} onChange={e => set("name", e.target.value)} placeholder={t.foodNamePlaceholder} autoFocus />
             </div>
             <div className="field">
-              <label className="field-label">Brand</label>
-              <input className="input" value={form.brand ?? ""} onChange={e => set("brand", e.target.value)} placeholder="Optional" />
+              <label className="field-label">{t.brand}</label>
+              <input className="input" value={form.brand ?? ""} onChange={e => set("brand", e.target.value)} placeholder={t.optionalPlaceholder} />
             </div>
             <div className="field">
-              <label className="field-label">Serving size (g)</label>
+              <label className="field-label">{t.servingSize}</label>
               <input type="number" min={1} className="input" value={form.serving_size_g} onChange={e => set("serving_size_g", e.target.value)} />
             </div>
             <div className="field" style={{ gridColumn: "1 / -1" }}>
-              <label className="field-label">Piece name (optional)</label>
+              <label className="field-label">{t.pieceName}</label>
               <input
                 className="input"
                 value={form.serving_unit === "g" ? "" : form.serving_unit ?? ""}
                 onChange={e => set("serving_unit", e.target.value)}
-                placeholder="e.g. cookie, slice, egg — leave blank for grams only"
+                placeholder={t.pieceNamePlaceholder}
               />
             </div>
           </div>
@@ -130,14 +134,14 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
           {/* Per-100g macros */}
           <div>
             <div style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
-              Macros per 100g
+              {t.macrosPer100g}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
               {[
-                { key: "calories_per_100g", label: "Calories", unit: "kcal", color: "var(--text)" },
-                { key: "protein_per_100g",  label: "Protein",  unit: "g",    color: "var(--accent)" },
-                { key: "carbs_per_100g",    label: "Carbs",    unit: "g",    color: "var(--cyan)" },
-                { key: "fat_per_100g",      label: "Fat",      unit: "g",    color: "var(--amber)" },
+                { key: "calories_per_100g", label: ml.calories, unit: "kcal", color: "var(--text)" },
+                { key: "protein_per_100g",  label: ml.protein,  unit: "g",    color: "var(--accent)" },
+                { key: "carbs_per_100g",    label: ml.carbs,    unit: "g",    color: "var(--cyan)" },
+                { key: "fat_per_100g",      label: ml.fat,      unit: "g",    color: "var(--amber)" },
               ].map(col => (
                 <div key={col.key} className="field">
                   <label className="field-label" style={{ color: col.color }}>{col.label}</label>
@@ -154,9 +158,9 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
           {/* Secondary macros */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
             {[
-              { key: "fiber_per_100g",   label: "Fiber",   unit: "g/100g" },
-              { key: "sugar_per_100g",   label: "Sugar",   unit: "g/100g" },
-              { key: "sodium_per_100mg", label: "Sodium",  unit: "mg/100g" },
+              { key: "fiber_per_100g",   label: ml.fiber,   unit: "g/100g" },
+              { key: "sugar_per_100g",   label: ml.sugar,   unit: "g/100g" },
+              { key: "sodium_per_100mg", label: ml.sodium,  unit: "mg/100g" },
             ].map(col => (
               <div key={col.key} className="field">
                 <label className="field-label">{col.label} <span style={{ fontWeight: 400 }}>({col.unit})</span></label>
@@ -172,14 +176,14 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
           {form.serving_size_g !== 100 && (
             <div style={{ background: "rgba(124,92,255,.06)", border: "1px solid rgba(124,92,255,.2)", borderRadius: 10, padding: "10px 14px" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" }}>
-                Per serving ({form.serving_size_g}g)
+                {t.perServing.replace("{size}", String(form.serving_size_g))}
               </div>
               <div style={{ display: "flex", gap: 16 }}>
                 {[
-                  { label: "Cal",     val: Math.round(form.calories_per_100g * serving), color: "var(--text)" },
-                  { label: "Protein", val: r1(form.protein_per_100g * serving),            color: "var(--accent)" },
-                  { label: "Carbs",   val: r1(form.carbs_per_100g * serving),              color: "var(--cyan)" },
-                  { label: "Fat",     val: r1(form.fat_per_100g * serving),                color: "var(--amber)" },
+                  { label: ml.cal,     val: Math.round(form.calories_per_100g * serving), color: "var(--text)" },
+                  { label: ml.protein, val: r1(form.protein_per_100g * serving),            color: "var(--accent)" },
+                  { label: ml.carbs,   val: r1(form.carbs_per_100g * serving),              color: "var(--cyan)" },
+                  { label: ml.fat,     val: r1(form.fat_per_100g * serving),                color: "var(--amber)" },
                 ].map(m => (
                   <div key={m.label} style={{ textAlign: "center" }}>
                     <div style={{ fontSize: 16, fontWeight: 800, color: m.color }}>{m.val}</div>
@@ -195,9 +199,9 @@ export function CustomFoodModal({ editFood, onSave, onClose }: Props) {
 
         {/* Footer */}
         <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", gap: 10 }}>
-          <button className="btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
+          <button className="btn-secondary" style={{ flex: 1 }} onClick={onClose}>{nt.actions.cancel}</button>
           <button className="btn-primary" style={{ flex: 2 }} onClick={save} disabled={saving}>
-            {saving ? "Saving…" : editFood ? "Save changes" : "Create food"}
+            {saving ? nt.actions.saving : editFood ? t.saveChanges : t.createFood}
           </button>
         </div>
       </div>

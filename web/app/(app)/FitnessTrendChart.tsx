@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { DeltaBadge } from "./DeltaBadge";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
+import { localeTag } from "@/lib/i18n/language";
 
 type TrendRow = { date: string; ctl: number | null; atl: number | null };
 type Pt = { x: number; y: number };
@@ -30,8 +32,8 @@ function smoothPath(pts: Pt[]): string {
   return d;
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+function fmtDate(iso: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "short" });
 }
 
 /** Dashboard hero chart — the single large, dominant visual on the page (per the
@@ -41,15 +43,18 @@ function fmtDate(iso: string): string {
  * CTL/ATL/TSB analysis with zone bands, timeframe toggle, and TSB bars still
  * lives on the Progress page; this is the glanceable version of the same pair. */
 export function FitnessTrendChart({ data }: { data: TrendRow[] }) {
+  const t = useT().dashboard.fitnessTrend;
+  const [language] = useLanguage();
+  const locale = localeTag(language);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   const rawRows = data.filter(d => d.ctl != null || d.atl != null);
   if (rawRows.length < 3) {
     return (
       <div className="card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <div className="card-title" style={{ margin: 0 }}>Fitness &amp; Fatigue</div>
+        <div className="card-title" style={{ margin: 0 }}>{t.title}</div>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "var(--dim)" }}>
-          Not enough training history yet.
+          {t.notEnoughHistory}
         </div>
       </div>
     );
@@ -103,7 +108,7 @@ export function FitnessTrendChart({ data }: { data: TrendRow[] }) {
   const end = new Date(rows[rows.length - 1].date);
   while (cur <= end) {
     const ms = cur.getTime();
-    ticks.push({ x: PAD.left + ((ms - t0) / tRange) * plotW, label: cur.toLocaleDateString("en-GB", { month: "short" }) });
+    ticks.push({ x: PAD.left + ((ms - t0) / tRange) * plotW, label: cur.toLocaleDateString(locale, { month: "short" }) });
     cur.setMonth(cur.getMonth() + 1);
   }
 
@@ -129,15 +134,15 @@ export function FitnessTrendChart({ data }: { data: TrendRow[] }) {
               {(hovRow?.ctl ?? latestCtl)?.toFixed(1) ?? "—"}
             </span>
             {delta != null && <DeltaBadge value={delta} size={13} format={(v) => v.toFixed(1)} />}
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>{hovRow ? fmtDate(hovRow.date) : "CTL · last 3 months"}</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>{hovRow ? fmtDate(hovRow.date, locale) : t.last3Months}</span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 12, fontSize: 11, color: "var(--muted)" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <svg width="14" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="14" y2="1.5" stroke="var(--accent)" strokeWidth="2.5" /></svg> CTL
+            <svg width="14" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="14" y2="1.5" stroke="var(--accent)" strokeWidth="2.5" /></svg> {t.ctl}
           </span>
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <svg width="14" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="14" y2="1.5" stroke="var(--red)" strokeWidth="2.5" /></svg> ATL
+            <svg width="14" height="3" style={{ display: "block" }}><line x1="0" y1="1.5" x2="14" y2="1.5" stroke="var(--red)" strokeWidth="2.5" /></svg> {t.atl}
           </span>
         </div>
       </div>
@@ -204,10 +209,10 @@ export function FitnessTrendChart({ data }: { data: TrendRow[] }) {
             )}
             {(() => {
               const parts = [
-                hovRow.ctl != null ? `CTL ${hovRow.ctl.toFixed(1)}` : null,
-                hovRow.atl != null ? `ATL ${hovRow.atl.toFixed(1)}` : null,
+                hovRow.ctl != null ? `${t.ctl} ${hovRow.ctl.toFixed(1)}` : null,
+                hovRow.atl != null ? `${t.atl} ${hovRow.atl.toFixed(1)}` : null,
               ].filter(Boolean).join(" · ");
-              const text = `${fmtDate(hovRow.date)} · ${parts}`;
+              const text = `${fmtDate(hovRow.date, locale)} · ${parts}`;
               const topY = Math.min(hovRow.ctl != null ? yFor(hovRow.ctl) : Infinity, hovRow.atl != null ? yFor(hovRow.atl) : Infinity);
               const leftPct = (hovX / W) * 100;
               // Clamp horizontally via a CSS transform offset instead of a fixed

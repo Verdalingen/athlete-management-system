@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ExpandedChart, type RaceEvent, type TrendSeries } from "./report/ProgressTabs";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 type Timeframe = "1M" | "3M" | "6M" | "1Y";
 const TF_DAYS: Record<Timeframe, number> = { "1M": 30, "3M": 90, "6M": 180, "1Y": 365 };
@@ -26,6 +27,7 @@ export interface GoalChartSpec {
 // a caption line (Bench e1RM has no pace to show) or landing alone in the last row renders
 // visibly shorter than its siblings, which is exactly the "equally sized" bug this fixes.
 export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; events: RaceEvent[] }) {
+  const t = useT().dashboard.goalProgress;
   const [timeframe, setTimeframe] = useState<Timeframe>("3M");
 
   const allDates = Array.from(new Set(charts.flatMap(c => c.series.data.map(d => d.date)))).sort();
@@ -48,9 +50,9 @@ export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; 
     <div className="card">
       <details open>
         <summary style={{ listStyle: "none", cursor: "pointer", userSelect: "none", outline: "none", display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="card-title" style={{ margin: 0, flexShrink: 0 }}>Goal Progress</div>
+          <div className="card-title" style={{ margin: 0, flexShrink: 0 }}>{t.title}</div>
           <span style={{ fontSize: 12, color: "var(--dim)", marginLeft: "auto" }}>
-            {charts.length} goal{charts.length === 1 ? "" : "s"} tracked
+            {(charts.length === 1 ? t.goalTracked : t.goalsTracked).replace("{count}", String(charts.length))}
           </span>
           <i className="ti ti-chevron-down" style={{ fontSize: 14, color: "var(--dim)", flexShrink: 0 }} aria-hidden="true" />
         </summary>
@@ -78,7 +80,7 @@ export function GoalProgressGrid({ charts, events }: { charts: GoalChartSpec[]; 
               <div key={c.key} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", gap: 6, minHeight: 160, padding: 20 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".7px", color: "var(--dim)" }}>{c.series.label}</div>
                 <i className="ti ti-alert-circle" style={{ fontSize: 20, color: "var(--dim)" }} aria-hidden="true" />
-                <div style={{ fontSize: 13, color: "var(--muted)" }}>Not enough recent data for {timeframe}</div>
+                <div style={{ fontSize: 13, color: "var(--muted)" }}>{t.notEnoughData.replace("{timeframe}", timeframe)}</div>
               </div>
             )
           )}

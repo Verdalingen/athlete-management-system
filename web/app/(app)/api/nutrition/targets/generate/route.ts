@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient, getUserId } from "@/lib/supabase-server";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -9,6 +11,7 @@ const DAY_TYPES = ["default", "hard", "easy", "rest"] as const;
 export async function POST() {
   try {
     const uid = await getUserId();
+    const apiT = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.targetsGenerate;
     const sb = createServerClient();
 
     // ── Gather context in parallel ────────────────────────────────────────
@@ -129,12 +132,12 @@ Respond ONLY with this JSON structure:
     try {
       parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
     } catch {
-      return NextResponse.json({ error: "Coach returned malformed response. Try again." }, { status: 500 });
+      return NextResponse.json({ error: apiT.malformed }, { status: 500 });
     }
 
     const validTargets = (parsed.targets ?? []).filter(t => DAY_TYPES.includes(t.day_type as typeof DAY_TYPES[number]));
     if (!validTargets.length) {
-      return NextResponse.json({ error: "No valid targets in coach response." }, { status: 500 });
+      return NextResponse.json({ error: apiT.noValidTargets }, { status: 500 });
     }
 
     // ── Upsert all targets ────────────────────────────────────────────────

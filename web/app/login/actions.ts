@@ -3,6 +3,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { getCookieLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 function createAuthClient() {
   return (async () => {
@@ -32,7 +34,8 @@ export async function signIn(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    redirect("/login?error=Invalid+email+or+password");
+    const t = dictionaries[await getCookieLanguage()].auth;
+    redirect(`/login?error=${encodeURIComponent(t.errors.invalidCredentials)}`);
   }
 
   redirect("/");
@@ -49,7 +52,8 @@ export async function signUp(formData: FormData) {
     redirect("/login?mode=signup&error=" + encodeURIComponent(error.message));
   }
 
-  redirect("/login?mode=signup&message=Check+your+email+to+confirm+your+account");
+  const t = dictionaries[await getCookieLanguage()].auth;
+  redirect(`/login?mode=signup&message=${encodeURIComponent(t.errors.checkEmailToConfirm)}`);
 }
 
 export async function signOut() {

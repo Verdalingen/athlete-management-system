@@ -5,6 +5,10 @@ import { saveProfileStep } from "@/app/actions/athlete-profile";
 import type { AthleteProfile } from "@/app/actions/athlete-profile";
 import type { WeightGoalDirection, RecurringSessionRequest, SessionRequestDayOfWeek, SessionRequestType, SessionRequestImportance } from "@/lib/types";
 import { storeGarminCredentials, deleteGarminCredentials } from "@/app/actions/garmin-credentials";
+import { useT } from "@/lib/i18n/LanguageContext";
+import type { Dictionary } from "@/lib/i18n/types";
+
+type SetupDict = Dictionary["setup"];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,10 +31,8 @@ const EMPTY: AthleteProfile = {
   setup_completed: false,
 };
 
-const DAYS    = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const DAY_VALS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const DAY_VALS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
-const STEP_LABELS = ["Goals", "Background", "Schedule", "Preferred Sessions", "Health", "Preferences", "Garmin"];
 const STEP_ICONS  = ["ti-target", "ti-barbell", "ti-calendar", "ti-repeat", "ti-heart-rate-monitor", "ti-adjustments", "ti-device-watch"];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -45,7 +47,8 @@ function Field({ children, style }: { children: React.ReactNode; style?: React.C
   return <div className="field" style={style}>{children}</div>;
 }
 function Opt() {
-  return <span style={{ color: "var(--dim)", fontWeight: 400, textTransform: "none", fontSize: 11, letterSpacing: 0 }}> (optional)</span>;
+  const t = useT().setup;
+  return <span style={{ color: "var(--dim)", fontWeight: 400, textTransform: "none", fontSize: 11, letterSpacing: 0 }}>{t.common.optionalSuffix}</span>;
 }
 function RadioGroup({ label, options, value, onChange }: {
   label: string;
@@ -80,18 +83,11 @@ function isCardioRelevant(g: string) { return !g || g === "race" || g === "hybri
 function isStrengthRelevant(g: string) { return !g || g === "strength" || g === "aesthetics" || g === "hybrid" || g === "fitness"; }
 function hasRaceEvents(g: string) { return !g || g === "race" || g === "hybrid"; }
 
-const GOAL_TARGET_PLACEHOLDER: Record<string, string> = {
-  race:       "e.g. Sub-45 min 10k and qualify for the city marathon in spring 2027",
-  strength:   "e.g. 140kg bench press and 200kg deadlift within 12 months",
-  aesthetics: "e.g. Gain 10kg of lean muscle, visible definition, balanced upper body by summer",
-  hybrid:     "e.g. Sub-10 min 3000m and 140kg bench press by end of 2026",
-  fitness:    "e.g. Run a 5k without stopping, complete 20 push-ups, feel healthier overall",
-  "":         "e.g. Sub-10 min 3000m and 140kg bench press by end of 2026",
-};
-
 // ── Wizard steps ───────────────────────────────────────────────────────────────
 
 function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  const t = useT().setup;
+  const targetPlaceholders = t.goals.targetPlaceholders as Record<string, string>;
   function addEvent() { set({ events: [...data.events, { name: "", date: "", priority: "B", target_time: "" }] }); }
   function updateEvent(i: number, k: keyof Event, v: string) {
     set({ events: data.events.map((e, j) => j === i ? { ...e, [k]: v } : e) });
@@ -100,66 +96,66 @@ function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<Athle
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <RadioGroup label="Primary goal" value={data.primary_goal_type} onChange={v => set({ primary_goal_type: v })}
+      <RadioGroup label={t.goals.primaryGoalLabel} value={data.primary_goal_type} onChange={v => set({ primary_goal_type: v })}
         options={[
-          { value: "race",       label: "Race performance",  desc: "Training oriented around a specific event — running, triathlon, etc." },
-          { value: "strength",   label: "Strength",          desc: "Maximising a specific lift or overall strength output." },
-          { value: "aesthetics", label: "Aesthetics",        desc: "Body composition, muscle growth, or physique goals." },
-          { value: "hybrid",     label: "Hybrid athlete",    desc: "Pursuing strength and endurance concurrently." },
-          { value: "fitness",    label: "General fitness",   desc: "Health, conditioning, and longevity without a specific target." },
+          { value: "race",       label: t.goals.primaryGoalOptions.race.label,       desc: t.goals.primaryGoalOptions.race.desc },
+          { value: "strength",   label: t.goals.primaryGoalOptions.strength.label,   desc: t.goals.primaryGoalOptions.strength.desc },
+          { value: "aesthetics", label: t.goals.primaryGoalOptions.aesthetics.label, desc: t.goals.primaryGoalOptions.aesthetics.desc },
+          { value: "hybrid",     label: t.goals.primaryGoalOptions.hybrid.label,     desc: t.goals.primaryGoalOptions.hybrid.desc },
+          { value: "fitness",    label: t.goals.primaryGoalOptions.fitness.label,    desc: t.goals.primaryGoalOptions.fitness.desc },
         ]}
       />
-      <RadioGroup label="Weight goal" value={data.weight_goal_direction} onChange={v => set({ weight_goal_direction: v as WeightGoalDirection })}
+      <RadioGroup label={t.goals.weightGoalLabel} value={data.weight_goal_direction} onChange={v => set({ weight_goal_direction: v as WeightGoalDirection })}
         options={[
-          { value: "lose",     label: "Lose weight",     desc: "Train in a caloric deficit while preserving strength and muscle." },
-          { value: "maintain", label: "Maintain weight",  desc: "Keep body weight stable while improving performance or composition." },
-          { value: "gain",     label: "Gain weight",      desc: "Train in a caloric surplus to support muscle or strength growth." },
+          { value: "lose",     label: t.goals.weightGoalOptions.lose.label,     desc: t.goals.weightGoalOptions.lose.desc },
+          { value: "maintain", label: t.goals.weightGoalOptions.maintain.label, desc: t.goals.weightGoalOptions.maintain.desc },
+          { value: "gain",     label: t.goals.weightGoalOptions.gain.label,     desc: t.goals.weightGoalOptions.gain.desc },
         ]}
       />
       <Field>
-        <Label>Describe your specific target</Label>
-        <Hint>Be as precise as possible — exact times, weights, distances, or milestones.</Hint>
+        <Label>{t.goals.targetLabel}</Label>
+        <Hint>{t.goals.targetHint}</Hint>
         <textarea className="textarea" style={{ minHeight: 72 }}
-          placeholder={GOAL_TARGET_PLACEHOLDER[data.primary_goal_type] ?? GOAL_TARGET_PLACEHOLDER[""]}
+          placeholder={targetPlaceholders[data.primary_goal_type] ?? targetPlaceholders[""]}
           value={data.primary_goal_detail} onChange={e => set({ primary_goal_detail: e.target.value })} />
       </Field>
       <Field>
-        <Label>Secondary goals<Opt /></Label>
+        <Label>{t.goals.secondaryGoalsLabel}<Opt /></Label>
         <textarea className="textarea" style={{ minHeight: 60 }}
-          placeholder="e.g. Build a balanced upper-body physique alongside the primary goals"
+          placeholder={t.goals.secondaryGoalsPlaceholder}
           value={data.secondary_goals} onChange={e => set({ secondary_goals: e.target.value })} />
       </Field>
       <Field>
-        <Label>Target timeline</Label>
-        <input className="input" placeholder="e.g. By end of 2026, within 6 months, before summer"
+        <Label>{t.goals.timelineLabel}</Label>
+        <input className="input" placeholder={t.goals.timelinePlaceholder}
           value={data.goal_timeline} onChange={e => set({ goal_timeline: e.target.value })} />
       </Field>
       {hasRaceEvents(data.primary_goal_type) && (
         <Field>
-          <Label>Races or key events<Opt /></Label>
+          <Label>{t.goals.eventsLabel}<Opt /></Label>
           {data.events.map((ev, i) => (
             <div key={i} className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Event {i + 1}</span>
-                <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeEvent(i)}>Remove</button>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{t.goals.eventNumber.replace("{n}", String(i + 1))}</span>
+                <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeEvent(i)}>{t.common.removeButton}</button>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <Field><Label>Name</Label><input className="input" placeholder="e.g. Oslo Marathon" value={ev.name} onChange={e => updateEvent(i, "name", e.target.value)} /></Field>
-                <Field><Label>Date</Label><input className="input" type="date" value={ev.date} onChange={e => updateEvent(i, "date", e.target.value)} /></Field>
+                <Field><Label>{t.goals.eventNameLabel}</Label><input className="input" placeholder={t.goals.eventNamePlaceholder} value={ev.name} onChange={e => updateEvent(i, "name", e.target.value)} /></Field>
+                <Field><Label>{t.goals.eventDateLabel}</Label><input className="input" type="date" value={ev.date} onChange={e => updateEvent(i, "date", e.target.value)} /></Field>
                 <Field>
-                  <Label>Priority</Label>
+                  <Label>{t.goals.eventPriorityLabel}</Label>
                   <select className="select-input" value={ev.priority} onChange={e => updateEvent(i, "priority", e.target.value)}>
-                    <option value="A">A — Peak for this</option>
-                    <option value="B">B — Tune-up / secondary</option>
-                    <option value="C">C — Just participating</option>
+                    <option value="A">{t.goals.eventPriorityOptions.a}</option>
+                    <option value="B">{t.goals.eventPriorityOptions.b}</option>
+                    <option value="C">{t.goals.eventPriorityOptions.c}</option>
                   </select>
                 </Field>
-                <Field><Label>Target time<Opt /></Label><input className="input" placeholder="e.g. sub 3:30" value={ev.target_time} onChange={e => updateEvent(i, "target_time", e.target.value)} /></Field>
+                <Field><Label>{t.goals.eventTargetTimeLabel}<Opt /></Label><input className="input" placeholder={t.goals.eventTargetTimePlaceholder} value={ev.target_time} onChange={e => updateEvent(i, "target_time", e.target.value)} /></Field>
               </div>
             </div>
           ))}
           <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start" }} onClick={addEvent}>
-            <i className="ti ti-plus" style={{ marginRight: 6 }} />Add event
+            <i className="ti ti-plus" style={{ marginRight: 6 }} />{t.goals.addEventButton}
           </button>
         </Field>
       )}
@@ -168,57 +164,63 @@ function GoalsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<Athle
 }
 
 function BackgroundStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  const t = useT().setup;
   const yearOpts = [
-    { value: "none", label: "No experience" }, { value: "<1", label: "Less than 1 year" },
-    { value: "1-2",  label: "1–2 years" },     { value: "3-5", label: "3–5 years" },
-    { value: "5-10", label: "5–10 years" },    { value: "10+", label: "10+ years" },
+    { value: "none", label: t.background.experienceOptions.none },     { value: "<1", label: t.background.experienceOptions.lessThan1 },
+    { value: "1-2",  label: t.background.experienceOptions.oneToTwo }, { value: "3-5", label: t.background.experienceOptions.threeToFive },
+    { value: "5-10", label: t.background.experienceOptions.fiveToTen }, { value: "10+", label: t.background.experienceOptions.tenPlus },
+  ];
+  const benchmarkFields: readonly [string, "bench_1rm_kg" | "squat_1rm_kg" | "deadlift_1rm_kg", string][] = [
+    [t.background.benchLabel, "bench_1rm_kg", t.background.benchPlaceholder],
+    [t.background.squatLabel, "squat_1rm_kg", t.background.squatPlaceholder],
+    [t.background.deadliftLabel, "deadlift_1rm_kg", t.background.deadliftPlaceholder],
   ];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Field>
-          <Label>Strength training experience</Label>
+          <Label>{t.background.strengthExperienceLabel}</Label>
           <select className="select-input" value={data.training_years_strength} onChange={e => set({ training_years_strength: e.target.value })}>
-            <option value="">Select…</option>
+            <option value="">{t.common.selectPlaceholder}</option>
             {yearOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
         <Field>
-          <Label>Running / cardio experience</Label>
+          <Label>{t.background.cardioExperienceLabel}</Label>
           <select className="select-input" value={data.training_years_cardio} onChange={e => set({ training_years_cardio: e.target.value })}>
-            <option value="">Select…</option>
+            <option value="">{t.common.selectPlaceholder}</option>
             {yearOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </Field>
       </div>
       <Field>
-        <Label>Sport & training background</Label>
-        <Hint>Any sports played, training styles you come from, notable history.</Hint>
+        <Label>{t.background.sportBackgroundLabel}</Label>
+        <Hint>{t.background.sportBackgroundHint}</Hint>
         <textarea className="textarea"
-          placeholder="e.g. Bodybuilding background for 4 years, started running 18 months ago."
+          placeholder={t.background.sportBackgroundPlaceholder}
           value={data.sport_background} onChange={e => set({ sport_background: e.target.value })} />
       </Field>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Field>
-          <Label>Current weekly sessions</Label>
-          <Hint>Baseline today — not a cap on future volume.</Hint>
-          <input className="input" type="number" min={0} max={14} placeholder="e.g. 4"
+          <Label>{t.background.sessionsPerWeekLabel}</Label>
+          <Hint>{t.background.sessionsPerWeekHint}</Hint>
+          <input className="input" type="number" min={0} max={14} placeholder={t.background.sessionsPerWeekPlaceholder}
             value={data.sessions_per_week ?? ""} onChange={e => set({ sessions_per_week: numVal(e.target.value) })} />
         </Field>
         <Field>
-          <Label>Current weekly hours</Label>
-          <Hint>Approximate total training time right now.</Hint>
-          <input className="input" type="number" min={0} max={30} step={0.5} placeholder="e.g. 6"
+          <Label>{t.background.hoursPerWeekLabel}</Label>
+          <Hint>{t.background.hoursPerWeekHint}</Hint>
+          <input className="input" type="number" min={0} max={30} step={0.5} placeholder={t.background.hoursPerWeekPlaceholder}
             value={data.hours_per_week ?? ""} onChange={e => set({ hours_per_week: numVal(e.target.value) })} />
         </Field>
       </div>
       {(isStrengthRelevant(data.primary_goal_type) || isCardioRelevant(data.primary_goal_type)) && (
         <div>
-          <Label>Current performance benchmarks</Label>
-          <Hint>Fill in what&apos;s relevant — leave blank what doesn&apos;t apply.</Hint>
+          <Label>{t.background.benchmarksLabel}</Label>
+          <Hint>{t.background.benchmarksHint}</Hint>
           {isStrengthRelevant(data.primary_goal_type) && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 8 }}>
-              {([["Bench 1RM (kg)", "bench_1rm_kg", "e.g. 125"], ["Squat 1RM (kg)", "squat_1rm_kg", "e.g. 140"], ["Deadlift 1RM (kg)", "deadlift_1rm_kg", "e.g. 180"]] as const).map(([label, key, ph]) => (
+              {benchmarkFields.map(([label, key, ph]) => (
                 <Field key={key}>
                   <Label>{label}</Label>
                   <input className="input" type="number" placeholder={ph}
@@ -229,16 +231,16 @@ function BackgroundStep({ data, set }: { data: AthleteProfile; set: (p: Partial<
           )}
           {isCardioRelevant(data.primary_goal_type) && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-              <Field><Label>5k time</Label><input className="input" placeholder="e.g. 23:45" value={data.run_5k_time} onChange={e => set({ run_5k_time: e.target.value })} /></Field>
-              <Field><Label>10k time</Label><input className="input" placeholder="e.g. 50:10" value={data.run_10k_time} onChange={e => set({ run_10k_time: e.target.value })} /></Field>
+              <Field><Label>{t.background.run5kLabel}</Label><input className="input" placeholder={t.background.run5kPlaceholder} value={data.run_5k_time} onChange={e => set({ run_5k_time: e.target.value })} /></Field>
+              <Field><Label>{t.background.run10kLabel}</Label><input className="input" placeholder={t.background.run10kPlaceholder} value={data.run_10k_time} onChange={e => set({ run_10k_time: e.target.value })} /></Field>
             </div>
           )}
         </div>
       )}
       <Field>
-        <Label>Other benchmarks<Opt /></Label>
+        <Label>{t.background.otherBenchmarksLabel}<Opt /></Label>
         <textarea className="textarea" style={{ minHeight: 60 }}
-          placeholder="e.g. 10 pull-ups, 100kg OHP, swimming 1500m in 28 min"
+          placeholder={t.background.otherBenchmarksPlaceholder}
           value={data.other_benchmarks} onChange={e => set({ other_benchmarks: e.target.value })} />
       </Field>
     </div>
@@ -246,73 +248,81 @@ function BackgroundStep({ data, set }: { data: AthleteProfile; set: (p: Partial<
 }
 
 function ScheduleStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  const t = useT().setup;
   function toggleDay(val: string) {
     set({ available_days: data.available_days.includes(val) ? data.available_days.filter(d => d !== val) : [...data.available_days, val] });
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <Field>
-        <Label>Available training days</Label>
-        <Hint>Select every day you could realistically train — the coach will decide which to use.</Hint>
+        <Label>{t.schedule.daysLabel}</Label>
+        <Hint>{t.schedule.daysHint}</Hint>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-          {DAYS.map((d, i) => (
-            <button key={d} type="button"
-              className={`day-btn${data.available_days.includes(DAY_VALS[i]) ? " selected" : ""}`}
-              onClick={() => toggleDay(DAY_VALS[i])}>{d}</button>
+          {DAY_VALS.map(val => (
+            <button key={val} type="button"
+              className={`day-btn${data.available_days.includes(val) ? " selected" : ""}`}
+              onClick={() => toggleDay(val)}>{t.weekdaysShort[val]}</button>
           ))}
         </div>
       </Field>
-      <RadioGroup label="Session length" value={String(data.session_duration_mins ?? "")} onChange={v => set({ session_duration_mins: parseInt(v) })}
+      <RadioGroup label={t.schedule.sessionLengthLabel} value={String(data.session_duration_mins ?? "")} onChange={v => set({ session_duration_mins: parseInt(v) })}
         options={[
-          { value: "45",  label: "Up to 45 minutes",         desc: "Quick sessions — supersets or minimal rest required." },
-          { value: "60",  label: "Up to 60 minutes",         desc: "Standard session length with structured rest." },
-          { value: "90",  label: "Up to 90 minutes",         desc: "Full sessions with proper warm-up and cool-down." },
-          { value: "120", label: "No limit — coach decides", desc: "No time constraint. The coach determines optimal session length." },
+          { value: "45",  label: t.schedule.sessionLengthOptions.m45.label,     desc: t.schedule.sessionLengthOptions.m45.desc },
+          { value: "60",  label: t.schedule.sessionLengthOptions.m60.label,     desc: t.schedule.sessionLengthOptions.m60.desc },
+          { value: "90",  label: t.schedule.sessionLengthOptions.m90.label,     desc: t.schedule.sessionLengthOptions.m90.desc },
+          { value: "120", label: t.schedule.sessionLengthOptions.noLimit.label, desc: t.schedule.sessionLengthOptions.noLimit.desc },
         ]}
       />
-      <RadioGroup label="Gym access" value={data.gym_access === null ? "" : data.gym_access ? "yes" : "no"} onChange={v => set({ gym_access: v === "yes" })}
+      <RadioGroup label={t.schedule.gymAccessLabel} value={data.gym_access === null ? "" : data.gym_access ? "yes" : "no"} onChange={v => set({ gym_access: v === "yes" })}
         options={[
-          { value: "yes", label: "Yes — full gym",            desc: "Access to barbells, cables, machines, cardio equipment." },
-          { value: "no",  label: "No — home or outdoor only", desc: "Training with limited or bodyweight equipment." },
+          { value: "yes", label: t.schedule.gymAccessOptions.yes.label, desc: t.schedule.gymAccessOptions.yes.desc },
+          { value: "no",  label: t.schedule.gymAccessOptions.no.label,  desc: t.schedule.gymAccessOptions.no.desc },
         ]}
       />
       <Field>
-        <Label>Equipment notes<Opt /></Label>
-        <Hint>Any specific equipment available or missing.</Hint>
+        <Label>{t.schedule.equipmentLabel}<Opt /></Label>
+        <Hint>{t.schedule.equipmentHint}</Hint>
         <textarea className="textarea" style={{ minHeight: 60 }}
-          placeholder="e.g. Full commercial gym — cables, dumbbells up to 60kg, all barbells, no sled."
+          placeholder={t.schedule.equipmentPlaceholder}
           value={data.equipment_notes} onChange={e => set({ equipment_notes: e.target.value })} />
       </Field>
       <Field>
-        <Label>Schedule constraints<Opt /></Label>
-        <Hint>Work hours, commute, travel, family — anything that limits flexibility.</Hint>
+        <Label>{t.schedule.constraintsLabel}<Opt /></Label>
+        <Hint>{t.schedule.constraintsHint}</Hint>
         <textarea className="textarea" style={{ minHeight: 60 }}
-          placeholder="e.g. Office 8-17 Mon-Fri, can train before work (06:00) or evenings."
+          placeholder={t.schedule.constraintsPlaceholder}
           value={data.schedule_notes} onChange={e => set({ schedule_notes: e.target.value })} />
       </Field>
     </div>
   );
 }
 
-const SESSION_REQUEST_DAY_OPTS: Array<{ value: SessionRequestDayOfWeek | ""; label: string }> = [
-  { value: "",          label: "No specific day" },
-  { value: "monday",    label: "Monday" },
-  { value: "tuesday",   label: "Tuesday" },
-  { value: "wednesday", label: "Wednesday" },
-  { value: "thursday",  label: "Thursday" },
-  { value: "friday",    label: "Friday" },
-  { value: "saturday",  label: "Saturday" },
-  { value: "sunday",    label: "Sunday" },
-];
+function sessionRequestDayOpts(t: SetupDict): Array<{ value: SessionRequestDayOfWeek | ""; label: string }> {
+  return [
+    { value: "",          label: t.preferredSessions.noSpecificDay },
+    { value: "monday",    label: t.weekdaysFull.monday },
+    { value: "tuesday",   label: t.weekdaysFull.tuesday },
+    { value: "wednesday", label: t.weekdaysFull.wednesday },
+    { value: "thursday",  label: t.weekdaysFull.thursday },
+    { value: "friday",    label: t.weekdaysFull.friday },
+    { value: "saturday",  label: t.weekdaysFull.saturday },
+    { value: "sunday",    label: t.weekdaysFull.sunday },
+  ];
+}
 
-const SESSION_REQUEST_TYPE_OPTS: Array<{ value: SessionRequestType; label: string }> = [
-  { value: "run",      label: "Run" },
-  { value: "strength", label: "Strength" },
-  { value: "cross",    label: "Cross-train" },
-  { value: "other",    label: "Other" },
-];
+function sessionRequestTypeOpts(t: SetupDict): Array<{ value: SessionRequestType; label: string }> {
+  return [
+    { value: "run",      label: t.preferredSessions.sessionTypeOptions.run },
+    { value: "strength", label: t.preferredSessions.sessionTypeOptions.strength },
+    { value: "cross",    label: t.preferredSessions.sessionTypeOptions.cross },
+    { value: "other",    label: t.preferredSessions.sessionTypeOptions.other },
+  ];
+}
 
 function PreferredSessionsStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  const t = useT().setup;
+  const dayOpts = sessionRequestDayOpts(t);
+  const typeOpts = sessionRequestTypeOpts(t);
   function addRequest() {
     set({
       recurring_session_requests: [
@@ -331,46 +341,46 @@ function PreferredSessionsStep({ data, set }: { data: AthleteProfile; set: (p: P
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <Field>
-        <Label>Recurring sessions you want planned in<Opt /></Label>
-        <Hint>Specific sessions you want the coach to build the week around — e.g. a Sunday long run or a Tuesday leg day. Leave empty if you&apos;re happy for the coach to decide everything.</Hint>
+        <Label>{t.preferredSessions.label}<Opt /></Label>
+        <Hint>{t.preferredSessions.hint}</Hint>
         {data.recurring_session_requests.map((req, i) => (
           <div key={req.id} className="card" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>Session {i + 1}</span>
-              <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeRequest(i)}>Remove</button>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{t.preferredSessions.sessionNumber.replace("{n}", String(i + 1))}</span>
+              <button type="button" className="btn-secondary" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => removeRequest(i)}>{t.common.removeButton}</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <Field><Label>Label</Label><input className="input" placeholder="e.g. Sunday Long Run" value={req.label} onChange={e => updateRequest(i, { label: e.target.value })} /></Field>
+              <Field><Label>{t.preferredSessions.labelFieldLabel}</Label><input className="input" placeholder={t.preferredSessions.labelPlaceholder} value={req.label} onChange={e => updateRequest(i, { label: e.target.value })} /></Field>
               <Field>
-                <Label>Day</Label>
+                <Label>{t.preferredSessions.dayLabel}</Label>
                 <select className="select-input" value={req.day_of_week ?? ""} onChange={e => updateRequest(i, { day_of_week: (e.target.value || null) as SessionRequestDayOfWeek | null })}>
-                  {SESSION_REQUEST_DAY_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {dayOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
               <Field>
-                <Label>Session type</Label>
+                <Label>{t.preferredSessions.sessionTypeLabel}</Label>
                 <select className="select-input" value={req.session_type} onChange={e => updateRequest(i, { session_type: e.target.value as SessionRequestType })}>
-                  {SESSION_REQUEST_TYPE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {typeOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
               <Field>
-                <Label>Importance</Label>
+                <Label>{t.preferredSessions.importanceLabel}</Label>
                 <select className="select-input" value={req.importance} onChange={e => updateRequest(i, { importance: e.target.value as SessionRequestImportance })}>
-                  <option value="must">Always try to include</option>
-                  <option value="nice_to_have">Include when possible</option>
+                  <option value="must">{t.preferredSessions.importanceOptions.must}</option>
+                  <option value="nice_to_have">{t.preferredSessions.importanceOptions.nice_to_have}</option>
                 </select>
               </Field>
             </div>
             <Field>
-              <Label>What should it look like<Opt /></Label>
+              <Label>{t.preferredSessions.descriptionLabel}<Opt /></Label>
               <textarea className="textarea" style={{ minHeight: 50 }}
-                placeholder="e.g. Easy pace, 90+ minutes, building toward marathon distance"
+                placeholder={t.preferredSessions.descriptionPlaceholder}
                 value={req.description} onChange={e => updateRequest(i, { description: e.target.value })} />
             </Field>
           </div>
         ))}
         <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start" }} onClick={addRequest}>
-          <i className="ti ti-plus" style={{ marginRight: 6 }} />Add session
+          <i className="ti ti-plus" style={{ marginRight: 6 }} />{t.preferredSessions.addSessionButton}
         </button>
       </Field>
     </div>
@@ -378,39 +388,40 @@ function PreferredSessionsStep({ data, set }: { data: AthleteProfile; set: (p: P
 }
 
 function HealthStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  const t = useT().setup;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div className="card" style={{ borderLeft: "3px solid var(--amber)", padding: "12px 16px" }}>
         <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-          This information stays private and is only used to personalise your training plan. Leave any field blank if it&apos;s not relevant to you.
+          {t.health.privacyNote}
         </div>
       </div>
       <Field>
-        <Label>Current injuries or pain</Label>
-        <Hint>Anything affecting training right now — even if minor.</Hint>
+        <Label>{t.health.currentInjuriesLabel}</Label>
+        <Hint>{t.health.currentInjuriesHint}</Hint>
         <textarea className="textarea"
-          placeholder="e.g. Mild left shoulder impingement — overhead pressing causes discomfort above 90°."
+          placeholder={t.health.currentInjuriesPlaceholder}
           value={data.current_injuries} onChange={e => set({ current_injuries: e.target.value })} />
       </Field>
       <Field>
-        <Label>Injury history</Label>
-        <Hint>Past injuries still relevant to movement or with recurrence risk. Leave blank if none.</Hint>
+        <Label>{t.health.injuryHistoryLabel}</Label>
+        <Hint>{t.health.injuryHistoryHint}</Hint>
         <textarea className="textarea"
-          placeholder="e.g. Right knee meniscus tear in 2022, fully recovered."
+          placeholder={t.health.injuryHistoryPlaceholder}
           value={data.injury_history} onChange={e => set({ injury_history: e.target.value })} />
       </Field>
       <Field>
-        <Label>Exercises to avoid</Label>
-        <Hint>Movements you can&apos;t do, won&apos;t do, or have been told to avoid. Leave blank if none.</Hint>
+        <Label>{t.health.exercisesToAvoidLabel}</Label>
+        <Hint>{t.health.exercisesToAvoidHint}</Hint>
         <textarea className="textarea" style={{ minHeight: 60 }}
-          placeholder="e.g. No behind-the-neck press, no leg press, no upright rows."
+          placeholder={t.health.exercisesToAvoidPlaceholder}
           value={data.exercises_to_avoid} onChange={e => set({ exercises_to_avoid: e.target.value })} />
       </Field>
       <Field>
-        <Label>Other health notes<Opt /></Label>
-        <Hint>Medical conditions, medications, sleep issues, or anything else the coach should factor in.</Hint>
+        <Label>{t.health.otherNotesLabel}<Opt /></Label>
+        <Hint>{t.health.otherNotesHint}</Hint>
         <textarea className="textarea" style={{ minHeight: 60 }}
-          placeholder="e.g. Mild sleep apnea — recovery is slower than average."
+          placeholder={t.health.otherNotesPlaceholder}
           value={data.health_notes} onChange={e => set({ health_notes: e.target.value })} />
       </Field>
     </div>
@@ -418,66 +429,67 @@ function HealthStep({ data, set }: { data: AthleteProfile; set: (p: Partial<Athl
 }
 
 function PreferencesStep({ data, set }: { data: AthleteProfile; set: (p: Partial<AthleteProfile>) => void }) {
+  const t = useT().setup;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      <RadioGroup label="Training style preference" value={data.preferred_style} onChange={v => set({ preferred_style: v })}
+      <RadioGroup label={t.preferences.styleLabel} value={data.preferred_style} onChange={v => set({ preferred_style: v })}
         options={[
-          { value: "high_freq", label: "High frequency, moderate volume",   desc: "5-7 sessions per week, moderate intensity each. Daily training with managed fatigue." },
-          { value: "low_freq",  label: "Low frequency, high volume",        desc: "3-4 sessions per week, each long and demanding. Full recovery between sessions." },
-          { value: "balanced",  label: "Balanced periodisation",            desc: "Structured variation in intensity and volume across the training week." },
-          { value: "no_pref",   label: "No preference — coach decides",     desc: "Leave it entirely to the AI coach based on your goals and readiness." },
+          { value: "high_freq", label: t.preferences.styleOptions.high_freq.label, desc: t.preferences.styleOptions.high_freq.desc },
+          { value: "low_freq",  label: t.preferences.styleOptions.low_freq.label,  desc: t.preferences.styleOptions.low_freq.desc },
+          { value: "balanced",  label: t.preferences.styleOptions.balanced.label,  desc: t.preferences.styleOptions.balanced.desc },
+          { value: "no_pref",   label: t.preferences.styleOptions.no_pref.label,   desc: t.preferences.styleOptions.no_pref.desc },
         ]}
       />
       {isCardioRelevant(data.primary_goal_type) && (
-        <RadioGroup label="Cardio / running preference" value={data.indoor_outdoor} onChange={v => set({ indoor_outdoor: v })}
+        <RadioGroup label={t.preferences.cardioPrefLabel} value={data.indoor_outdoor} onChange={v => set({ indoor_outdoor: v })}
           options={[
-            { value: "outdoor_pref", label: "Outdoor preferred",  desc: "Default to running or cycling outdoors — indoor as a fallback in bad weather." },
-            { value: "outdoor_only", label: "Outdoor only",       desc: "Always outdoors. No treadmills or gym cardio machines." },
-            { value: "indoor",       label: "Indoor preferred",   desc: "Prefer treadmill, rowing machine, or other gym cardio." },
-            { value: "no_pref",      label: "No preference",      desc: "Whatever suits the session — coach decides." },
+            { value: "outdoor_pref", label: t.preferences.cardioPrefOptions.outdoor_pref.label, desc: t.preferences.cardioPrefOptions.outdoor_pref.desc },
+            { value: "outdoor_only", label: t.preferences.cardioPrefOptions.outdoor_only.label, desc: t.preferences.cardioPrefOptions.outdoor_only.desc },
+            { value: "indoor",       label: t.preferences.cardioPrefOptions.indoor.label,       desc: t.preferences.cardioPrefOptions.indoor.desc },
+            { value: "no_pref",      label: t.preferences.cardioPrefOptions.no_pref.label,      desc: t.preferences.cardioPrefOptions.no_pref.desc },
           ]}
         />
       )}
-      <RadioGroup label="Meal variety" value={data.meal_variety_preference} onChange={v => set({ meal_variety_preference: v })}
+      <RadioGroup label={t.preferences.mealVarietyLabel} value={data.meal_variety_preference} onChange={v => set({ meal_variety_preference: v })}
         options={[
-          { value: "minimal",  label: "Minimal",  desc: "Reuse the same few meals and ingredients across the week to keep shopping simple." },
-          { value: "balanced", label: "Balanced",  desc: "Some repeats, some new recipes each week." },
-          { value: "high",     label: "High variety", desc: "A different meal for almost every slot." },
+          { value: "minimal",  label: t.preferences.mealVarietyOptions.minimal.label,  desc: t.preferences.mealVarietyOptions.minimal.desc },
+          { value: "balanced", label: t.preferences.mealVarietyOptions.balanced.label,  desc: t.preferences.mealVarietyOptions.balanced.desc },
+          { value: "high",     label: t.preferences.mealVarietyOptions.high.label,      desc: t.preferences.mealVarietyOptions.high.desc },
         ]}
       />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Field>
-          <Label>Country<Opt /></Label>
-          <Hint>Helps the coach suggest ingredients that are actually available where you shop.</Hint>
-          <input className="input" placeholder="e.g. Norway"
+          <Label>{t.preferences.countryLabel}<Opt /></Label>
+          <Hint>{t.preferences.countryHint}</Hint>
+          <input className="input" placeholder={t.preferences.countryPlaceholder}
             value={data.country} onChange={e => set({ country: e.target.value })} />
         </Field>
         <Field>
-          <Label>Grocery stores<Opt /></Label>
-          <Hint>What kind of stores do you have access to?</Hint>
-          <input className="input" placeholder="e.g. Standard grocery stores, and some international stores"
+          <Label>{t.preferences.groceryLabel}<Opt /></Label>
+          <Hint>{t.preferences.groceryHint}</Hint>
+          <input className="input" placeholder={t.preferences.groceryPlaceholder}
             value={data.grocery_stores_notes} onChange={e => set({ grocery_stores_notes: e.target.value })} />
         </Field>
       </div>
       <Field>
-        <Label>What do you enjoy about training?</Label>
-        <Hint>Types of sessions, movements, or feelings you genuinely look forward to.</Hint>
+        <Label>{t.preferences.enjoymentsLabel}</Label>
+        <Hint>{t.preferences.enjoymentsHint}</Hint>
         <textarea className="textarea"
-          placeholder="e.g. Heavy compound lifts, tempo runs in the morning, the burn of high-rep isolation work."
+          placeholder={t.preferences.enjoymentsPlaceholder}
           value={data.training_enjoyments} onChange={e => set({ training_enjoyments: e.target.value })} />
       </Field>
       <Field>
-        <Label>What do you dislike or want to minimise?</Label>
-        <Hint>Training methods or session types the coach should avoid or keep rare.</Hint>
+        <Label>{t.preferences.dislikesLabel}</Label>
+        <Hint>{t.preferences.dislikesHint}</Hint>
         <textarea className="textarea"
-          placeholder="e.g. Long steady-state cardio above 60 min, circuit training."
+          placeholder={t.preferences.dislikesPlaceholder}
           value={data.training_dislikes} onChange={e => set({ training_dislikes: e.target.value })} />
       </Field>
       <Field>
-        <Label>Anything else your coach should know?<Opt /></Label>
-        <Hint>Motivation style, how you handle hard training, life context.</Hint>
+        <Label>{t.preferences.additionalNotesLabel}<Opt /></Label>
+        <Hint>{t.preferences.additionalNotesHint}</Hint>
         <textarea className="textarea"
-          placeholder="e.g. I respond well to clear structure and numbers. I tend to overtrain if left to my own devices."
+          placeholder={t.preferences.additionalNotesPlaceholder}
           value={data.additional_notes} onChange={e => set({ additional_notes: e.target.value })} />
       </Field>
     </div>
@@ -487,6 +499,7 @@ function PreferencesStep({ data, set }: { data: AthleteProfile; set: (p: Partial
 // ── Garmin Connect step ────────────────────────────────────────────────────────
 
 function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
+  const t = useT().setup;
   const [connected, setConnected] = useState(!!initialEmail);
   const [connectedEmail, setConnectedEmail] = useState(initialEmail ?? "");
   const [showForm, setShowForm] = useState(!initialEmail);
@@ -524,7 +537,7 @@ function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div className="card" style={{ borderLeft: "3px solid var(--accent)", padding: "12px 16px" }}>
         <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6 }}>
-          Your Garmin Connect credentials are encrypted at rest using Supabase Vault (AES-256). They are used only to sync your training data and health metrics with the AI coach. You can disconnect at any time.
+          {t.garmin.encryptionNote}
         </div>
       </div>
 
@@ -532,18 +545,18 @@ function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
-            <span style={{ fontSize: 14, fontWeight: 600 }}>Connected</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{t.garmin.connectedStatus}</span>
             <span style={{ fontSize: 13, color: "var(--muted)" }}>— {connectedEmail}</span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" className="btn-secondary" style={{ fontSize: 13 }}
               onClick={() => { setEmail(connectedEmail); setShowForm(true); setStatus("idle"); }}>
-              <i className="ti ti-pencil" style={{ marginRight: 6 }} />Update credentials
+              <i className="ti ti-pencil" style={{ marginRight: 6 }} />{t.garmin.updateCredentials}
             </button>
             <button type="button" className="btn-secondary" style={{ fontSize: 13, color: "var(--red)" }}
               onClick={handleDisconnect} disabled={status === "disconnecting"}>
               <i className="ti ti-unlink" style={{ marginRight: 6 }} />
-              {status === "disconnecting" ? "Disconnecting…" : "Disconnect"}
+              {status === "disconnecting" ? t.garmin.disconnecting : t.garmin.disconnect}
             </button>
           </div>
         </div>
@@ -552,33 +565,33 @@ function GarminConnectStep({ initialEmail }: { initialEmail?: string | null }) {
           {connected && (
             <button type="button" className="btn-secondary" style={{ alignSelf: "flex-start", fontSize: 13 }}
               onClick={() => { setShowForm(false); setStatus("idle"); }}>
-              <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />Cancel
+              <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />{t.garmin.cancel}
             </button>
           )}
           <Field>
-            <Label>Garmin Connect email</Label>
+            <Label>{t.garmin.emailLabel}</Label>
             <input className="input" type="email" placeholder="you@example.com"
               value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" />
           </Field>
           <Field>
-            <Label>Garmin Connect password</Label>
+            <Label>{t.garmin.passwordLabel}</Label>
             <input className="input" type="password" placeholder="••••••••"
               value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
           </Field>
           <button type="button" className="btn-primary" style={{ alignSelf: "flex-start" }}
             onClick={handleConnect} disabled={!email || !password || status === "saving"}>
             {status === "saving"
-              ? <><i className="ti ti-loader-2" style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />Connecting…</>
-              : <><i className="ti ti-link" style={{ marginRight: 6 }} />{connected ? "Update" : "Connect"}</>}
+              ? <><i className="ti ti-loader-2" style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />{t.garmin.connecting}</>
+              : <><i className="ti ti-link" style={{ marginRight: 6 }} />{connected ? t.garmin.update : t.garmin.connect}</>}
           </button>
         </div>
       )}
 
       {status === "error" && <div style={{ color: "var(--red)", fontSize: 13 }}>{errMsg}</div>}
-      {status === "done" && <div style={{ color: "var(--green)", fontSize: 13 }}>Credentials saved successfully.</div>}
+      {status === "done" && <div style={{ color: "var(--green)", fontSize: 13 }}>{t.garmin.savedSuccess}</div>}
 
       <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
-        No Garmin Connect account? You can skip this step and connect later from your profile settings.
+        {t.garmin.skipNote}
       </div>
     </div>
   );
@@ -602,6 +615,7 @@ function ContextPreview({ label, text }: { label: string; text: string }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial: AthleteProfile | null; devProfileStale?: boolean; garminEmail?: string | null }) {
+  const t = useT().setup;
   const hasContext = !!initial?.generated_analysis_context;
 
   const [mode, setMode] = useState<"review" | "wizard">(hasContext ? "review" : "wizard");
@@ -673,7 +687,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
       setIsDirty(false);
       setProfileStale(false);
     } catch {
-      setError("Failed to generate context. Please try again.");
+      setError(t.errors.generateContextFailed);
     } finally {
       setGenerating(false);
     }
@@ -713,8 +727,8 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         {/* Status */}
         <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
           {hasCtx
-            ? "Your coaching context has been generated from your profile answers."
-            : "No coaching context yet. Fill in your profile answers and generate a brief for your AI coach."}
+            ? t.review.statusWithContext
+            : t.review.statusNoContext}
         </div>
 
         {/* Staleness warning */}
@@ -725,14 +739,14 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
             borderRadius: 8, padding: "12px 14px", fontSize: 13, color: "var(--yellow, #eab308)", lineHeight: 1.5,
           }}>
             <i className="ti ti-refresh-alert" style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }} />
-            <span>Your profile answers have changed. <strong>Regenerate</strong> to update the coaching context.</span>
+            <span>{t.review.staleWarningPrefix}<strong>{t.review.staleWarningStrong}</strong>{t.review.staleWarningSuffix}</span>
           </div>
         )}
 
         {/* Context preview */}
         {hasCtx && !showText && (
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16, background: "rgba(var(--overlay-rgb),.03)" }}>
-            <ContextPreview label="Analysis context"  text={data.generated_analysis_context} />
+            <ContextPreview label={t.review.contextPreviewLabel}  text={data.generated_analysis_context} />
           </div>
         )}
 
@@ -742,20 +756,20 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         {data.recurring_session_requests.length > 0 && (
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: 12, background: "rgba(var(--overlay-rgb),.03)" }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "var(--dim)", textTransform: "uppercase" }}>
-              Recurring Session Requests
+              {t.review.recurringRequestsTitle}
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-              Sent to the coach as explicit requirements every time a plan is generated — separate from the coaching context above.
+              {t.review.recurringRequestsHint}
             </div>
             {data.recurring_session_requests.map(req => (
               <div key={req.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{req.label || "Untitled session"}</span>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{req.label || t.review.untitledSession}</span>
                   <span className="badge" style={{ fontSize: 10 }}>
-                    {req.day_of_week ? req.day_of_week.charAt(0).toUpperCase() + req.day_of_week.slice(1) : "No specific day"}
+                    {req.day_of_week ? t.weekdaysFull[req.day_of_week] : t.preferredSessions.noSpecificDay}
                   </span>
                   <span className={`badge${req.importance === "must" ? " badge-accent" : ""}`} style={{ fontSize: 10 }}>
-                    {req.importance === "must" ? "Always include" : "Include when possible"}
+                    {req.importance === "must" ? t.review.alwaysInclude : t.review.includeWhenPossible}
                   </span>
                 </div>
                 {req.description && (
@@ -770,8 +784,8 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         {hasCtx && showText && (
           <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <Field>
-              <Label>Analysis context</Label>
-              <Hint>Who you are and what you&apos;re trying to achieve — used for season-level planning.</Hint>
+              <Label>{t.review.contextPreviewLabel}</Label>
+              <Hint>{t.review.editContextHint}</Hint>
               <textarea className="textarea" style={{ minHeight: 240, fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.6 }}
                 value={data.generated_analysis_context}
                 onChange={e => { setData(d => ({ ...d, generated_analysis_context: e.target.value })); setIsDirty(true); }} />
@@ -779,10 +793,10 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
             {isDirty && (
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn-primary" onClick={handleSaveText} disabled={saving}>
-                  {saving ? "Saving…" : "Save changes"}
+                  {saving ? t.review.saving : t.review.saveChanges}
                 </button>
                 <button className="btn-secondary" onClick={() => { setData(initial ?? EMPTY); setIsDirty(false); setShowText(false); }}>
-                  Discard
+                  {t.review.discard}
                 </button>
               </div>
             )}
@@ -791,7 +805,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
 
         {/* Garmin note */}
         <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
-          When a plan is generated, your recent Garmin activity data is also fetched automatically — training load, workout history, and fitness trends — so the coach can determine appropriate phases and progression from your actual current state.
+          {t.review.garminAutoSyncNote}
         </div>
 
         {/* Error */}
@@ -801,16 +815,16 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn-primary" onClick={handleGenerate} disabled={generating}>
             {generating
-              ? <><i className="ti ti-loader-2" style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />Generating…</>
-              : <><i className="ti ti-sparkles" style={{ marginRight: 8 }} />{hasCtx ? "Regenerate" : "Generate coaching context"}</>}
+              ? <><i className="ti ti-loader-2" style={{ marginRight: 8, animation: "spin 1s linear infinite" }} />{t.review.generating}</>
+              : <><i className="ti ti-sparkles" style={{ marginRight: 8 }} />{hasCtx ? t.review.regenerate : t.review.generate}</>}
           </button>
           <button className="btn-secondary" onClick={() => { setMode("wizard"); setStep(1); setIsDirty(false); }}>
-            <i className="ti ti-list-details" style={{ marginRight: 6 }} />Edit profile answers
+            <i className="ti ti-list-details" style={{ marginRight: 6 }} />{t.review.editProfileAnswers}
           </button>
           {hasCtx && (
             <button className="btn-secondary" onClick={() => setShowText(v => !v)}>
               <i className={`ti ${showText ? "ti-eye-off" : "ti-code"}`} style={{ marginRight: 6 }} />
-              {showText ? "Hide text" : "Edit text"}
+              {showText ? t.review.hideText : t.review.editText}
             </button>
           )}
         </div>
@@ -820,24 +834,9 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
 
   // ── Wizard mode ────────────────────────────────────────────────────────────
 
-  const STEP_HEADINGS = [
-    "What are you training for?",
-    "Your athletic background",
-    "Schedule & equipment",
-    "Preferred sessions",
-    "Health & limitations",
-    "Training preferences",
-    "Connect Garmin",
-  ];
-  const STEP_SUBTITLES = [
-    "Your goals are the foundation of every decision the coach makes.",
-    "Help the coach understand where you are starting from.",
-    "When and where you train shapes what's possible.",
-    "Specific sessions the coach should plan the week around.",
-    "Any limitations the coach should know about.",
-    "A plan you'll actually stick to beats a perfect plan you hate.",
-    "Sync your training data, health metrics, and performance trends.",
-  ];
+  const stepLabels = t.stepLabels;
+  const stepHeadings = t.stepHeadings;
+  const stepSubtitles = t.stepSubtitles;
 
   return (
     <div>
@@ -847,12 +846,12 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         style={{ marginBottom: 20, fontSize: 13 }}
         onClick={() => setMode("review")}
       >
-        <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />Back to overview
+        <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />{t.navigation.backToOverview}
       </button>
 
       {/* Step progress */}
       <div className="wizard-steps" style={{ marginBottom: 28 }}>
-        {STEP_LABELS.map((label, i) => {
+        {stepLabels.map((label, i) => {
           const num = i + 1;
           const done   = num < step;
           const active = num === step;
@@ -867,7 +866,7 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
               >
                 {done ? <i className="ti ti-check" style={{ fontSize: 12 }} /> : num}
               </div>
-              {i < STEP_LABELS.length - 1 && <div className={`step-line${done ? " done" : ""}`} />}
+              {i < stepLabels.length - 1 && <div className={`step-line${done ? " done" : ""}`} />}
             </div>
           );
         })}
@@ -877,9 +876,9 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
       <div style={{ marginBottom: 28 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <i className={`ti ${STEP_ICONS[step - 1]}`} style={{ fontSize: 18, color: "var(--accent)" }} />
-          <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>{STEP_HEADINGS[step - 1]}</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>{stepHeadings[step - 1]}</h2>
         </div>
-        <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>{STEP_SUBTITLES[step - 1]}</p>
+        <p style={{ fontSize: 13, color: "var(--muted)", margin: 0 }}>{stepSubtitles[step - 1]}</p>
       </div>
 
       {/* Step content */}
@@ -901,19 +900,19 @@ export function SetupWizard({ initial, devProfileStale, garminEmail }: { initial
         <button className="btn-secondary" disabled={saving}
           onClick={() => step === 1 ? setMode("review") : setStep(s => s - 1)}>
           <i className="ti ti-arrow-left" style={{ marginRight: 6 }} />
-          {step === 1 ? "Overview" : "Back"}
+          {step === 1 ? t.navigation.overview : t.navigation.back}
         </button>
-        <span style={{ fontSize: 12, color: "var(--dim)" }}>Step {step} of 7</span>
+        <span style={{ fontSize: 12, color: "var(--dim)" }}>{t.navigation.stepOf.replace("{n}", String(step))}</span>
         <div style={{ display: "flex", gap: 8 }}>
           {step < 7 && (
             <button className="btn-secondary" onClick={handleSaveExit} disabled={saving}>
-              {saving ? "Saving…" : "Save & exit"}
+              {saving ? t.navigation.saving : t.navigation.saveExit}
             </button>
           )}
           <button className="btn-primary" onClick={handleNext} disabled={saving}>
-            {saving ? "Saving…" : step === 7
-              ? <>Finish <i className="ti ti-check" style={{ marginLeft: 6 }} /></>
-              : <>Continue <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>}
+            {saving ? t.navigation.saving : step === 7
+              ? <>{t.navigation.finish} <i className="ti ti-check" style={{ marginLeft: 6 }} /></>
+              : <>{t.navigation.continueLabel} <i className="ti ti-arrow-right" style={{ marginLeft: 6 }} /></>}
           </button>
         </div>
       </div>

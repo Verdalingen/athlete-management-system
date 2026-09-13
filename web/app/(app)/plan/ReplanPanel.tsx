@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { queueReplan } from "@/app/actions/replan";
 import type { ReplanJob, ReplanJobType } from "@/app/actions/replan";
 import type { ScheduledDay } from "@/lib/types";
-import { SESSION_COLOR, SESSION_LABEL } from "@/lib/session-theme";
+import { SESSION_COLOR, sessionLabel } from "@/lib/session-theme";
+import { useT, useLanguage } from "@/lib/i18n/LanguageContext";
+import { localeTag } from "@/lib/i18n/language";
+import type { Dictionary } from "@/lib/i18n/types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Queued", running: "Running…", done: "Done", error: "Failed",
-};
 const STATUS_COLOR: Record<string, string> = {
   pending: "var(--amber)", running: "var(--cyan)", done: "var(--green)", error: "var(--red)",
 };
@@ -29,27 +29,29 @@ function todayStr(): string {
   return toDateStr(d);
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: Dictionary["plan"]["replan"]["timeAgo"]): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 60)    return `${diff}s ago`;
-  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 60)    return t.seconds.replace("{n}", String(diff));
+  if (diff < 3600)  return t.minutes.replace("{n}", String(Math.floor(diff / 60)));
+  if (diff < 86400) return t.hours.replace("{n}", String(Math.floor(diff / 3600)));
+  return t.days.replace("{n}", String(Math.floor(diff / 86400)));
 }
 
 // Renders nothing on the server and on the client's first paint (so SSR and hydration always
 // match), then fills in the live "X ago" label client-side once mounted — avoids the hydration
 // mismatch that comes from computing a time-since-now value during render. Ticks via
 // useSyncExternalStore rather than a mount effect calling setState: the cached label is
-// refreshed on (re)subscribe (covers both first mount and `iso` changing) and every 30s after.
+// refreshed on (re)subscribe (covers both first mount, `iso` changing, and a language switch,
+// since `t` is a new object reference each time the dictionary changes) and every 30s after.
 function useTimeAgo(iso: string): string {
-  const cachedRef = useRef(timeAgo(iso));
+  const t = useT().plan.replan.timeAgo;
+  const cachedRef = useRef(timeAgo(iso, t));
   const subscribe = useCallback((cb: () => void) => {
-    cachedRef.current = timeAgo(iso);
+    cachedRef.current = timeAgo(iso, t);
     cb();
-    const id = setInterval(() => { cachedRef.current = timeAgo(iso); cb(); }, 30000);
+    const id = setInterval(() => { cachedRef.current = timeAgo(iso, t); cb(); }, 30000);
     return () => clearInterval(id);
-  }, [iso]);
+  }, [iso, t]);
   const getSnapshot = useCallback(() => cachedRef.current, []);
   const getServerSnapshot = useCallback(() => "", []);
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
@@ -64,6 +66,7 @@ function formatRescheduleComment(
   selectedDates: string[],
   sessionMap: Map<string, ScheduledDay>,
   note: string,
+  t: Dictionary["plan"]["replan"]["comment"],
 ): string {
   const today = todayStr();
   const missed   = selectedDates.filter(d => d <  today).sort();
@@ -71,14 +74,14 @@ function formatRescheduleComment(
   const lines: string[] = [];
 
   if (missed.length > 0) {
-    lines.push("Missed sessions:");
+    lines.push(t.missedSessions);
     missed.forEach(d => {
       const s = sessionMap.get(d);
       lines.push(`  - ${d}${s?.focus ? ` (${s.focus})` : ""}`);
     });
   }
   if (upcoming.length > 0) {
-    lines.push("Upcoming constraints:");
+    lines.push(t.upcomingConstraints);
     upcoming.forEach(d => {
       const s = sessionMap.get(d);
       lines.push(`  - ${d}${s?.focus ? ` (${s.focus})` : ""}`);
@@ -86,7 +89,7 @@ function formatRescheduleComment(
   }
   if (note.trim()) {
     if (lines.length > 0) lines.push("");
-    lines.push(`Note: ${note.trim()}`);
+    lines.push(t.note.replace("{note}", note.trim()));
   }
   return lines.join("\n");
 }
@@ -104,6 +107,9 @@ function CalendarPicker({
   onToggle: (date: string, shiftHeld: boolean) => void;
   onClear: () => void;
 }) {
+  const t = useT().plan.replan.calendarPicker;
+  const [language] = useLanguage();
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayISO = toDateStr(today);
@@ -129,7 +135,7 @@ function CalendarPicker({
   const sessionMap = new Map(scheduledDays.map(s => [s.date, s]));
 
   const monthLabel = (() => {
-    const months = new Set(weeks.flat().map(d => d.toLocaleString("en", { month: "long", year: "numeric" })));
+    const months = new Set(weeks.flat().map(d => d.toLocaleString(localeTag(language), { month: "long", year: "numeric" })));
     return [...months].join(" / ");
   })();
 
@@ -141,7 +147,7 @@ function CalendarPicker({
 
       {/* Day-of-week headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 3 }}>
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
+        {t.dayHeaders.map(d => (
           <div key={d} style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "var(--dim)", padding: "2px 0" }}>
             {d}
           </div>
@@ -211,21 +217,21 @@ function CalendarPicker({
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(var(--red-rgb),.25)", border: "1px solid rgba(var(--red-rgb),.5)" }} />
-            Missed
+            {t.missed}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, background: "rgba(var(--amber-rgb),.25)", border: "1px solid rgba(var(--amber-rgb),.5)" }} />
-            Constrained
+            {t.constrained}
           </div>
           {[...new Set(scheduledDays.filter(s => !s.is_rest).map(s => s.session_type))].map(type => (
             <div key={type} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--dim)" }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: SESSION_COLOR[type] ?? "var(--dim)" }} />
-              {SESSION_LABEL[type] ?? (type.charAt(0).toUpperCase() + type.slice(1))}
+              {sessionLabel(type, language)}
             </div>
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 10, color: "var(--dim)" }}>Shift+click to range-select</span>
+          <span style={{ fontSize: 10, color: "var(--dim)" }}>{t.rangeSelectHint}</span>
           {selectedDates.length > 0 && (
             <button
               onMouseDown={e => { e.preventDefault(); onClear(); }}
@@ -236,7 +242,7 @@ function CalendarPicker({
                 fontFamily: "inherit", fontWeight: 600,
               }}
             >
-              Clear {selectedDates.length}
+              {t.clear.replace("{count}", String(selectedDates.length))}
             </button>
           )}
         </div>
@@ -248,7 +254,7 @@ function CalendarPicker({
 // ── Modal config ──────────────────────────────────────────────────────────────
 
 // sync_kpis is queued directly by RefreshDataButton.tsx, no modal — excluded here.
-const MODAL_CONFIG: Record<Exclude<ReplanJobType, "sync_kpis">, {
+type ModalConfig = Record<Exclude<ReplanJobType, "sync_kpis">, {
   title: string;
   cost: string;
   time: string;
@@ -256,35 +262,41 @@ const MODAL_CONFIG: Record<Exclude<ReplanJobType, "sync_kpis">, {
   commentPlaceholder: string;
   confirmLabel: string;
   confirmClass: string;
-}> = {
-  daily: {
-    title: "Reschedule",
-    cost: "~$0.02",
-    time: "~30s",
-    description: "Mark dates you missed or will be constrained, then add a note. The coach will decide what to reschedule or drop.",
-    commentPlaceholder: "Optional note — what happened, or what constraints are coming up? (e.g. sick, travel, limited time)",
-    confirmLabel: "Queue Reschedule",
-    confirmClass: "btn-soft",
-  },
-  replan: {
-    title: "Check-In",
-    cost: "~$0.20",
-    time: "~2-3 min",
-    description: "Reads 14 days of Garmin data and uses AI to re-plan the next 6 weeks, adapting to what was actually completed while staying true to the season plan. Weeks beyond that window are preserved unchanged.",
-    commentPlaceholder: "Optional note — how has training been since last check-in? Fatigue, injuries, upcoming constraints…",
-    confirmLabel: "Queue Check-In",
-    confirmClass: "btn-primary",
-  },
-  seasonal: {
-    title: "New Season",
-    cost: "~$1–3",
-    time: "~7-10 min",
-    description: "Runs the full AI pipeline — expert analysis, new HTML reports, and a completely new season plan for the next training block. Use when your current season ends or after a major shift in goals.",
-    commentPlaceholder: "Optional note — goals or focus areas for the new season…",
-    confirmLabel: "Start New Season",
-    confirmClass: "btn-danger",
-  },
-};
+}>;
+
+// cost/time are currency- and unit-shorthand, not sentences — kept identical in both
+// languages rather than round-tripped through the dictionary.
+function buildModalConfig(t: Dictionary["plan"]["replan"]["modals"]): ModalConfig {
+  return {
+    daily: {
+      title: t.daily.title,
+      cost: "~$0.02",
+      time: t.daily.time,
+      description: t.daily.description,
+      commentPlaceholder: t.daily.commentPlaceholder,
+      confirmLabel: t.daily.confirmLabel,
+      confirmClass: "btn-soft",
+    },
+    replan: {
+      title: t.replan.title,
+      cost: "~$0.20",
+      time: t.replan.time,
+      description: t.replan.description,
+      commentPlaceholder: t.replan.commentPlaceholder,
+      confirmLabel: t.replan.confirmLabel,
+      confirmClass: "btn-primary",
+    },
+    seasonal: {
+      title: t.seasonal.title,
+      cost: "~$1–3",
+      time: t.seasonal.time,
+      description: t.seasonal.description,
+      commentPlaceholder: t.seasonal.commentPlaceholder,
+      confirmLabel: t.seasonal.confirmLabel,
+      confirmClass: "btn-danger",
+    },
+  };
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -295,6 +307,8 @@ interface Props {
 
 export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
   const router = useRouter();
+  const t = useT().plan.replan;
+  const modalConfig = buildModalConfig(t.modals);
   const [isPending, startTransition] = useTransition();
   const [activeModal, setActiveModal] = useState<Exclude<ReplanJobType, "sync_kpis"> | null>(null);
   const [comment, setComment] = useState("");
@@ -370,7 +384,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
     if (!activeModal) return;
     const type = activeModal;
     const finalComment = type === "daily"
-      ? formatRescheduleComment(selectedDates, sessionMap, comment)
+      ? formatRescheduleComment(selectedDates, sessionMap, comment, t.comment)
       : comment;
     closeModal();
     setError(null);
@@ -379,13 +393,13 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
         await queueReplan(type, finalComment);
         router.refresh();
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Unknown error");
+        setError(e instanceof Error ? e.message : t.unknownError);
       }
     });
   }
 
   const isActive = isPending || jobs.some(j => j.status === "pending" || j.status === "running");
-  const modal = activeModal ? MODAL_CONFIG[activeModal] : null;
+  const modal = activeModal ? modalConfig[activeModal] : null;
 
   return (
     <>
@@ -449,11 +463,11 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
             />
 
             <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>
-              After queuing, run <code style={{ background: "rgba(var(--overlay-rgb),.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> to process.
+              {t.modals.queueHintPrefix} <code style={{ background: "rgba(var(--overlay-rgb),.06)", padding: "2px 6px", borderRadius: 4 }}>--queue config.yaml</code> {t.modals.queueHintSuffix}
             </p>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", alignItems: "center" }}>
-              <button className="btn-secondary" onClick={closeModal}>Cancel</button>
+              <button className="btn-secondary" onClick={closeModal}>{t.cancel}</button>
               <button className={modal.confirmClass} onClick={confirm}>
                 {modal.confirmLabel}
                 <span style={{ fontSize: 11, opacity: .65, marginLeft: 8 }}>{modal.cost} · {modal.time}</span>
@@ -468,15 +482,15 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button className="btn-soft" disabled={isActive} onClick={() => openModal("daily")}>
             <i className="ti ti-calendar-event" style={{ fontSize: 15, marginRight: 6 }} />
-            {isPending ? "Queuing…" : "Reschedule"}
+            {isPending ? t.buttons.queuing : t.buttons.reschedule}
           </button>
           <button className="btn-primary" disabled={isActive} onClick={() => openModal("replan")}>
             <i className="ti ti-refresh" style={{ fontSize: 15, marginRight: 6 }} />
-            {isPending ? "Queuing…" : "Check-In"}
+            {isPending ? t.buttons.queuing : t.buttons.checkIn}
           </button>
           <button className="btn-secondary" disabled={isActive} onClick={() => openModal("seasonal")}>
             <i className="ti ti-sparkles" style={{ fontSize: 15, marginRight: 6 }} />
-            New Season
+            {t.buttons.newSeason}
           </button>
         </div>
 
@@ -508,7 +522,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
                 }}
               />
               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)" }}>
-                Recent jobs
+                {t.recentJobs}
               </span>
             </button>
             {!jobsCollapsed && (
@@ -517,13 +531,10 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
                 <div key={job.id}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12 }}>
                     <span style={{ color: STATUS_COLOR[job.status] ?? "var(--muted)", fontWeight: 600, minWidth: 60 }}>
-                      {STATUS_LABEL[job.status] ?? job.status}
+                      {t.status[job.status] ?? job.status}
                     </span>
                     <span style={{ color: "var(--muted)" }}>
-                      {job.type === "daily" ? "Reschedule"
-                        : job.type === "replan" ? "Check-In"
-                        : job.type === "sync_kpis" ? "Data Refresh"
-                        : "New Season"}
+                      {t.jobType[job.type]}
                     </span>
                     <span style={{ color: "var(--dim)" }}>·</span>
                     <span style={{ color: "var(--dim)" }}><TimeAgo iso={job.created_at} /></span>
@@ -540,7 +551,7 @@ export function ReplanPanel({ initialJobs, scheduledDays }: Props) {
                       borderRadius: 8, padding: "10px 14px",
                     }}>
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--cyan)", marginBottom: 6 }}>
-                        Coach Feedback
+                        {t.coachFeedback}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.65, whiteSpace: "pre-line" }}>
                         {job.coach_feedback}

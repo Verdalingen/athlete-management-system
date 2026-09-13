@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { getUserId } from "@/lib/supabase-server";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -86,6 +89,9 @@ function serializeError(err: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
+    const uid = await getUserId();
+    const t = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.importUrl;
+
     const { url } = await req.json().catch(() => ({})) as { url?: string };
     if (!url?.trim()) return NextResponse.json({ error: "url required" }, { status: 400 });
 
@@ -94,7 +100,7 @@ export async function POST(req: NextRequest) {
       parsedUrl = new URL(url.trim());
       if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("bad protocol");
     } catch {
-      return NextResponse.json({ error: "That doesn't look like a valid URL." }, { status: 400 });
+      return NextResponse.json({ error: t.invalidUrl }, { status: 400 });
     }
 
     let html: string;
@@ -106,12 +112,12 @@ export async function POST(req: NextRequest) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       html = await res.text();
     } catch {
-      return NextResponse.json({ error: "Couldn't fetch that page — check the URL or enter the recipe manually." }, { status: 400 });
+      return NextResponse.json({ error: t.fetchFailed }, { status: 400 });
     }
 
     const recipe = extractRecipeJsonLd(html);
     if (!recipe) {
-      return NextResponse.json({ error: "Couldn't find recipe data on that page — try a different URL or enter it manually." }, { status: 400 });
+      return NextResponse.json({ error: t.noRecipeData }, { status: 400 });
     }
 
     const name = typeof recipe.name === "string" ? recipe.name : "Imported recipe";
@@ -126,7 +132,7 @@ export async function POST(req: NextRequest) {
     const rawSteps = flattenInstructions(recipe.recipeInstructions);
 
     if (!rawIngredients.length) {
-      return NextResponse.json({ error: "Found a recipe on that page, but no ingredient list — try entering it manually." }, { status: 400 });
+      return NextResponse.json({ error: t.noIngredients }, { status: 400 });
     }
 
     const systemPrompt = `You are a nutrition data assistant. Given a raw recipe's ingredient list and method, you (1) estimate structured macros per ingredient, and (2) rewrite the method as concise numbered steps in your own words — never copy the source sentences verbatim. Respond with valid JSON only, no markdown.`;
@@ -169,7 +175,7 @@ Respond ONLY with this JSON structure:
     try {
       normalized = JSON.parse(raw.replace(/```json|```/g, "").trim());
     } catch {
-      return NextResponse.json({ error: "Couldn't parse this recipe's ingredients — try entering it manually." }, { status: 500 });
+      return NextResponse.json({ error: t.parseFailed }, { status: 500 });
     }
 
     const draft = {

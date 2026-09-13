@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 type AnalyzedItem = {
   food_name: string;
@@ -31,15 +32,17 @@ const CONFIDENCE_COLOR: Record<string, string> = {
   low:    "var(--red)",
 };
 
-const CONFIDENCE_LABEL: Record<string, string> = {
-  high:   "High confidence",
-  medium: "Estimated",
-  low:    "Low confidence — verify",
-};
-
 type Phase = "capture" | "preview" | "analyzing" | "results";
 
 export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Props) {
+  const nt = useT().nutrition;
+  const t = nt.photoCapture;
+  const ml = nt.macroLabels;
+  const CONFIDENCE_LABEL: Record<string, string> = {
+    high:   t.confidence.high,
+    medium: t.confidence.medium,
+    low:    t.confidence.low,
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>("capture");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -198,8 +201,8 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
           <i className="ti ti-camera" style={{ fontSize: 18, color: "var(--accent)" }} aria-hidden="true" />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700 }}>AI Photo Recognition</div>
-            <div style={{ fontSize: 11, color: "var(--dim)" }}>Adding to {mealLabel}</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{t.title}</div>
+            <div style={{ fontSize: 11, color: "var(--dim)" }}>{t.addingTo.replace("{meal}", mealLabel)}</div>
           </div>
           <button
             onClick={onClose}
@@ -222,10 +225,10 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                 <i className="ti ti-camera" style={{ fontSize: 34, color: "var(--accent)" }} aria-hidden="true" />
               </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Take a photo of your meal</div>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>{t.takePhotoHeading}</div>
                 <div style={{ fontSize: 13, color: "var(--dim)", lineHeight: 1.5 }}>
-                  Claude will identify each food item and estimate portion sizes.<br />
-                  For best results, include something for scale (plate, utensil, hand).
+                  {t.claudeDescription1}<br />
+                  {t.claudeDescription2}
                 </div>
               </div>
 
@@ -245,7 +248,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <i className="ti ti-camera" aria-hidden="true" />
-                  Take photo
+                  {t.takePhoto}
                 </button>
                 <button
                   className="btn-secondary"
@@ -260,13 +263,13 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                   }}
                 >
                   <i className="ti ti-photo" aria-hidden="true" />
-                  Choose from gallery
+                  {t.chooseFromGallery}
                 </button>
               </div>
 
               <div style={{ fontSize: 11, color: "var(--dim)", display: "flex", alignItems: "center", gap: 5 }}>
                 <i className="ti ti-shield-check" style={{ fontSize: 12 }} aria-hidden="true" />
-                Photo is sent to Claude AI and not stored
+                {t.privacyNote}
               </div>
             </div>
           )}
@@ -278,7 +281,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={imageUrl}
-                  alt="Food photo for analysis"
+                  alt={t.photoAlt}
                   style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }}
                 />
                 {phase === "analyzing" && (
@@ -287,15 +290,15 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
                   }}>
                     <i className="ti ti-brain" style={{ fontSize: 32, color: "var(--accent)", animation: "spin 2s linear infinite" }} aria-hidden="true" />
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Analyzing meal…</div>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.65)" }}>Identifying foods → verifying with USDA database</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{t.analyzingMeal}</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,.65)" }}>{t.analyzingSubtext}</div>
                   </div>
                 )}
               </div>
 
               {error && (
                 <div className="alert alert-bad">
-                  <strong>Could not analyze photo:</strong> {error}
+                  <strong>{t.analyzeError}</strong> {error}
                 </div>
               )}
 
@@ -303,7 +306,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                 <div style={{ display: "flex", gap: 10 }}>
                   <button className="btn-secondary" style={{ flex: 1, gap: 7, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={retake}>
                     <i className="ti ti-camera" aria-hidden="true" />
-                    Retake
+                    {t.retake}
                   </button>
                   <button
                     className="btn-primary"
@@ -311,7 +314,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                     onClick={analyze}
                   >
                     <i className="ti ti-brain" aria-hidden="true" />
-                    Analyze with AI
+                    {t.analyzeWithAi}
                   </button>
                 </div>
               )}
@@ -326,14 +329,14 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
               <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 {imageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imageUrl} alt="Food" style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)", flexShrink: 0 }} />
+                  <img src={imageUrl} alt={t.thumbnailAlt} style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)", flexShrink: 0 }} />
                 )}
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4, color: "var(--text)" }}>
-                    {mealDesc || "Meal identified"}
+                    {mealDesc || t.mealIdentifiedFallback}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.4 }}>
-                    Review and adjust the items below before logging. Quantities auto-rescale macros.
+                    {t.reviewHint}
                   </div>
                 </div>
               </div>
@@ -341,10 +344,10 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
               {/* Totals bar */}
               <div style={{ background: "rgba(124,92,255,.08)", border: "1px solid rgba(124,92,255,.2)", borderRadius: 10, padding: "10px 14px", display: "flex", gap: 16 }}>
                 {[
-                  { label: "Total",   val: `${Math.round(totals.cal)} kcal`,  color: "var(--text)" },
-                  { label: "Protein", val: `${totals.p.toFixed(1)}g`,          color: "var(--accent)" },
-                  { label: "Carbs",   val: `${totals.c.toFixed(1)}g`,          color: "var(--cyan)" },
-                  { label: "Fat",     val: `${totals.f.toFixed(1)}g`,          color: "var(--amber)" },
+                  { label: ml.total,   val: `${Math.round(totals.cal)} kcal`,  color: "var(--text)" },
+                  { label: ml.protein, val: `${totals.p.toFixed(1)}g`,          color: "var(--accent)" },
+                  { label: ml.carbs,   val: `${totals.c.toFixed(1)}g`,          color: "var(--cyan)" },
+                  { label: ml.fat,     val: `${totals.f.toFixed(1)}g`,          color: "var(--amber)" },
                 ].map(m => (
                   <div key={m.label} style={{ textAlign: "center", flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 800, color: m.color }}>{m.val}</div>
@@ -357,7 +360,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {items.length === 0 && (
                   <div style={{ textAlign: "center", color: "var(--dim)", fontSize: 13, padding: 16 }}>
-                    No food items identified. Try retaking the photo.
+                    {t.noItemsIdentified}
                   </div>
                 )}
 
@@ -379,7 +382,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                           fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 8, flexShrink: 0,
                           color: "var(--green)", background: "rgba(var(--green-rgb),.12)",
                           border: "1px solid rgba(var(--green-rgb),.3)",
-                        }} title={`Matched: ${item.usda_description}`}>
+                        }} title={t.matchedTooltip.replace("{value}", item.usda_description ?? "")}>
                           ✓ USDA
                         </span>
                       ) : item.source === "ai_estimate" ? (
@@ -388,7 +391,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                           color: "var(--amber)", background: "rgba(var(--amber-rgb),.1)",
                           border: "1px solid rgba(var(--amber-rgb),.25)",
                         }}>
-                          AI est.
+                          {t.aiEstBadge}
                         </span>
                       ) : null}
                       <span style={{
@@ -402,25 +405,25 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                       <button
                         onClick={() => removeItem(idx)}
                         style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 14, padding: "0 2px", flexShrink: 0 }}
-                        title="Remove item"
+                        title={t.removeItem}
                       >
                         ✕
                       </button>
                     </div>
                     {item.source === "usda" && item.usda_description && item.usda_description.toLowerCase() !== item.food_name.toLowerCase() && (
                       <div style={{ fontSize: 10, color: "var(--dim)", marginBottom: 8, paddingLeft: 2 }}>
-                        Matched: {item.usda_description}
+                        {t.matchedTooltip.replace("{value}", item.usda_description)}
                       </div>
                     )}
 
                     {/* Macros row */}
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
                       {[
-                        { field: "quantity_g", label: "Grams",   color: "var(--muted)" },
+                        { field: "quantity_g", label: ml.grams,   color: "var(--muted)" },
                         { field: "calories",   label: "kcal",    color: "var(--text)" },
-                        { field: "protein_g",  label: "Protein", color: "var(--accent)" },
-                        { field: "carbs_g",    label: "Carbs",   color: "var(--cyan)" },
-                        { field: "fat_g",      label: "Fat",     color: "var(--amber)" },
+                        { field: "protein_g",  label: ml.protein, color: "var(--accent)" },
+                        { field: "carbs_g",    label: ml.carbs,   color: "var(--cyan)" },
+                        { field: "fat_g",      label: ml.fat,     color: "var(--amber)" },
                       ].map(col => (
                         <div key={col.field}>
                           <div style={{ fontSize: 9, color: col.color, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>{col.label}</div>
@@ -453,7 +456,7 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                   onClick={retake}
                 >
                   <i className="ti ti-camera" aria-hidden="true" />
-                  Retake
+                  {t.retake}
                 </button>
                 <button
                   className="btn-primary"
@@ -462,7 +465,12 @@ export function PhotoFoodCapture({ meal: _meal, mealLabel, onLog, onClose }: Pro
                   onClick={handleLog}
                 >
                   <i className="ti ti-check" aria-hidden="true" />
-                  {isLogging ? "Logging…" : `Log ${items.length} item${items.length !== 1 ? "s" : ""} to ${mealLabel}`}
+                  {isLogging
+                    ? nt.actions.logging
+                    : t.logItemsTo
+                        .replace("{count}", String(items.length))
+                        .replace("{itemWord}", items.length !== 1 ? t.itemsWord : t.itemWord)
+                        .replace("{meal}", mealLabel)}
                 </button>
               </div>
             </div>

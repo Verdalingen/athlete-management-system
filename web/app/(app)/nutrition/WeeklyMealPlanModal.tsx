@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { formatShort, formatWeekday, todayISO } from "@/lib/dates";
 import { formatWeight } from "./format";
 import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
+import type { Dictionary } from "@/lib/i18n/types";
 
 type Ingredient = {
   food_name: string; shopping_name?: string | null; quantity_g: number;
@@ -27,10 +29,13 @@ type MealRecommendation = {
 };
 
 const MEAL_ORDER = ["breakfast", "pre_workout", "lunch", "post_workout", "dinner", "snacks"];
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Breakfast", pre_workout: "Pre-Workout", lunch: "Lunch",
-  post_workout: "Post-Workout", dinner: "Dinner", snacks: "Snacks",
-};
+
+function mealLabels(t: Dictionary["nutrition"]["meals"]): Record<string, string> {
+  return {
+    breakfast: t.breakfast, pre_workout: t.preWorkout, lunch: t.lunch,
+    post_workout: t.postWorkout, dinner: t.dinner, snacks: t.snacks,
+  };
+}
 
 function addDays(iso: string, n: number): string {
   const d = new Date(iso);
@@ -54,6 +59,10 @@ type Props = {
 };
 
 export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
+  const nt = useT().nutrition;
+  const t = nt.weeklyMealPlan;
+  const MEAL_LABELS = mealLabels(nt.meals);
+  const [language] = useLanguage();
   const formatQty = useFormatQty();
   const [unitSystem] = useUnitSystem();
   const start = todayISO();
@@ -79,8 +88,9 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
     fetch(`/api/nutrition/meal-recommendations?start=${start}&end=${end}`)
       .then(r => r.json())
       .then(json => { if (json.error) setError(json.error); else setRecs(json.data ?? []); })
-      .catch(() => setError("Failed to load meal plan"))
+      .catch(() => setError(t.loadFailed))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
   async function planWeek() {
@@ -144,15 +154,15 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
         {/* Header */}
         <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
           <i className="ti ti-calendar-week" style={{ fontSize: 17, color: "var(--accent)" }} aria-hidden="true" />
-          <div style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>Weekly Meal Plan</div>
-          <div style={{ fontSize: 12, color: "var(--muted)" }}>{formatShort(start)} – {formatShort(end)}</div>
+          <div style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{t.title}</div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>{formatShort(start, language)} – {formatShort(end, language)}</div>
           <button
             className="btn-soft"
             style={{ fontSize: 11, padding: "5px 10px" }}
             onClick={planWeek}
             disabled={generating}
           >
-            {generating ? "Planning…" : recs.length ? "Regenerate week" : "Plan this week"}
+            {generating ? nt.actions.planning : recs.length ? t.regenerateWeek : t.planThisWeek}
           </button>
           <button onClick={onClose} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--muted)", padding: "5px 10px", fontSize: 13 }}>✕</button>
         </div>
@@ -163,27 +173,27 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
             onClick={() => setShowShoppingList(false)}
             style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "1px solid", background: !showShoppingList ? "rgba(124,92,255,.15)" : "none", borderColor: !showShoppingList ? "rgba(124,92,255,.5)" : "var(--border)", color: !showShoppingList ? "var(--accent)" : "var(--dim)" }}
           >
-            Days
+            {t.daysTab}
           </button>
           <button
             onClick={() => setShowShoppingList(true)}
             style={{ padding: "5px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "1px solid", background: showShoppingList ? "rgba(124,92,255,.15)" : "none", borderColor: showShoppingList ? "rgba(124,92,255,.5)" : "var(--border)", color: showShoppingList ? "var(--accent)" : "var(--dim)" }}
           >
-            Shopping list{shoppingList.length > 0 && <span style={{ marginLeft: 5, opacity: 0.7 }}>{shoppingList.length}</span>}
+            {t.shoppingListTab}{shoppingList.length > 0 && <span style={{ marginLeft: 5, opacity: 0.7 }}>{shoppingList.length}</span>}
           </button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
           {loading ? (
-            <div style={{ textAlign: "center", color: "var(--dim)", fontSize: 13, padding: 40 }}>Loading…</div>
+            <div style={{ textAlign: "center", color: "var(--dim)", fontSize: 13, padding: 40 }}>{nt.actions.loading}</div>
           ) : error ? (
             <div style={{ textAlign: "center", color: "var(--red)", fontSize: 13, padding: 40 }}>{error}</div>
           ) : recs.length === 0 ? (
             <div style={{ textAlign: "center", color: "var(--dim)", fontSize: 13, padding: 40 }}>
-              No meal plan generated for this week yet.
+              {t.noPlanYet}
               <div style={{ marginTop: 12 }}>
                 <button className="btn-primary" style={{ fontSize: 12 }} onClick={planWeek} disabled={generating}>
-                  {generating ? "Planning…" : "Plan this week"}
+                  {generating ? nt.actions.planning : t.planThisWeek}
                 </button>
               </div>
             </div>
@@ -231,16 +241,16 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
                       style={{ fontSize: 13, color: "var(--dim)", transform: isDayCollapsed ? "none" : "rotate(90deg)", transition: "transform .15s", flexShrink: 0 }}
                     />
                     <span style={{ fontSize: 12, fontWeight: 700, color: d === todayISO() ? "var(--accent)" : "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>
-                      {formatWeekday(d)} {formatShort(d)} {d === todayISO() && "· Today"}
+                      {formatWeekday(d, language)} {formatShort(d, language)} {d === todayISO() && t.todaySuffix}
                     </span>
                     {isDayCollapsed && dayMeals.length > 0 && (
                       <span style={{ fontSize: 11, color: "var(--dim)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-                        {dayMeals.length} meal{dayMeals.length !== 1 ? "s" : ""}
+                        {dayMeals.length} {dayMeals.length !== 1 ? t.mealsWord : t.mealWord}
                       </span>
                     )}
                   </button>
                   {isDayCollapsed ? null : dayMeals.length === 0 ? (
-                    <div style={{ fontSize: 12, color: "var(--dim)", paddingBottom: 4 }}>No meals planned.</div>
+                    <div style={{ fontSize: 12, color: "var(--dim)", paddingBottom: 4 }}>{t.noMealsPlanned}</div>
                   ) : (
                     dayMeals.map(rec => {
                       const key = `${rec.date}-${rec.meal_type}`;
@@ -251,7 +261,7 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <button
                               onClick={() => setExpanded(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
-                              title={isExpanded ? "Collapse ingredients" : "Expand ingredients"}
+                              title={isExpanded ? nt.diary.collapseIngredients : nt.diary.expandIngredients}
                               style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 16, padding: "8px 10px 8px 4px", margin: "-8px 0 -8px -4px", transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform .15s", lineHeight: 1, flexShrink: 0 }}
                             >›</button>
                             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".04em", flexShrink: 0, width: 78 }}>
@@ -264,7 +274,7 @@ export function WeeklyMealPlanModal({ onClose, onLog }: Props) {
                               style={{ fontSize: 10, padding: "3px 9px", flexShrink: 0, opacity: isLogged ? 0.6 : 1 }}
                               onClick={() => handleLog(rec)}
                             >
-                              {isLogged ? "Logged ✓" : "Use recommended"}
+                              {isLogged ? t.loggedCheck : nt.diary.useRecommended}
                             </button>
                           </div>
                           {rec.description && (

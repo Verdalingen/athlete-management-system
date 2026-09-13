@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { CompletedActivity } from "@/lib/types";
-import { MONTH_NAMES, DAY_HEADERS, buildMonthCells } from "@/lib/calendar";
+import { monthNames, dayHeaders, buildMonthCells } from "@/lib/calendar";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
 
 type DayType = "strength" | "run" | "other" | null;
 
@@ -37,6 +38,10 @@ const CELL = 16, GAP = 4;
  * default; "Show more" reveals up to a year back, all from data already
  * fetched server-side — no extra round trip. */
 export function ActivityHeatmap({ activities }: { activities: CompletedActivity[] }) {
+  const t = useT().dashboard.activityHeatmap;
+  const [language] = useLanguage();
+  const MONTH_NAMES = monthNames(language);
+  const DAY_HEADERS = dayHeaders(language);
   const [expanded, setExpanded] = useState(false);
 
   const byDate = new Map<string, { value: number; count: number; types: Set<string | null> }>();
@@ -73,7 +78,7 @@ export function ActivityHeatmap({ activities }: { activities: CompletedActivity[
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div className="card-title" style={{ margin: 0 }}>Training Consistency</div>
+        <div className="card-title" style={{ margin: 0 }}>{t.title}</div>
         <button
           type="button"
           onClick={() => setExpanded(e => !e)}
@@ -83,7 +88,7 @@ export function ActivityHeatmap({ activities }: { activities: CompletedActivity[
             display: "flex", alignItems: "center", gap: 4,
           }}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? t.showLess : t.showMore}
           <i className={`ti ${expanded ? "ti-chevron-up" : "ti-chevron-down"}`} style={{ fontSize: 13 }} aria-hidden="true" />
         </button>
       </div>
@@ -108,7 +113,7 @@ export function ActivityHeatmap({ activities }: { activities: CompletedActivity[
                   return (
                     <div
                       key={cell.iso}
-                      title={`${cell.iso} · ${entry?.count ?? 0} session${entry?.count === 1 ? "" : "s"}${type ? ` · ${type}` : ""}`}
+                      title={`${cell.iso} · ${(entry?.count === 1 ? t.tooltipSession : t.tooltipSessions).replace("{count}", String(entry?.count ?? 0))}${type ? ` · ${type}` : ""}`}
                       style={{
                         width: CELL, height: CELL, borderRadius: 3,
                         background: type ? TYPE_COLOR[type] : EMPTY_COLOR,
@@ -127,15 +132,15 @@ export function ActivityHeatmap({ activities }: { activities: CompletedActivity[
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16, fontSize: 11, color: "var(--muted)" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 3, background: TYPE_COLOR.strength, display: "inline-block" }} /> Strength
+          <span style={{ width: 10, height: 10, borderRadius: 3, background: TYPE_COLOR.strength, display: "inline-block" }} /> {t.strength}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 3, background: TYPE_COLOR.run, display: "inline-block" }} /> Run
+          <span style={{ width: 10, height: 10, borderRadius: 3, background: TYPE_COLOR.run, display: "inline-block" }} /> {t.run}
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 3, background: TYPE_COLOR.other, display: "inline-block" }} /> Other
+          <span style={{ width: 10, height: 10, borderRadius: 3, background: TYPE_COLOR.other, display: "inline-block" }} /> {t.other}
         </span>
-        <span style={{ color: "var(--dim)", marginLeft: "auto" }}>Shade = training load</span>
+        <span style={{ color: "var(--dim)", marginLeft: "auto" }}>{t.shadeNote}</span>
       </div>
     </div>
   );

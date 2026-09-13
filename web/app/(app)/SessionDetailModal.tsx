@@ -4,8 +4,10 @@ import { formatShort, formatDuration } from "@/lib/dates";
 import type { ScheduledDay, StrengthSession, CompletedActivity } from "@/lib/types";
 import { formatReps, isBarbellBench, estimateBenchWeight, type WeightRecommendation } from "@/lib/strength";
 import { WorkoutStructure } from "@/lib/workout-structure";
-import { SESSION_LABEL, SESSION_BADGE, SESSION_COLOR } from "@/lib/session-theme";
+import { sessionLabel, SESSION_BADGE, SESSION_COLOR } from "@/lib/session-theme";
 import { formatDurationLabel } from "@/lib/duration";
+import { useLanguage, useT } from "@/lib/i18n/LanguageContext";
+import { localeTag } from "@/lib/i18n/language";
 
 export interface DayData extends ScheduledDay {
   purpose: string;
@@ -13,10 +15,8 @@ export interface DayData extends ScheduledDay {
   completedActivities?: CompletedActivity[];
 }
 
-const FULL_WEEKDAY = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-
-function getWeekday(iso: string): string {
-  return FULL_WEEKDAY[new Date(iso + "T12:00:00Z").getUTCDay()];
+function getWeekday(iso: string, locale: string): string {
+  return new Date(iso + "T12:00:00Z").toLocaleDateString(locale, { weekday: "long", timeZone: "UTC" });
 }
 
 export function SessionDetailModal({
@@ -26,7 +26,11 @@ export function SessionDetailModal({
   bench1RMKg?: number | null;
   weightRecommendations?: Record<string, WeightRecommendation>;
 }) {
+  const t = useT();
+  const [language] = useLanguage();
   if (!day) return null;
+  const locale = localeTag(language);
+  const ts = t.dashboard.sessionDetail;
 
   return (
     <div
@@ -53,10 +57,10 @@ export function SessionDetailModal({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".8px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
-              {getWeekday(day.date)} · {formatShort(day.date)}
+              {getWeekday(day.date, locale)} · {formatShort(day.date, language)}
             </div>
             <h2 style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2, margin: 0 }}>
-              {day.is_rest ? "Rest Day" : (day.focus ?? day.session_type)}
+              {day.is_rest ? ts.restDay : (day.focus ?? day.session_type)}
             </h2>
             {strengthSession?.name && (
               <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
@@ -66,7 +70,7 @@ export function SessionDetailModal({
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.actions.close}
             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 24, lineHeight: 1, padding: "0 0 0 16px", marginTop: -2, flexShrink: 0 }}
           >
             ×
@@ -77,13 +81,13 @@ export function SessionDetailModal({
         {day.completedActivities && day.completedActivities.length > 0 && (
           <div style={{ marginBottom: 16, background: "rgba(var(--green-rgb),.06)", border: "1px solid rgba(var(--green-rgb),.15)", borderRadius: 8, padding: "10px 14px" }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--green)", marginBottom: 8 }}>
-              What actually happened
+              {ts.whatHappened}
             </div>
             {day.completedActivities.map(a => (
               <div key={a.activity_id} style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
-                {a.activity_name ?? a.activity_type ?? "Activity"} — {formatDuration(a.duration_secs ?? 0)}
+                {a.activity_name ?? a.activity_type ?? t.dashboard.recentSessions.activityFallback} — {formatDuration(a.duration_secs ?? 0)}
                 {a.distance_meters ? ` · ${(a.distance_meters / 1000).toFixed(1)} km` : ""}
-                {a.avg_heart_rate ? ` · ${a.avg_heart_rate} bpm avg` : ""}
+                {a.avg_heart_rate ? ` · ${ts.avgBpm.replace("{value}", String(a.avg_heart_rate))}` : ""}
               </div>
             ))}
           </div>
@@ -94,11 +98,11 @@ export function SessionDetailModal({
             {/* ── Badges ── */}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
               <span className={SESSION_BADGE[day.session_type] ?? "badge"}>
-                {SESSION_LABEL[day.session_type] ?? day.session_type}
+                {sessionLabel(day.session_type, language)}
               </span>
               {day.is_key && (
                 <span className="badge badge-amber">
-                  <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />Key session
+                  <i className="ti ti-star-filled" style={{ marginRight: 5, fontSize: 10 }} />{ts.keySession}
                 </span>
               )}
               {strengthSession ? (
@@ -118,7 +122,7 @@ export function SessionDetailModal({
               {(strengthSession?.garmin_workout_id || day.garmin_workout_id) && (
                 <span className="badge badge-green">
                   <i className="ti ti-check" style={{ marginRight: 4 }} />
-                  Garmin
+                  {ts.garmin}
                 </span>
               )}
             </div>
@@ -134,15 +138,15 @@ export function SessionDetailModal({
             {strengthSession && strengthSession.exercises.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 8 }}>
-                  Exercises · {strengthSession.exercises.length} movements
+                  {ts.exercisesCount.replace("{count}", String(strengthSession.exercises.length))}
                 </div>
                 <table className="exercise-table">
                   <thead>
                     <tr>
-                      <th>Exercise</th>
-                      <th className="et-col-setsreps">Sets × Reps</th>
-                      <th className="et-col-rest">Rest</th>
-                      <th className="et-col-intensity">Intensity</th>
+                      <th>{ts.exercise}</th>
+                      <th className="et-col-setsreps">{ts.setsReps}</th>
+                      <th className="et-col-rest">{ts.rest}</th>
+                      <th className="et-col-intensity">{ts.intensity}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -180,7 +184,7 @@ export function SessionDetailModal({
                           {ex.rest_seconds >= 60 ? `${ex.rest_seconds / 60}m` : `${ex.rest_seconds}s`}
                         </td>
                         <td className="et-col-intensity" style={{ fontSize: 12, color: ex.rir === 0 ? "var(--red)" : ex.rir != null ? "var(--amber)" : "var(--dim)" }}>
-                          {ex.rir === 0 ? "Failure" : ex.rir != null ? `RIR ${ex.rir}` : "–"}
+                          {ex.rir === 0 ? ts.failure : ex.rir != null ? ts.rir.replace("{value}", String(ex.rir)) : "–"}
                         </td>
                       </tr>
                       );
@@ -196,7 +200,7 @@ export function SessionDetailModal({
                 {day.purpose && (
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--dim)", marginBottom: 4 }}>
-                      Purpose
+                      {ts.purpose}
                     </div>
                     <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{day.purpose}</div>
                   </div>
@@ -204,7 +208,7 @@ export function SessionDetailModal({
                 {day.adaptation && (
                   <div style={{ background: "rgba(var(--amber-rgb),.06)", border: "1px solid rgba(var(--amber-rgb),.15)", borderRadius: 8, padding: "10px 14px" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "1px", textTransform: "uppercase", color: "var(--amber)", marginBottom: 4 }}>
-                      If you&apos;re tired
+                      {ts.ifTired}
                     </div>
                     <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>{day.adaptation}</div>
                   </div>

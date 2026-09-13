@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient, getUserId } from "@/lib/supabase-server";
 import { todayISO } from "@/lib/dates";
+import { getAuthenticatedLanguage } from "@/lib/i18n/getServerLanguage";
+import { dictionaries } from "@/lib/i18n/dictionaries";
 
 const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -27,6 +29,7 @@ function addDays(iso: string, n: number): string {
 export async function POST(req: NextRequest) {
   try {
     const uid = await getUserId();
+    const apiT = dictionaries[await getAuthenticatedLanguage(uid)].nutrition.api.mealPlan;
     const sb = createServerClient();
     const body = await req.json().catch(() => ({}));
     const startDate: string = body.date ?? todayISO();
@@ -91,7 +94,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (days_ctx.every(d => !d.target)) {
-      return NextResponse.json({ error: "No nutrition target set for these days yet — set one first." }, { status: 400 });
+      return NextResponse.json({ error: apiT.noTargetSet }, { status: 400 });
     }
 
     type TemplateItem = { calories: number; protein_g: number; food_name?: string; quantity_g?: number; serving_qty?: number; serving_label?: string };
@@ -210,9 +213,7 @@ Respond ONLY with this JSON structure:
     } catch {
       const truncated = response.stop_reason === "max_tokens";
       return NextResponse.json({
-        error: truncated
-          ? "Coach response was cut off (too long for this many days) — try fewer days or try again."
-          : "Coach returned malformed response. Try again.",
+        error: truncated ? apiT.truncated : apiT.malformed,
       }, { status: 500 });
     }
 
@@ -243,7 +244,7 @@ Respond ONLY with this JSON structure:
         }));
 
     if (!rows.length) {
-      return NextResponse.json({ error: "No valid meal recommendations in coach response." }, { status: 500 });
+      return NextResponse.json({ error: apiT.noValidMeals }, { status: 500 });
     }
 
     // Clear any previously-generated recommendations across this date range first (e.g. a prior

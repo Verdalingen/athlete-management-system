@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { MEAL_CATEGORIES, type MealCategory, type MealTemplate, type MealDraft } from "./MealBuilderModal";
+import { MEAL_CATEGORIES, mealCategoryLabel, type MealCategory, type MealTemplate, type MealDraft } from "./MealBuilderModal";
 import { useFormatQty, useUnitSystem } from "./UnitSystemContext";
 import { convertTemperaturesInText } from "./format";
+import { useT } from "@/lib/i18n/LanguageContext";
 
 type Props = {
   meals: MealTemplate[];
@@ -20,6 +21,8 @@ type Props = {
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
 export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, onImportUrl, onLog, loggingMealId, activeMealLabel }: Props) {
+  const nt = useT().nutrition;
+  const t = nt.mealManager;
   const formatQty = useFormatQty();
   const [unitSystem] = useUnitSystem();
   const [activeCategory, setActiveCategory] = useState<MealCategory | "All">("All");
@@ -53,7 +56,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
       setImportOpen(false);
       setImportUrl("");
     } catch {
-      setImportError("Something went wrong — try again.");
+      setImportError(t.importGenericError);
     } finally {
       setImporting(false);
     }
@@ -122,20 +125,20 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
         <div style={{ padding: "14px 18px 12px", borderBottom: "1px solid var(--border)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <i className="ti ti-tools-kitchen-2" style={{ fontSize: 17, color: "var(--amber)" }} aria-hidden="true" />
-            <div style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>Saved Meals</div>
+            <div style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{t.title}</div>
             <button
               onClick={() => setImportOpen(v => !v)}
               style={{ background: importOpen ? "rgba(124,92,255,.15)" : "none", border: "1px solid var(--border)", color: "var(--accent)", borderRadius: 8, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
             >
               <i className="ti ti-link" style={{ fontSize: 13 }} aria-hidden="true" />
-              Import from URL
+              {t.importFromUrl}
             </button>
             <button
               onClick={onBuild}
               style={{ background: "rgba(var(--amber-rgb),.12)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: 8, cursor: "pointer", padding: "6px 12px", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5 }}
             >
               <i className="ti ti-plus" style={{ fontSize: 13 }} aria-hidden="true" />
-              New meal
+              {t.newMeal}
             </button>
             <button onClick={onClose} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 7, cursor: "pointer", color: "var(--muted)", padding: "5px 10px", fontSize: 13 }}>✕</button>
           </div>
@@ -145,7 +148,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
               <div style={{ display: "flex", gap: 8 }}>
                 <input
                   className="input"
-                  placeholder="Paste a recipe URL…"
+                  placeholder={t.urlPlaceholder}
                   value={importUrl}
                   onChange={e => setImportUrl(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") submitImportUrl(); }}
@@ -153,7 +156,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                   autoFocus
                 />
                 <button className="btn-primary" style={{ fontSize: 12, padding: "6px 14px" }} disabled={importing || !importUrl.trim()} onClick={submitImportUrl}>
-                  {importing ? "Fetching…" : "Import"}
+                  {importing ? nt.actions.fetching : t.importBtn}
                 </button>
               </div>
               {importError && <div className="alert alert-bad" style={{ fontSize: 11 }}>{importError}</div>}
@@ -174,7 +177,8 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                   color: activeCategory === tab ? "var(--amber)" : "var(--dim)",
                 }}
               >
-                {tab}{tab !== "All" && meals.filter(m => (m.category ?? "Other") === tab).length > 0 &&
+                {tab === "All" ? nt.mealCategories.all : mealCategoryLabel(tab, nt)}
+                {tab !== "All" && meals.filter(m => (m.category ?? "Other") === tab).length > 0 &&
                   <span style={{ marginLeft: 5, opacity: 0.7 }}>{meals.filter(m => (m.category ?? "Other") === tab).length}</span>}
               </button>
             ))}
@@ -186,16 +190,16 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
           {meals.length === 0 ? (
             <div style={{ padding: 48, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
               <div style={{ fontSize: 32, marginBottom: 10 }}>🍽</div>
-              No saved meals yet.
+              {t.noMealsYet}
               <div style={{ marginTop: 12 }}>
-                <button className="btn-primary" style={{ fontSize: 12 }} onClick={onBuild}>Build your first meal</button>
+                <button className="btn-primary" style={{ fontSize: 12 }} onClick={onBuild}>{t.buildFirstMeal}</button>
               </div>
             </div>
           ) : visible.length === 0 ? (
             <div style={{ padding: 32, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>
-              No meals in this category yet.
+              {t.noMealsInCategory}
               <div style={{ marginTop: 10 }}>
-                <button className="btn-soft" style={{ fontSize: 12 }} onClick={onBuild}>Create one</button>
+                <button className="btn-soft" style={{ fontSize: 12 }} onClick={onBuild}>{t.createOne}</button>
               </div>
             </div>
           ) : (
@@ -204,7 +208,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                 {/* Category section header (only in "All" view with >1 category) */}
                 {activeCategory === "All" && grouped.length > 1 && (
                   <div style={{ padding: "10px 18px 4px", fontSize: 10, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em", borderBottom: "1px solid var(--border)", background: "rgba(var(--overlay-rgb),.02)" }}>
-                    {category}
+                    {mealCategoryLabel(category, nt)}
                   </div>
                 )}
                 {items.map(meal => {
@@ -250,10 +254,10 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                                       borderColor: editCategory === cat ? "rgba(124,92,255,.4)" : "var(--border)",
                                       color: editCategory === cat ? "var(--accent)" : "var(--dim)",
                                     }}
-                                  >{cat}</button>
+                                  >{mealCategoryLabel(cat, nt)}</button>
                                 ))}
                                 <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: "auto" }}>
-                                  <span style={{ fontSize: 11, color: "var(--dim)" }}>Servings</span>
+                                  <span style={{ fontSize: 11, color: "var(--dim)" }}>{nt.mealBuilder.servings}</span>
                                   <input
                                     type="number" min={0.5} step={0.5} className="input"
                                     value={editServings}
@@ -264,7 +268,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                               </div>
                               <div style={{ display: "flex", gap: 6 }}>
                                 <button className="btn-primary" style={{ fontSize: 11, padding: "5px 10px" }} disabled={saving === meal.id} onClick={() => saveEdit(meal.id)}>
-                                  {saving === meal.id ? "…" : "Save"}
+                                  {saving === meal.id ? "…" : nt.actions.save}
                                 </button>
                                 <button style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 14, padding: "2px 4px" }} onClick={() => setEditing(null)}>✕</button>
                               </div>
@@ -273,8 +277,8 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                             <>
                               <div style={{ fontSize: 13, fontWeight: 700 }}>{meal.name}</div>
                               <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 1 }}>
-                                {meal.meal_template_items.length} ingredients
-                                {meal.servings > 1 && <span style={{ color: "var(--amber)" }}> · {meal.servings} servings</span>}
+                                {t.ingredientsCountPlain.replace("{count}", String(meal.meal_template_items.length))}
+                                {meal.servings > 1 && <span style={{ color: "var(--amber)" }}> · {t.servingsCount.replace("{count}", String(meal.servings))}</span>}
                               </div>
                             </>
                           )}
@@ -297,25 +301,25 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                             <button
                               onClick={() => onLog(meal)}
                               disabled={isLogging || !!loggingMealId}
-                              title={activeMealLabel ? `Log 1 serving to ${activeMealLabel}` : "Log 1 serving"}
+                              title={activeMealLabel ? t.logServingTo.replace("{meal}", activeMealLabel) : t.logServing}
                               style={{ background: "rgba(var(--amber-rgb),.12)", border: "1px solid rgba(var(--amber-rgb),.3)", color: "var(--amber)", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 11, fontWeight: 700, opacity: loggingMealId && !isLogging ? 0.5 : 1 }}
                             >
-                              {isLogging ? "…" : "+ Log"}
+                              {isLogging ? "…" : t.logBtn}
                             </button>
-                            <button onClick={() => startEdit(meal)} title="Edit" style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", padding: "4px 8px", fontSize: 12 }}>
+                            <button onClick={() => startEdit(meal)} title={nt.actions.edit} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", padding: "4px 8px", fontSize: 12 }}>
                               <i className="ti ti-edit" aria-hidden="true" />
                             </button>
                             {confirmDelete === meal.id ? (
                               <div style={{ display: "flex", gap: 4 }}>
                                 <button onClick={() => confirmAndDelete(meal.id)} disabled={deleting === meal.id} style={{ background: "rgba(var(--red-rgb),.15)", border: "1px solid rgba(var(--red-rgb),.4)", color: "var(--red)", borderRadius: 6, cursor: "pointer", padding: "4px 8px", fontSize: 11, fontWeight: 700 }}>
-                                  {deleting === meal.id ? "…" : "Delete"}
+                                  {deleting === meal.id ? "…" : nt.actions.delete}
                                 </button>
                                 <button onClick={() => setConfirmDelete(null)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", padding: "4px 8px", fontSize: 11 }}>
-                                  Cancel
+                                  {nt.actions.cancel}
                                 </button>
                               </div>
                             ) : (
-                              <button onClick={() => setConfirmDelete(meal.id)} title="Delete" style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", padding: "4px 8px", fontSize: 12 }}>
+                              <button onClick={() => setConfirmDelete(meal.id)} title={nt.actions.delete} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--dim)", padding: "4px 8px", fontSize: 12 }}>
                                 <i className="ti ti-trash" aria-hidden="true" />
                               </button>
                             )}
@@ -340,7 +344,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                               )}
                               {meal.source === "imported_url" && meal.source_url && (
                                 <a href={meal.source_url} target="_blank" rel="noreferrer" style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "rgba(124,92,255,.1)", borderRadius: 12, padding: "2px 9px", textDecoration: "none" }}>
-                                  Imported <i className="ti ti-external-link" style={{ fontSize: 10, marginLeft: 2 }} aria-hidden="true" />
+                                  {t.importedBadge} <i className="ti ti-external-link" style={{ fontSize: 10, marginLeft: 2 }} aria-hidden="true" />
                                 </a>
                               )}
                             </div>
@@ -353,7 +357,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
 
                           {/* Portion scaling — ingredient list below scales to this; logging always uses 1 serving regardless */}
                           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 11, color: "var(--dim)" }}>Making</span>
+                            <span style={{ fontSize: 11, color: "var(--dim)" }}>{t.making}</span>
                             <input
                               type="number" min={0.5} step={0.5} className="input"
                               value={makingPortions}
@@ -363,17 +367,17 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                               }}
                               style={{ width: 56, fontSize: 12, padding: "4px 6px", textAlign: "center" }}
                             />
-                            <span style={{ fontSize: 11, color: "var(--dim)" }}>portions</span>
+                            <span style={{ fontSize: 11, color: "var(--dim)" }}>{t.portionsUnit}</span>
                             {isDefault ? (
                               <span style={{ fontSize: 10, fontWeight: 700, color: "var(--amber)", background: "rgba(var(--amber-rgb),.1)", borderRadius: 12, padding: "2px 9px" }}>
-                                Intended amount
+                                {t.intendedAmount}
                               </span>
                             ) : (
                               <button
                                 onClick={() => setPortionOverrides(prev => { const next = { ...prev }; delete next[meal.id]; return next; })}
                                 style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", background: "none", border: "1px solid var(--border)", borderRadius: 12, padding: "2px 9px", cursor: "pointer" }}
                               >
-                                Reset to intended {recipeServings}
+                                {t.resetToIntended.replace("{count}", String(recipeServings))}
                               </button>
                             )}
                           </div>
@@ -393,7 +397,7 @@ export function MealManagerModal({ meals, onUpdate, onDelete, onClose, onBuild, 
                             </div>
                           ))}
                           <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, paddingTop: 8, fontSize: 11, fontWeight: 700, borderTop: "1px solid rgba(var(--overlay-rgb),.07)", marginTop: 6 }}>
-                            <span style={{ color: "var(--dim)", fontWeight: 400 }}>Total{isDefault ? "" : ` (${makingPortions} portions)`}:</span>
+                            <span style={{ color: "var(--dim)", fontWeight: 400 }}>{isDefault ? t.totalLabel : t.totalWithPortions.replace("{count}", String(makingPortions))}:</span>
                             <span>{Math.round(totalCal * scale)} kcal</span>
                             <span style={{ color: "var(--accent)" }}>{r1(totalP * scale)}g</span>
                             <span style={{ color: "var(--cyan)" }}>{r1(totalC * scale)}g</span>
