@@ -585,6 +585,17 @@ _INSERTED_SESSION_LABELS = {
     },
 }
 
+_CHECKIN_FALLBACK_WARNING = {
+    "en": (
+        "⚠️ Could not honor the requested schedule change(s) without breaking the athlete's "
+        "program rules ({reasons}) — kept the existing schedule instead."
+    ),
+    "no": (
+        "⚠️ Kunne ikke etterkomme den ønskede planendringen uten å bryte utøverens "
+        "programregler ({reasons}) — beholdt den eksisterende planen i stedet."
+    ),
+}
+
 
 def _fix_weekly_volume(
     scheduled_days: list[dict[str, Any]] | None,
@@ -1179,11 +1190,8 @@ async def _execute_checkin(
                 "The athlete's active program is infeasible independent of this check-in "
                 f"({result.infeasible_reasons}) — run a new season-planning pass."
             )
-        fallback_warning = (
-            f"⚠️ Could not honor the requested schedule change(s) without breaking the athlete's "
-            f"program rules ({'; '.join(result.infeasible_reasons or [])}) — kept the existing "
-            "schedule instead."
-        )
+        template = _CHECKIN_FALLBACK_WARNING.get(state.get("language") or "en", _CHECKIN_FALLBACK_WARNING["en"])
+        fallback_warning = template.format(reasons="; ".join(result.infeasible_reasons or []))
         overrides = {}
         fixed = fixed_without_overrides
 
