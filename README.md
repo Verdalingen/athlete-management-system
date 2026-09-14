@@ -98,11 +98,12 @@ rather than taken at face value: EWMA acute/chronic load (7d/28d), an
 uncoupled chronic series so a spike can't mask itself, ramp rate, and
 monotony/strain — see [`training_metrics.py`](services/garmin/utils/training_metrics.py).
 
-**Decide.** A LangGraph workflow over 25 nodes: five domain summarisers fan out in
+**Decide.** A LangGraph workflow over 21 nodes: five domain summarisers fan out in
 parallel, feed five expert nodes, then an orchestrator, season planner and
 weekly planner produce a 12–24 week season strategy and a concrete 4-week plan.
 Expert outputs are typed Pydantic payloads, not free text. Optional
-human-in-the-loop.
+human-in-the-loop. See [The agent graph, in full](#the-agent-graph-in-full) for
+every node and fallback path.
 
 **Act.** Structured workouts are written to Garmin Connect so they appear
 on the watch — strength sessions with sets, reps and named exercises from
@@ -184,6 +185,136 @@ it interactively and as a scheduled job runner (macOS LaunchAgents in
 [`scripts/`](scripts/)); the web app is what I actually touch day to day.
 Supabase is the single source of truth for athlete context, credentials and the
 plan itself.
+
+---
+
+## The agent graph, in full
+
+The diagram above is the pitch. This is the actual
+[LangGraph](https://langchain-ai.github.io/langgraph/) — 21 nodes, every fan-out,
+every fallback — because "an orchestrator runs some agents" hides the part that
+was actually hard to get right: parallel branches that rejoin, a
+human-in-the-loop console prompt that can re-invoke a single agent without
+re-running the rest, a season plan that argues with a scheduling solver until
+it produces something *feasible* rather than just plausible-sounding, and a
+cheap weekly check-in path that skips the expensive branch entirely.
+
+```mermaid
+%%{init: {'flowchart': {'curve': 'linear', 'nodeSpacing': 35, 'rankSpacing': 55}}}%%
+flowchart TD
+    GC["Garmin Connect + MyFitnessPal<br/>activities · HRV · sleep · load · food log"]
+
+    subgraph SUMS["Summarizers — parallel fan-out · haiku"]
+        SM["metrics_summarizer"]
+        SP["physiology_summarizer"]
+        SA["activity_summarizer"]
+        SN["nutrition_summarizer"]
+        SL["lifestyle_summarizer"]
+    end
+
+    subgraph EXPS["Experts — parallel fan-out · sonnet"]
+        EM["metrics_expert"]
+        EP["physiology_expert"]
+        EA["activity_expert"]
+        EN["nutrition_expert"]
+        EL["lifestyle_expert"]
+    end
+
+    GC --> SUMS
+
+    SM --> EM
+    SP --> EP
+    SA --> EA
+    SN --> EN
+    SL --> EL
+
+    EXPS --> ORCH
+
+    ORCH{{"master_orchestrator<br/>Command(goto=...) routing — no LLM call itself"}}
+
+    ORCH -.->|"open questions — synchronous console HITL prompt;<br/>re-invokes only the agent(s) that asked"| EXPS
+
+    ORCH -->|"clear"| SYN["synthesis · sonnet<br/>writes the analysis report"]
+    ORCH -->|"clear"| SEASON
+
+    SYN --> FMT["formatter · haiku<br/>markdown → HTML"]
+    FMT --> PLOT["plot_resolution · python<br/>splices chart HTML into the report"]
+    PLOT --> DONE(["finalize → END"])
+
+    subgraph SEASONBLOCK["season_planner · opus — author ↔ solver loop"]
+        SEASON["author season plan + ProgramSpec<br/>(weekly targets, spacing rules, day pins)"]
+        SOLVE{"solve_schedule()<br/>deterministic feasibility check"}
+        SEASON --> SOLVE
+        SOLVE -.->|"infeasible — reasons fed back, retry ≤3×"| SEASON
+    end
+
+    SOLVE -->|"feasible"| ORCH
+    ORCH -.->|"season-plan questions"| SEASON
+    ORCH -->|"season plan clear"| DI["data_integration · python<br/>marks season plan complete"]
+
+    DI --> WPENTRY
+
+    subgraph WPBLOCK["weekly_planner — two execution modes"]
+        WPENTRY(["entry"])
+        WPMODE{"checkin_mode?"}
+        WPFULL["LLM redrafts the full N-day<br/>schedule · sonnet"]
+        WPFIX["deterministic auto-fixers · python<br/>weekly volume · legs-before-hard-runs ·<br/>strength slot rotation · recovery spacing"]
+        WPSOLVE["solve_schedule() places every<br/>session deterministically · python"]
+        WPLLM["LLM turns the athlete's note into<br/>overrides, authors content only for<br/>solver-placed run dates · sonnet"]
+        WPOUT["weekly_plan"]
+
+        WPENTRY --> WPMODE
+        WPMODE -->|"no — full pipeline run"| WPFULL
+        WPFULL --> WPFIX
+        WPFIX --> WPOUT
+        WPMODE -->|"yes — Tier-2 check-in"| WPSOLVE
+        WPSOLVE --> WPLLM
+        WPLLM --> WPOUT
+    end
+
+    CLIREPLAN["CLI --replan<br/>Tier-2: skips the whole analysis fan-out"] -.->|"checkin_mode=True"| WPENTRY
+
+    WPOUT --> ORCH
+    ORCH -.->|"weekly-plan questions"| WPOUT
+    ORCH -.->|"weekly plan clear — redundant with the join below"| PF
+
+    WPOUT --> NUT["nutrition_planner · sonnet"]
+    WPOUT --> RACECHECK{"competition within 6 weeks?"}
+    RACECHECK -->|"no"| RACESKIP["race_strategy no-ops"]
+    RACECHECK -->|"yes"| RACE["race_strategy · sonnet"]
+
+    NUT --> PF["plan_formatter · haiku<br/>markdown → HTML"]
+    RACE --> PF
+    RACESKIP -.-> PF
+
+    PF --> DONE
+```
+
+Solid arrows are the forward path; dashed arrows are the loop-backs — HITL
+re-invocation, the solver's corrective retries, the check-in's side entry, and
+the one redundant edge into `plan_formatter`.
+
+A few things that are easy to miss on a first read:
+
+- **`master_orchestrator` is one node, not three.** It routes purely via
+  `Command(goto=...)` based on `synthesis_complete`/`season_plan_complete` —
+  the three places it appears are the same object re-entered at a later stage.
+- **HITL is a blocking console prompt, not a graph interrupt.** The
+  orchestrator calls `input()` synchronously and re-invokes only the agent(s)
+  that asked. `--replan` always sets `hitl_enabled=False`, so it only fires on
+  a full pipeline run.
+- **The season planner argues with a solver before it's allowed to finish.**
+  It hands its `ProgramSpec` to a deterministic scheduler and feeds back
+  infeasibility reasons for up to three attempts before failing the run.
+- **A check-in and a full replan are different code paths through the same
+  node.** `weekly_planner` either lets the LLM redraft the schedule (then
+  Python fixes what it got wrong) or, for `--replan`, lets the solver place
+  every session and has the LLM only translate the athlete's note into
+  overrides — falling back to the existing schedule with a warning if that
+  would break the program's rules.
+- **`plan_formatter` really is reachable two ways** — the
+  `nutrition_planner`/`race_strategy` join, and the orchestrator's direct
+  routing, a harmless leftover from before that fan-out existed.
 
 ---
 
