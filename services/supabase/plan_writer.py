@@ -7,7 +7,9 @@ import os
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from .athlete_profile import get_weight_goal_direction
+from services.garmin.hr_zones import assign_hr_zone
+
+from .athlete_profile import get_max_heart_rate_bpm, get_weight_goal_direction
 from .client import get_supabase, row, rows
 
 logger = logging.getLogger(__name__)
@@ -235,8 +237,13 @@ def upsert_completed_activities(
     ALLOWED = {
         "activity_id", "date", "activity_type", "activity_name", "duration_secs",
         "distance_meters", "avg_heart_rate", "max_heart_rate", "calories",
-        "activity_training_load",
+        "activity_training_load", "hr_zone", "hr_zone_low_bpm", "hr_zone_high_bpm",
     }
+
+    # Fetched once per call (not per record) — every record here belongs to the same athlete,
+    # so their max HR doesn't change mid-batch. No restriction on activity_type: zone assignment
+    # only depends on having avg_heart_rate, not on what kind of cardio produced it.
+    max_heart_rate_bpm = get_max_heart_rate_bpm(uid)
 
     rows = []
     for rec in records:
@@ -244,7 +251,12 @@ def upsert_completed_activities(
         d = rec.get("date")
         if not activity_id or not d:
             continue
-        clean = {k: v for k, v in rec.items() if k in ALLOWED and v is not None}
+        zone = assign_hr_zone(rec.get("avg_heart_rate"), max_heart_rate_bpm)
+        rec_with_zone = rec
+        if zone is not None:
+            label, low, high = zone
+            rec_with_zone = {**rec, "hr_zone": label, "hr_zone_low_bpm": low, "hr_zone_high_bpm": high}
+        clean = {k: v for k, v in rec_with_zone.items() if k in ALLOWED and v is not None}
         clean["user_id"] = uid
         rows.append(clean)
 
