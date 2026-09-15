@@ -1,6 +1,6 @@
 ---
 title: Compute and store HR zone range for imported cardio sessions
-status: tests-written
+status: in-progress
 created: 2026-09-15
 updated: 2026-09-15
 tests: [tests/test_hr_zones.py, tests/test_completed_activities_hr_zone.py]
