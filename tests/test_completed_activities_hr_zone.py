@@ -7,7 +7,7 @@ Fake Supabase client, same style as test_plan_writer_strength_slots.py: minimal,
 ignores query filters (this codebase's established "pure logic, thin I/O" fake-client pattern for
 these tests) but captures .upsert() payloads so they can be asserted on directly.
 """
-import pytest
+
 
 from services.supabase import athlete_profile, plan_writer
 
