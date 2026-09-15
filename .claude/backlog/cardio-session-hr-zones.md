@@ -1,17 +1,17 @@
 ---
 title: Compute and store HR zone range for imported cardio sessions
-status: in-progress
+status: done-pending-review
 created: 2026-09-15
 updated: 2026-09-15
 tests: [tests/test_hr_zones.py, tests/test_completed_activities_hr_zone.py]
 touches: [services/garmin/hr_zones.py, services/supabase/athlete_profile.py, services/supabase/plan_writer.py, supabase/migrations/046_completed_activities_hr_zone.sql]
 depends_on:
-attempts: 0
+attempts: 1
 schedule_backend:
 schedule_task_id:
 schedule_created_at:
 max_background_hours:
-pr_url:
+pr_url: https://github.com/awalderhaugjohnsen/athlete-management-system/pull/23
 ---
 
 ## Goal
@@ -52,3 +52,10 @@ only stores a single flat `max_heart_rate_bpm` value (computed and written in
   (commit `b94059f`) rather than `main` directly — `main` now has branch protection requiring a
   PR (added this same day), which the skill's default flow didn't anticipate. `run` should
   continue on this same branch rather than creating a fresh one off `main`.
+- 2026-09-15: implemented in 1 attempt, all 14 point-specific tests + full 377-test suite green,
+  lint and type-check clean. Implementation matched the design notes above exactly — no
+  deviations. One pre-existing lint finding (`F401` unused `import pytest` in
+  `tests/test_completed_activities_hr_zone.py`) was left untouched per the no-edit-tests rule; it
+  predates this implementation (present since the reviewed test commit `b94059f`). PR opened:
+  https://github.com/awalderhaugjohnsen/athlete-management-system/pull/23. CI auto-fix wired up
+  (`auto_fix`/`address_comments` on), auto-merge left off.
