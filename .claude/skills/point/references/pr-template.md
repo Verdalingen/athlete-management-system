@@ -14,6 +14,9 @@ bad fit.
 ## Body
 
 ```markdown
+🤖 Opened autonomously by the `point` skill's `run` loop — not typed by a human. See
+`.claude/skills/point/` for how this works and what gated it before it got here.
+
 ## Summary
 
 <1-3 sentences: what changed and why, drawn from the point's Goal.>
@@ -65,3 +68,9 @@ commits and PRs, don't hardcode one here since it can vary by account/setup.
   it or always write "None," never omit the section.
 - Never write anything in this template that isn't true of what was actually run — no
   aspirational "lint: clean" without having actually run the linter this invocation.
+- The autonomous-PR disclaimer at the top is not optional and not backend-specific — include it
+  every time, `app` backend or `github-actions`. It exists because the PR's "opened by" badge on
+  GitHub reflects whatever credential pushed it (a personal account or PAT, not a distinct bot
+  identity), which on its own makes an autonomous PR look human-opened at a glance. The commit
+  authorship already gives this away to anyone who looks closer, but the disclaimer makes it true
+  at a glance too, not just on inspection.

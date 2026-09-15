@@ -113,7 +113,10 @@ jobs:
 
       - name: Install Claude Code
         if: steps.gate.outputs.proceed == 'true'
-        run: npm install -g @anthropic-ai/claude-code
+        # Pinned deliberately: an unpinned `npm install -g` on every firing means a compromised
+        # upstream release would run with both live secrets in hand. Bump this by hand, not
+        # automatically, when there's a reason to.
+        run: npm install -g @anthropic-ai/claude-code@2.1.272
 
       - name: Work loop
         if: steps.gate.outputs.proceed == 'true'
