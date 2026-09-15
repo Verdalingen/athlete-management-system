@@ -1,0 +1,183 @@
+name: Point loop
+
+# Runs /point run for backlog points marked `schedule_backend: github-actions`, on GitHub's own
+# runners - independent of whether the laptop that created them is open, asleep, or off.
+#
+# Two different modes, by time of day (POINT_TZ, below):
+#   - Night window (POINT_NIGHT_START-POINT_NIGHT_END, default 22:00-09:00): works continuously,
+#     one eligible point after another, back to back, until either there's nothing left eligible,
+#     the window ends, or a real usage/rate limit is hit - not a self-imposed budget. See
+#     references/github-actions.md in the `point` skill for why there is deliberately no "stop at
+#     80%" style budget gate here: that would require reading a live remaining-quota number that
+#     Anthropic does not expose outside the interactive `/usage` command, so this workflow doesn't
+#     pretend to. It just works until the real API says no, then waits for the next scheduled
+#     firing to try again.
+#   - Daytime: does nothing unless triggered manually (workflow_dispatch), or a specific GitHub
+#     issue (title set in POINT_DAYTIME_TOGGLE_ISSUE_TITLE below) is open - close it to disable
+#     daytime runs again. Opening/closing that issue from the GitHub mobile app is the "easy
+#     switch."
+#
+# Setup required before this does anything (see references/github-actions.md):
+#   - Install the Claude GitHub app: https://github.com/apps/claude
+#   - `claude setup-token` locally, then add the result as the repo secret CLAUDE_CODE_OAUTH_TOKEN
+#   - Create the daytime-toggle issue once (title must match POINT_DAYTIME_TOGGLE_ISSUE_TITLE
+#     exactly), and leave it closed by default
+#   - Confirm POINT_TZ below matches where you actually are
+#   - Strongly recommended: add a fine-grained PAT (repo-scoped, contents+pull-requests write) as
+#     the secret GH_PAT. GitHub's default GITHUB_TOKEN deliberately does not trigger other
+#     workflows on the pushes/PRs it makes - so without a PAT, the PRs this opens will NOT trigger
+#     this repo's own ci.yml, and CI auto-fix has nothing to react to. Falls back to GITHUB_TOKEN
+#     if GH_PAT isn't set, but CI won't auto-run on those PRs in that case - see github-actions.md.
+
+on:
+  schedule:
+    - cron: '0 * * * *' # every hour, all day - the job itself decides whether to actually do anything
+  workflow_dispatch: {} # always proceeds regardless of window/toggle - the explicit "do it now"
+
+concurrency:
+  group: point-loop
+  cancel-in-progress: false # never kill a run that's genuinely mid-loop; extra triggers just queue
+
+env:
+  POINT_TZ: Europe/Oslo
+  POINT_NIGHT_START: "22:00"
+  POINT_NIGHT_END: "09:00"
+  POINT_DAYTIME_TOGGLE_ISSUE_TITLE: "point-loop daytime toggle"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+  id-token: write
+  actions: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300 # up to 5h of continuous work per firing; GitHub's hosted-runner hard cap is 6h
+    env:
+      # See the file header: GH_PAT (if set) lets opened PRs actually trigger ci.yml; the default
+      # GITHUB_TOKEN cannot. One place to compute this so all three uses below stay consistent.
+      GH_AUTH_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ env.GH_AUTH_TOKEN }}
+
+      - name: Decide whether to act
+        id: gate
+        env:
+          GH_TOKEN: ${{ env.GH_AUTH_TOKEN }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "mode=manual" >> "$GITHUB_OUTPUT"
+            echo "Manually triggered - proceeding regardless of window/toggle." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          now_local=$(TZ="$POINT_TZ" date +%H:%M)
+          if [[ "$POINT_NIGHT_START" < "$POINT_NIGHT_END" ]]; then
+            in_night=$([[ ! "$now_local" < "$POINT_NIGHT_START" && "$now_local" < "$POINT_NIGHT_END" ]] && echo true || echo false)
+          else
+            in_night=$([[ ! "$now_local" < "$POINT_NIGHT_START" || "$now_local" < "$POINT_NIGHT_END" ]] && echo true || echo false)
+          fi
+
+          if [[ "$in_night" == "true" ]]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "mode=night" >> "$GITHUB_OUTPUT"
+            echo "Local time $now_local in $POINT_TZ is inside the night window - proceeding." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          toggle_open=$(gh issue list --repo "${{ github.repository }}" --state open \
+            --search "in:title \"$POINT_DAYTIME_TOGGLE_ISSUE_TITLE\"" \
+            --json number --jq 'length > 0' 2>/dev/null || echo false)
+          if [[ "$toggle_open" == "true" ]]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "mode=daytime-enabled" >> "$GITHUB_OUTPUT"
+            echo "Daytime, local time $now_local - toggle issue is open, proceeding." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "mode=daytime-disabled" >> "$GITHUB_OUTPUT"
+            echo "Daytime, local time $now_local, toggle issue closed or missing - doing nothing this firing." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Configure git identity
+        if: steps.gate.outputs.proceed == 'true'
+        run: |
+          git config user.name "point-loop-bot"
+          git config user.email "actions@users.noreply.github.com"
+
+      - name: Install Claude Code
+        if: steps.gate.outputs.proceed == 'true'
+        # Pinned deliberately: an unpinned `npm install -g` on every firing means a compromised
+        # upstream release would run with both live secrets in hand. Bump this by hand, not
+        # automatically, when there's a reason to.
+        run: npm install -g @anthropic-ai/claude-code@2.1.272
+
+      - name: Work loop
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ env.GH_AUTH_TOKEN }} # needed for gh pr create inside /point run itself
+          MODE: ${{ steps.gate.outputs.mode }}
+        run: |
+          points_done=0
+          while true; do
+            if [[ "$MODE" == "night" ]]; then
+              now_local=$(TZ="$POINT_TZ" date +%H:%M)
+              still_night=$([[ ! "$now_local" < "$POINT_NIGHT_START" || "$now_local" < "$POINT_NIGHT_END" ]] && echo true || echo false)
+              if [[ "$still_night" == "false" ]]; then
+                echo "Night window ended mid-loop ($points_done point(s) worked this firing) - stopping." >> "$GITHUB_STEP_SUMMARY"
+                break
+              fi
+            fi
+
+            slug=""
+            for f in .claude/backlog/*.md; do
+              [[ -e "$f" ]] || continue
+              backend=$(sed -n 's/^schedule_backend:[[:space:]]*//p' "$f" | head -1 | tr -d '[:space:]')
+              pt_status=$(sed -n 's/^status:[[:space:]]*//p' "$f" | head -1 | tr -d '[:space:]')
+              if [[ "$backend" == "github-actions" && ( "$pt_status" == "tests-written" || "$pt_status" == "waiting" ) ]]; then
+                slug=$(basename "$f" .md)
+                break
+              fi
+            done
+
+            if [[ -z "$slug" ]]; then
+              echo "Nothing eligible left ($points_done point(s) worked this firing) - stopping." >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+
+            echo "::group::Running point: $slug"
+            set +e
+            # --dangerously-skip-permissions: required for unattended tool use in CI - there is no
+            # human to approve edits/bash/git here. This is standard for headless automation, but
+            # it does mean Claude has full tool access within this sandboxed, ephemeral runner for
+            # the duration of the call - the point skill's own guardrails (no editing test files,
+            # bounded cycles, PR-not-merge) are what constrain it, not the CI sandbox.
+            output=$(claude -p "/point run $slug" --output-format json --dangerously-skip-permissions 2>&1)
+            exit_code=$?
+            set -e
+            echo "$output"
+            echo "::endgroup::"
+
+            # Best-effort rate-limit detection: no verified exact error signature for this yet -
+            # check a real occurrence against these logs and tighten the pattern if it doesn't
+            # match. See references/github-actions.md.
+            if echo "$output" | grep -qiE "rate.?limit|usage limit|429|exceeded.*quota"; then
+              echo "Point $slug: looks like a usage/rate limit was hit - stopping this firing's loop ($points_done point(s) worked). A later scheduled run will retry; this does not count as a failed attempt against the point." >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+
+            if [[ $exit_code -ne 0 ]]; then
+              echo "Point $slug: run exited non-zero for a reason other than a detected rate limit ($points_done point(s) worked this firing) - stopping this firing's loop rather than hammering. Check the log above." >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+
+            points_done=$((points_done + 1))
+          done
+          echo "Firing complete: $points_done point(s) worked." >> "$GITHUB_STEP_SUMMARY"

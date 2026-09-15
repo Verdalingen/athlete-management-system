@@ -44,7 +44,14 @@ build/
 *.swo
 
 # === CLAUDE CODE ===
-.claude/
+# Local settings/session state stay ignored, but the point-skill backlog and the repo-local copy
+# of the `point` skill (needed for GitHub Actions to see it) are meant to be committed and
+# reviewed like any other change - see the `point` skill's references/workflow.md.
+.claude/*
+!.claude/backlog/
+!.claude/backlog/**
+!.claude/skills/
+!.claude/skills/**
 
 # Coverage artifacts
 .coverage
