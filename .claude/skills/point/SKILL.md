@@ -46,7 +46,8 @@ that are actually already finished.
 
 - No args, or `list` → **List**
 - `status <slug>` → show one item's full content
-- `new <description>`, or free text matching no other subcommand → **New**
+- `new <description(s)>`, or free text matching no other subcommand → **New** (one description or
+  several — see New below)
 - `spec <slug>` → **Spec** (red)
 - `run <slug>` → **Run** (green)
 - `background <slug> [cadence]` → **Background**
@@ -59,22 +60,36 @@ so and suggest `new`.
 
 ## New
 
-1. If the goal as stated is genuinely ambiguous (no clear "done" condition even loosely), ask
-   one focused clarifying question — don't interrogate.
+`args` may describe one point or several (a numbered/bulleted list, or several clearly distinct
+goals in one message). One description is just the N=1 case of the same procedure below — nothing
+changes about it. If it's genuinely unclear whether the user gave one nuanced description or
+several intended items, treat it as one; don't guess-split.
+
+For each described point, independently:
+
+1. If the goal as stated is genuinely ambiguous (no clear "done" condition even loosely), note
+   what needs asking — don't interrogate per-item.
 2. Draft acceptance criteria: a short list of concrete, testable statements. Push back
    internally on anything not falsifiable (e.g. "make it nicer" isn't one; "the settings page
    loads in under 2s with 500 rows" is).
-3. Run Sync first, then check this draft for overlap against every other active point (status
-   `tests-written`, `waiting`, or `in-progress`) using the detection procedure in
-   `references/dependencies.md`. If overlap is found, set `depends_on` to that point's slug and
-   say so in one line — don't ask permission for the routine case, just state the decision.
-4. Slugify a short kebab-case name from the title; if `.claude/backlog/<slug>.md` already exists,
-   disambiguate with `-2`, `-3`, etc.
-5. Show the drafted title, acceptance criteria, and any dependency decision to the user and get
-   explicit confirmation or edits before writing the file — this is cheap to get right early and
-   expensive to fix after tests are written against it.
-6. Write `.claude/backlog/<slug>.md` per `references/backlog-format.md`, status `planned`. Do not
-   write any tests or code in this step.
+3. Slugify a short kebab-case name from the title; disambiguate with `-2`, `-3`, etc. against
+   both existing `.claude/backlog/*.md` files and other items in this same batch.
+
+Then, once every item has a draft:
+
+4. If any item needed a clarifying question (step 1), ask all of them together in one message —
+   not one round-trip per item — before drafting further on those specific items.
+5. Run Sync first, then check every drafted item for overlap — against every other active point
+   (status `tests-written`, `waiting`, or `in-progress`) *and* against every other item in this
+   same batch — using the detection procedure in `references/dependencies.md`. Set `depends_on`
+   accordingly and state each decision in one line; don't ask permission for the routine case.
+6. Show every drafted title, its acceptance criteria, and any dependency decision together in one
+   message, clearly separated per item, and get explicit confirmation or edits before writing
+   anything — this is cheap to get right early and expensive to fix after tests are written
+   against it. The user may approve all, approve some and edit or drop others — write backlog
+   files only for the ones actually confirmed.
+7. For each confirmed item, write `.claude/backlog/<slug>.md` per `references/backlog-format.md`,
+   status `planned`. Do not write any tests or code in this step, for any item.
 
 ## Spec (red)
 
